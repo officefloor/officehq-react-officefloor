@@ -34,24 +34,23 @@ function DashboardPage() {
     return <section data-testid="dashboard" />;
   }
 
+  // One tile per headline figure. Listing them as data keeps the markup to a single repeated block
+  // and puts every tile's label and value in one place to read (and relabel) at a glance.
+  const tiles = [
+    { testid: 'dashboard-clients', label: 'Clients', valueTestid: 'dashboard-clients-count', value: summary.clientsCount },
+    { testid: 'dashboard-projects', label: 'Projects', valueTestid: 'dashboard-projects-count', value: summary.projectsCount },
+    { testid: 'dashboard-outstanding', label: 'Outstanding', valueTestid: 'dashboard-outstanding-total', value: money(summary.outstandingTotal) },
+    { testid: 'dashboard-overdue', label: 'Overdue invoices', valueTestid: 'dashboard-overdue-count', value: summary.overdueCount },
+  ];
+
   return (
     <section data-testid="dashboard">
-      <div data-testid="dashboard-clients">
-        <span>Clients</span>
-        <span data-testid="dashboard-clients-count">{summary.clientsCount}</span>
-      </div>
-      <div data-testid="dashboard-projects">
-        <span>Projects</span>
-        <span data-testid="dashboard-projects-count">{summary.projectsCount}</span>
-      </div>
-      <div data-testid="dashboard-outstanding">
-        <span>Outstanding</span>
-        <span data-testid="dashboard-outstanding-total">{money(summary.outstandingTotal)}</span>
-      </div>
-      <div data-testid="dashboard-overdue">
-        <span>Overdue invoices</span>
-        <span data-testid="dashboard-overdue-count">{summary.overdueCount}</span>
-      </div>
+      {tiles.map((tile) => (
+        <div key={tile.testid} data-testid={tile.testid}>
+          <span>{tile.label}</span>
+          <span data-testid={tile.valueTestid}>{tile.value}</span>
+        </div>
+      ))}
     </section>
   );
 }

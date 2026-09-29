@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import type { Feature } from '../../router/routes';
+import { useJsonResource } from '../../ui/useJsonResource';
 
 // Clients feature: add a client (name + email) and list every client. Opening a client
 // (client-open-<id>) reveals the projects being done for them — the client's own projects listing,
@@ -34,21 +35,6 @@ function money(amount: number): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
-}
-
-// Load a JSON resource from `url` into state, refetching whenever the url changes, and hand back a
-// `reload` for callers that mutate the resource and need to pull the fresh version. Every client
-// panel reads one url this way, so this is where that fetch-into-state pattern lives once.
-function useJsonResource<T>(url: string, initial: T): [T, () => Promise<void>] {
-  const [data, setData] = useState<T>(initial);
-  const reload = useCallback(async () => {
-    const res = await fetch(url);
-    setData(await res.json());
-  }, [url]);
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-  return [data, reload];
 }
 
 // A client's statement: all of their invoices in one place, each with what is still owed on it, and

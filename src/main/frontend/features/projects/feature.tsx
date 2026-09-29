@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Feature } from '../../router/routes';
+import { useJsonResource } from '../../ui/useJsonResource';
 
 // Projects feature: add a project and pick which client it is for, then list every project showing
 // the client's NAME. Opening a project (project-open-<id>) reveals its detail: the invoices raised
@@ -490,84 +491,70 @@ function ProjectInvoices({
   );
 }
 
-// A project's detail: its budget, tasks, labels and notes, plus the invoices raised against it (a
-// self-contained panel of its own). Owns the state for everything but the invoices.
-function ProjectDetail({ project }: { project: Project }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
-  const [tagToAdd, setTagToAdd] = useState('');
-  const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'DONE'>('ALL');
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [noteText, setNoteText] = useState('');
+// A project's budget: what was set for it, what has been invoiced against it so far, and what is
+// left over. Invoiced (and so remaining) is derived from the project's invoices, so the owner bumps
+// `reloadKey` whenever they change and this re-reads the budget picture. Owns its own budget state.
+function BudgetPanel({ projectId, reloadKey }: { projectId: number; reloadKey: number }) {
   const [budget, setBudget] = useState<ProjectBudget | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
 
-  // Invoiced (and so remaining) is derived from the project's invoices, so the invoices panel calls
-  // this whenever they change to re-read the budget picture.
-  async function loadBudget() {
-    const res = await fetch(`/api/projects/${project.id}/budget`);
+  async function load() {
+    const res = await fetch(`/api/projects/${projectId}/budget`);
     setBudget(await res.json());
   }
 
-  async function submitBudget(e: React.FormEvent) {
+  useEffect(() => {
+    void load();
+  }, [projectId, reloadKey]);
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const value = Number(budgetInput);
     if (budgetInput.trim() === '' || !Number.isFinite(value) || value < 0) {
       return;
     }
-    await fetch(`/api/projects/${project.id}/budget`, {
+    await fetch(`/api/projects/${projectId}/budget`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ budget: value }),
     });
     setBudgetInput('');
-    await loadBudget();
+    await load();
   }
 
-  async function loadNotes() {
-    const res = await fetch(`/api/notes?targetType=project&targetId=${project.id}`);
-    setNotes(await res.json());
-  }
+  return (
+    <section data-testid="project-budget-panel">
+      <p data-testid="project-budget">
+        {budget && budget.budget != null ? moneyGrouped(budget.budget) : ''}
+      </p>
+      <p data-testid="project-invoiced">{moneyGrouped(budget ? budget.invoiced : 0)}</p>
+      <p data-testid="project-remaining">
+        {budget && budget.remaining != null ? moneyGrouped(budget.remaining) : ''}
+      </p>
+      <form data-testid="project-budget-form" onSubmit={submit}>
+        <input
+          data-testid="project-budget-input"
+          placeholder="Budget"
+          value={budgetInput}
+          onChange={(e) => setBudgetInput(e.target.value)}
+        />
+        <button data-testid="project-budget-submit" type="submit">
+          Set budget
+        </button>
+      </form>
+    </section>
+  );
+}
 
-  async function submitNote(e: React.FormEvent) {
-    e.preventDefault();
-    if (!noteText.trim()) {
-      return;
-    }
-    await fetch('/api/notes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetType: 'project', targetId: project.id, text: noteText }),
-    });
-    setNoteText('');
-    await loadNotes();
-  }
+// A project's labels: the ones on it now (each removable) and a picker of the remaining labels to add
+// another. Owns its own tag state, scoped to the one project.
+function TagsPanel({ projectId }: { projectId: number }) {
+  const [tags, reloadTags] = useJsonResource<Tag[]>(`/api/projects/${projectId}/tags`, []);
+  const [allTags, reloadAllTags] = useJsonResource<Tag[]>('/api/tags', []);
+  const [tagToAdd, setTagToAdd] = useState('');
 
-  async function loadTasks() {
-    const res = await fetch(`/api/tasks?projectId=${project.id}`);
-    setTasks(await res.json());
-  }
-
-  async function loadTags() {
-    const [mine, all] = await Promise.all([
-      fetch(`/api/projects/${project.id}/tags`).then((r) => r.json()),
-      fetch('/api/tags').then((r) => r.json()),
-    ]);
-    setTags(mine);
-    setAllTags(all);
-  }
-
-  useEffect(() => {
-    void loadBudget();
-    void loadTasks();
-    void loadTags();
-    void loadNotes();
-  }, [project.id]);
-
-  async function toggleTask(id: number) {
-    await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
-    await loadTasks();
+  async function reload() {
+    await Promise.all([reloadTags(), reloadAllTags()]);
   }
 
   async function addTag(e: React.FormEvent) {
@@ -575,49 +562,22 @@ function ProjectDetail({ project }: { project: Project }) {
     if (!tagToAdd) {
       return;
     }
-    await fetch(`/api/projects/${project.id}/tags`, {
+    await fetch(`/api/projects/${projectId}/tags`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tagId: Number(tagToAdd) }),
     });
     setTagToAdd('');
-    await loadTags();
+    await reload();
   }
 
   async function removeTag(id: number) {
-    await fetch(`/api/projects/${project.id}/tags/${id}/remove`, { method: 'POST' });
-    await loadTags();
+    await fetch(`/api/projects/${projectId}/tags/${id}/remove`, { method: 'POST' });
+    await reload();
   }
 
-  const shownTasks = tasks.filter((t) =>
-    taskFilter === 'OPEN' ? !t.done : taskFilter === 'DONE' ? t.done : true,
-  );
-
   return (
-    <section data-testid="project-detail">
-      <h2 data-testid="project-detail-name">{project.name}</h2>
-
-      <section data-testid="project-budget-panel">
-        <p data-testid="project-budget">
-          {budget && budget.budget != null ? moneyGrouped(budget.budget) : ''}
-        </p>
-        <p data-testid="project-invoiced">{moneyGrouped(budget ? budget.invoiced : 0)}</p>
-        <p data-testid="project-remaining">
-          {budget && budget.remaining != null ? moneyGrouped(budget.remaining) : ''}
-        </p>
-        <form data-testid="project-budget-form" onSubmit={submitBudget}>
-          <input
-            data-testid="project-budget-input"
-            placeholder="Budget"
-            value={budgetInput}
-            onChange={(e) => setBudgetInput(e.target.value)}
-          />
-          <button data-testid="project-budget-submit" type="submit">
-            Set budget
-          </button>
-        </form>
-      </section>
-
+    <>
       <div data-testid="project-tags">
         {tags.map((tag) => (
           <span key={tag.id}>
@@ -652,7 +612,27 @@ function ProjectDetail({ project }: { project: Project }) {
           Add label
         </button>
       </form>
+    </>
+  );
+}
 
+// A project's tasks, filterable by whether they are still open or already done, each with a control
+// to tick it off or reopen it. Owns its own task state, scoped to the one project.
+function TasksPanel({ projectId }: { projectId: number }) {
+  const [tasks, reload] = useJsonResource<Task[]>(`/api/tasks?projectId=${projectId}`, []);
+  const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'DONE'>('ALL');
+
+  async function toggleTask(id: number) {
+    await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
+    await reload();
+  }
+
+  const shownTasks = tasks.filter((t) =>
+    taskFilter === 'OPEN' ? !t.done : taskFilter === 'DONE' ? t.done : true,
+  );
+
+  return (
+    <>
       <select
         data-testid="task-filter"
         value={taskFilter}
@@ -678,41 +658,126 @@ function ProjectDetail({ project }: { project: Project }) {
           ))}
         </tbody>
       </table>
+    </>
+  );
+}
 
-      <section data-testid="project-notes">
-        <form data-testid="note-form" onSubmit={submitNote}>
-          <input
-            data-testid="note-form-text"
-            placeholder="Write a note"
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-          />
-          <button data-testid="note-form-submit" type="submit">
-            Add note
-          </button>
-        </form>
+// A project's notes: a running list of what has been jotted against it and a form to add another.
+// Owns its own note state, scoped to the one project.
+function NotesPanel({ projectId }: { projectId: number }) {
+  const [notes, reload] = useJsonResource<Note[]>(
+    `/api/notes?targetType=project&targetId=${projectId}`,
+    [],
+  );
+  const [noteText, setNoteText] = useState('');
 
-        <ul data-testid="project-notes-list">
-          {notes.map((n) => (
-            <li key={n.id} data-testid={`note-row-${n.id}`}>
-              <span data-testid="note-text">{n.text}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+  async function submitNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!noteText.trim()) {
+      return;
+    }
+    await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetType: 'project', targetId: projectId, text: noteText }),
+    });
+    setNoteText('');
+    await reload();
+  }
 
-      <ProjectInvoices projectId={project.id} onInvoicesChanged={loadBudget} />
+  return (
+    <section data-testid="project-notes">
+      <form data-testid="note-form" onSubmit={submitNote}>
+        <input
+          data-testid="note-form-text"
+          placeholder="Write a note"
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+        />
+        <button data-testid="note-form-submit" type="submit">
+          Add note
+        </button>
+      </form>
+
+      <ul data-testid="project-notes-list">
+        {notes.map((n) => (
+          <li key={n.id} data-testid={`note-row-${n.id}`}>
+            <span data-testid="note-text">{n.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// A project's detail: its budget, labels, tasks and notes, plus the invoices raised against it. Each
+// is a self-contained panel that owns its own state; this component just composes them and keeps the
+// budget's derived figures in step with the invoices — a new invoice, a status move or an edited line
+// item bumps `invoicesVersion`, which re-reads the budget.
+function ProjectDetail({ project }: { project: Project }) {
+  const [invoicesVersion, setInvoicesVersion] = useState(0);
+
+  return (
+    <section data-testid="project-detail">
+      <h2 data-testid="project-detail-name">{project.name}</h2>
+      <BudgetPanel projectId={project.id} reloadKey={invoicesVersion} />
+      <TagsPanel projectId={project.id} />
+      <TasksPanel projectId={project.id} />
+      <NotesPanel projectId={project.id} />
+      <ProjectInvoices
+        projectId={project.id}
+        onInvoicesChanged={() => setInvoicesVersion((v) => v + 1)}
+      />
     </section>
   );
 }
 
 type ProjectTagLink = { projectId: number; tagId: number };
 
+// The project list: a row per project showing its client's name and status, with controls to open,
+// archive or delete it.
+function ProjectsTable({
+  projects,
+  onOpen,
+  onArchive,
+  onDelete,
+}: {
+  projects: Project[];
+  onOpen: (id: number) => void;
+  onArchive: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  return (
+    <table data-testid="projects-table">
+      <tbody>
+        {projects.map((p) => (
+          <tr key={p.id} data-testid={`project-row-${p.id}`}>
+            <td data-testid="project-name">{p.name}</td>
+            <td data-testid="project-client">{p.clientName}</td>
+            <td data-testid="project-status">{p.status}</td>
+            <td>
+              <button data-testid={`project-open-${p.id}`} onClick={() => onOpen(p.id)}>
+                Open
+              </button>
+              <button data-testid={`project-archive-${p.id}`} onClick={() => onArchive(p.id)}>
+                Archive
+              </button>
+              <button data-testid={`project-delete-${p.id}`} onClick={() => onDelete(p.id)}>
+                Delete
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [tagLinks, setTagLinks] = useState<ProjectTagLink[]>([]);
+  const [projects, reloadProjects] = useJsonResource<Project[]>('/api/projects', []);
+  const [clients] = useJsonResource<Client[]>('/api/clients', []);
+  const [tags] = useJsonResource<Tag[]>('/api/tags', []);
+  const [tagLinks] = useJsonResource<ProjectTagLink[]>('/api/project-tags', []);
   const [tagFilter, setTagFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [name, setName] = useState('');
@@ -722,31 +787,6 @@ function ProjectsPage() {
   // Archived projects are tucked away (retained, not deleted) and hidden by default; this toggle
   // reveals them again.
   const [showArchived, setShowArchived] = useState(false);
-
-  async function loadProjects() {
-    const res = await fetch('/api/projects');
-    setProjects(await res.json());
-  }
-
-  async function loadClients() {
-    const res = await fetch('/api/clients');
-    setClients(await res.json());
-  }
-
-  async function loadTags() {
-    const [all, links] = await Promise.all([
-      fetch('/api/tags').then((r) => r.json()),
-      fetch('/api/project-tags').then((r) => r.json()),
-    ]);
-    setTags(all);
-    setTagLinks(links);
-  }
-
-  useEffect(() => {
-    void loadProjects();
-    void loadClients();
-    void loadTags();
-  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -761,35 +801,31 @@ function ProjectsPage() {
     setName('');
     setClientId('');
     setStatus('ACTIVE');
-    await loadProjects();
+    await reloadProjects();
   }
 
-  async function remove(id: number) {
-    await fetch(`/api/projects/${id}/delete`, { method: 'POST' });
+  // Delete and archive are the same shape — POST the action, drop the open detail if it was showing
+  // this project, then refresh the list — so they share one call site.
+  async function act(id: number, action: 'delete' | 'archive') {
+    await fetch(`/api/projects/${id}/${action}`, { method: 'POST' });
     if (openId === id) {
       setOpenId(null);
     }
-    await loadProjects();
+    await reloadProjects();
   }
 
-  async function archive(id: number) {
-    await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
-    if (openId === id) {
-      setOpenId(null);
-    }
-    await loadProjects();
-  }
-
-  const open = projects.find((p) => p.id === openId) ?? null;
-  const byArchived = showArchived ? projects : projects.filter((p) => !p.archived);
+  // Narrow the list one step at a time: hide archived unless asked, keep only projects carrying the
+  // chosen label, then keep only the chosen status. An empty filter leaves that step wide open.
   const filterTagId = tagFilter ? Number(tagFilter) : null;
-  const byTag =
-    filterTagId === null
-      ? byArchived
-      : byArchived.filter((p) =>
-          tagLinks.some((l) => l.projectId === p.id && l.tagId === filterTagId),
-        );
-  const visible = statusFilter ? byTag.filter((p) => p.status === statusFilter) : byTag;
+  const visible = projects
+    .filter((p) => showArchived || !p.archived)
+    .filter(
+      (p) =>
+        filterTagId === null ||
+        tagLinks.some((l) => l.projectId === p.id && l.tagId === filterTagId),
+    )
+    .filter((p) => !statusFilter || p.status === statusFilter);
+  const open = projects.find((p) => p.id === openId) ?? null;
 
   return (
     <section data-testid="projects">
@@ -861,28 +897,12 @@ function ProjectsPage() {
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
       ) : (
-        <table data-testid="projects-table">
-          <tbody>
-            {visible.map((p) => (
-              <tr key={p.id} data-testid={`project-row-${p.id}`}>
-                <td data-testid="project-name">{p.name}</td>
-                <td data-testid="project-client">{p.clientName}</td>
-                <td data-testid="project-status">{p.status}</td>
-                <td>
-                  <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
-                    Open
-                  </button>
-                  <button data-testid={`project-archive-${p.id}`} onClick={() => archive(p.id)}>
-                    Archive
-                  </button>
-                  <button data-testid={`project-delete-${p.id}`} onClick={() => remove(p.id)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ProjectsTable
+          projects={visible}
+          onOpen={setOpenId}
+          onArchive={(id) => act(id, 'archive')}
+          onDelete={(id) => act(id, 'delete')}
+        />
       )}
 
       {open && <ProjectDetail key={open.id} project={open} />}

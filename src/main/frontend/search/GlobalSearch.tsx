@@ -10,6 +10,35 @@ type Results = { clients: SearchClient[]; projects: SearchProject[] };
 
 const EMPTY: Results = { clients: [], projects: [] };
 
+// One matched group (clients, or projects) rendered as a table. Both groups are the same shape — a
+// row per hit showing its name — so they share this one block; each passes the testids that anchor
+// its own group, rows and name cell.
+function ResultGroup({
+  groupTestid,
+  rowPrefix,
+  nameTestid,
+  rows,
+}: {
+  groupTestid: string;
+  rowPrefix: string;
+  nameTestid: string;
+  rows: { id: number; name: string }[];
+}) {
+  return (
+    <div data-testid={groupTestid}>
+      <table>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} data-testid={`${rowPrefix}-${row.id}`}>
+              <td data-testid={nameTestid}>{row.name}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Results>(EMPTY);
@@ -42,28 +71,18 @@ export function GlobalSearch() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <div data-testid="search-clients">
-        <table>
-          <tbody>
-            {results.clients.map((c) => (
-              <tr key={c.id} data-testid={`client-row-${c.id}`}>
-                <td data-testid="client-name">{c.name}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div data-testid="search-projects">
-        <table>
-          <tbody>
-            {results.projects.map((p) => (
-              <tr key={p.id} data-testid={`project-row-${p.id}`}>
-                <td data-testid="project-name">{p.name}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ResultGroup
+        groupTestid="search-clients"
+        rowPrefix="client-row"
+        nameTestid="client-name"
+        rows={results.clients}
+      />
+      <ResultGroup
+        groupTestid="search-projects"
+        rowPrefix="project-row"
+        nameTestid="project-name"
+        rows={results.projects}
+      />
     </section>
   );
 }
