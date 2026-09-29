@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index 3997b92..31365ce 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -74,6 +74,19 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     }
+   }
+ 
++  // Cancel (void) an invoice sent by mistake: it reads VOID and stops counting toward money owed.
++  async function cancelInvoice(id: number) {
++    const res = await fetch('/api/invoices/cancel', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      const voided: Invoice = await res.json();
++      setInvoices((prev) => prev.map((inv) => (inv.id === voided.id ? voided : inv)));
++    }
++  }
++
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+ 
+   return (
+@@ -142,6 +155,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+                     Send
+                   </button>
+                 ) : null}
++                {inv.status === 'SENT' ? (
++                  <button
++                    type="button"
++                    data-testid={`invoice-cancel-${inv.id}`}
++                    onClick={() => void cancelInvoice(inv.id)}
++                  >
++                    Cancel
++                  </button>
++                ) : null}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/CancelInvoice.java b/src/main/java/net/officefloor/hq/app/CancelInvoice.java
+new file mode 100644
+index 0000000..6e8e396
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/CancelInvoice.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for cancelling (voiding) a sent invoice (POST /api/invoices/cancel). */
++public class CancelInvoice {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardRepository.java b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+index e3cef63..ea44148 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardRepository.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+@@ -19,11 +19,18 @@ public class DashboardRepository {
+     public DashboardSummary summary() {
+         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
+         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
+-        // Money still owed = sum of amounts on invoices that have actually been SENT (excludes
+-        // DRAFT invoices not yet issued, and PAID invoices already settled). COALESCE keeps the
+-        // total at 0.00 (never null) when nothing is outstanding.
++        // Money still owed = for every issued invoice (stored status SENT), the sum of its
++        // line-item amount (qty * unit_price) minus whatever has been paid against it. Amount is
++        // derived from line items (V13), so the stored amount column is not used. DRAFT invoices are
++        // not yet issued and VOID invoices were cancelled, so both are excluded (their stored status
++        // is not SENT). COALESCE keeps the total at 0.00 (never null) when nothing is outstanding.
+         BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
++                "SELECT COALESCE(SUM("
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
++                        + " WHERE li.invoice_id = i.id), 0)"
++                        + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
++                        + " WHERE pm.invoice_id = i.id), 0)), 0)"
++                        + " FROM invoices i WHERE i.status = 'SENT'",
+                 BigDecimal.class);
+         // Overdue = invoices that have been SENT and whose due date has already passed relative to
+         // the dashboard's reference date. That date is seeded (dashboard_settings.as_of) so the
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index 19c3016..abc509d 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -42,7 +42,8 @@ public class InvoiceRepository {
+     // amount is paid, and PAID once the payments cover the amount. Derived here so the status always
+     // reflects the payments on file.
+     private static final String DERIVED_STATUS =
+-            "CASE WHEN i.status = 'DRAFT' THEN 'DRAFT'"
++            "CASE WHEN i.status = 'VOID' THEN 'VOID'"
++                    + " WHEN i.status = 'DRAFT' THEN 'DRAFT'"
+                     + " WHEN " + AMOUNT_SUM + " > 0 AND " + PAID_SUM + " >= " + AMOUNT_SUM
+                     + " THEN 'PAID'"
+                     + " WHEN " + PAID_SUM + " > 0 THEN 'PARTIAL'"
+@@ -142,4 +143,10 @@ public class InvoiceRepository {
+         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", id);
+         return findById(id);
+     }
++
++    /** Cancel (void) an invoice and return the updated row (null if no such invoice). */
++    public Invoice markVoid(long id) {
++        jdbc.update("UPDATE invoices SET status = 'VOID' WHERE id = ?", id);
++        return findById(id);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoicesCancelPostLogic.java b/src/main/java/net/officefloor/hq/app/InvoicesCancelPostLogic.java
+new file mode 100644
+index 0000000..1d33b01
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/InvoicesCancelPostLogic.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/cancel — cancel (void) an invoice sent by mistake. Flips its status to VOID so
++ * it reads VOID and stops counting toward money owed, and records one audit line
++ * (INVOICE_VOIDED id=&lt;id&gt; amount=&lt;amount&gt;) so the cancellation can be checked back later.
++ * Only a sent (unpaid) invoice can be cancelled.
++ */
++public class InvoicesCancelPostLogic {
++
++    public void service(@RequestBody CancelInvoice body, InvoiceRepository repository, Audit audit,
++            ObjectResponse<Invoice> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice id is required.");
++        }
++        Invoice invoice = repository.findById(body.getId());
++        if (invoice == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such invoice.");
++        }
++        if (!"SENT".equals(invoice.status())) {
++            throw new HttpException(HttpStatus.CONFLICT, "Only a sent invoice can be cancelled.");
++        }
++        BigDecimal amount = invoice.amount().setScale(2, RoundingMode.HALF_UP);
++        Invoice voided = repository.markVoid(invoice.id());
++        audit.record("INVOICE_VOIDED id=" + voided.id() + " amount=" + amount.toPlainString());
++        response.send(voided);
++    }
++}
+diff --git a/src/main/resources/db/migration/V24__invoices_void_status.sql b/src/main/resources/db/migration/V24__invoices_void_status.sql
+new file mode 100644
+index 0000000..9e108b7
+--- /dev/null
++++ b/src/main/resources/db/migration/V24__invoices_void_status.sql
+@@ -0,0 +1,7 @@
++-- An invoice sent by mistake can be cancelled (voided). VOID is a new terminal value of the stored
++-- status column: once set it overrides the payment-derived status (the invoice reads VOID) and the
++-- invoice stops counting toward money owed. The status column is an unconstrained VARCHAR(16), so
++-- VOID fits without altering the column; this migration documents the added lifecycle state.
++-- Additive: a new versioned migration alongside the existing invoices table.
++COMMENT ON COLUMN invoices.status IS
++    'Issued lifecycle: DRAFT (not sent), SENT (issued), or VOID (cancelled); PARTIAL/PAID are derived from payments.';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/cancel.POST.yml b/src/main/resources/officefloor/rest/api/invoices/cancel.POST.yml
+new file mode 100644
+index 0000000..b2c637b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/cancel.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.InvoicesCancelPostLogic
