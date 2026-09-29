@@ -1,0 +1,587 @@
+{
+  "checkpoint": 20,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp20_project_tasks",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me keep a task list on each project. Let me tick things off as I finish them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me keep a task list on each project. Let me tick things off as I finish them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "960f34c29f3b2ee06cf5b8891ef47cb63017e79a",
+  "reset_sha": "",
+  "preagent_sha": "cd1d553c28379aa5d7e3051023719649078a5d78",
+  "prev_sha": "cd1d553c28379aa5d7e3051023719649078a5d78",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8311525,
+    "input_tokens": 32,
+    "output_tokens": 9560,
+    "cache_read_tokens": 505503,
+    "cache_creation_tokens": 33808,
+    "num_turns": 39,
+    "duration_ms": 146792,
+    "duration_api_ms": 128868,
+    "model": "claude-opus-4-8",
+    "session_id": "978830d9-f922-4ccd-ad82-a54782193f04",
+    "stop_reason": "success",
+    "result_text": "The change is complete and the test passes (`1 passed`).\n\n## Summary\n\nI implemented per-project task lists that can be ticked off, as a small additive full-stack change:\n\n**Database** \u2014 `V11__tasks.sql`: new `tasks` table (`id`, `project_id` FK \u2192 projects, `title`, `done` boolean).\n\n**Server (OfficeFloor + Spring)**\n- `Task.java` \u2014 record serialized to JSON.\n- `TaskRepository.java` \u2014 `findByProject`, `findById`, `setDone`, `create` via `JdbcTemplate`.\n- `TasksGetLogic.java` + `rest/api/tasks.GET.yml` \u2014 `GET /api/tasks?projectId=<id>`.\n- `TasksTogglePostLogic.java` + `ToggleTask.java` + `rest/api/tasks/toggle.POST.yml` \u2014 `POST /api/tasks/toggle` flips `done` and records an audit line (`TASK_DONE`/`TASK_REOPENED id=<id>`) through the `Audit` service.\n- `TestSupportController.java` \u2014 extended `/__test__/reset` to `TRUNCATE ... RESTART IDENTITY` the `tasks` table (before `projects`, its FK parent) and `/__test__/seed` to insert `tasks` rows by explicit fixture id via `JdbcTemplate`.\n\n**Front-end (React)**\n- `features/projects/ProjectTasks.tsx` \u2014 a new component owning its own state that lists a project's tasks in `project-tasks-table`, showing `task-title` and `task-status` (`OPEN`/`DONE`) per `task-row-<id>`, with a `task-toggle-<id>` button that calls the toggle endpoint.\n- `ProjectsPage.tsx` \u2014 renders `ProjectTasks` (alongside the existing `ProjectInvoices`) when a project is opened.\n\nAll the `data-testid` anchors match the spec exactly, and no pinned scaffolding, CLAUDE.md, or the test spec were modified.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.8311525,
+        "num_turns": 39,
+        "duration_ms": 146792,
+        "duration_api_ms": 128868,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp20.agent.jsonl",
+  "agent_diff_file": "cp20.agent.diff",
+  "build_log_file": "cp20.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 29,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true,
+      "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts": true,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": true,
+      "cp19_client_badges.spec.ts::shows project and contact counts": true,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 241,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 331,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 203,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 174,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 210,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 255,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 328,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 174,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 315,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 151,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 205,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 258,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 208,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 234,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 346,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 174,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 186,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 259,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 258,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 183,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 353,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 11.01,
+            "impact": 1012,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/projects/ProjectsPage.tsx",
+                "lang": "typescript",
+                "cost": 363,
+                "mutation": 363,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "lang": "typescript",
+                "cost": 143,
+                "mutation": 0,
+                "godclass": 143,
+                "mut_fns": 0,
+                "new_fns": 7
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/projects/ProjectsPage.tsx",
+                "name": "ProjectsPage",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 13,
+                "cost": 273,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 15,
+                "cost": 90,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "ProjectTasks",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 58,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 45,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "toggle",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 22,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 2,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectTasks.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 1,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 8,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 50.45,
+            "impact": 1896,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 209,
+                "mutation": 209,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TasksTogglePostLogic.java",
+                "lang": "java",
+                "cost": 52,
+                "mutation": 0,
+                "godclass": 52,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "lang": "java",
+                "cost": 34,
+                "mutation": 0,
+                "godclass": 34,
+                "mut_fns": 0,
+                "new_fns": 5
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TasksGetLogic.java",
+                "lang": "java",
+                "cost": 15,
+                "mutation": 0,
+                "godclass": 15,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ToggleTask.java",
+                "lang": "java",
+                "cost": 6,
+                "mutation": 0,
+                "godclass": 6,
+                "mut_fns": 0,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 10,
+                "wmc_other": 2,
+                "cost": 200,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TasksTogglePostLogic.java",
+                "name": "TasksTogglePostLogic::service",
+                "container": "TasksTogglePostLogic",
+                "cc": 4,
+                "wmc_other": 0,
+                "cost": 52,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TasksGetLogic.java",
+                "name": "TasksGetLogic::service",
+                "container": "TasksGetLogic",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 15,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "name": "TaskRepository::create",
+                "container": "TaskRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 11,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "name": "TaskRepository::findById",
+                "container": "TaskRepository",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 10,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::reset",
+                "container": "TestSupportController",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 9,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "name": "TaskRepository::findByProject",
+                "container": "TaskRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "name": "TaskRepository::setDone",
+                "container": "TaskRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TaskRepository.java",
+                "name": "TaskRepository::TaskRepository",
+                "container": "TaskRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ToggleTask.java",
+                "name": "ToggleTask::getId",
+                "container": "ToggleTask",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 12,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
