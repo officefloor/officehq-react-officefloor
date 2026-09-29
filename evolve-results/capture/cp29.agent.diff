@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 842adc3..65f02d0 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -35,6 +35,19 @@ export function ClientsPage() {
+     void load();
+   }, []);
+ 
++  // Tuck a client away: it drops off the list and the search, but the row is kept server-side.
++  async function onArchive(id: number) {
++    const res = await fetch('/api/clients/archive', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      setClients((prev) => prev.filter((c) => c.id !== id));
++      setOpenClientId((prev) => (prev === id ? null : prev));
++    }
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     if (!EMAIL_PATTERN.test(email.trim())) {
+@@ -114,6 +127,13 @@ export function ClientsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`client-archive-${c.id}`}
++                    onClick={() => onArchive(c.id)}
++                  >
++                    Archive
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/ArchiveClient.java b/src/main/java/net/officefloor/hq/app/ArchiveClient.java
+new file mode 100644
+index 0000000..1682958
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ArchiveClient.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for archiving a client (POST /api/clients/archive). */
++public class ArchiveClient {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index a8bd2f7..9516961 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -16,12 +16,30 @@ public class ClientRepository {
+         this.jdbc = jdbc;
+     }
+ 
++    /**
++     * List clients. Archived clients are hidden — that is what keeps a tucked-away client off the
++     * main list (and the name search that filters it) while its row is retained.
++     */
+     public List<Client> findAll() {
+         return jdbc.query(
+-                "SELECT id, name, email FROM clients ORDER BY id",
++                "SELECT id, name, email FROM clients WHERE archived = FALSE ORDER BY id",
+                 (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+     }
+ 
++    /** Look up one client, or null when there is no such row. */
++    public Client findById(long id) {
++        List<Client> rows = jdbc.query(
++                "SELECT id, name, email FROM clients WHERE id = ?",
++                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
++                id);
++        return rows.isEmpty() ? null : rows.get(0);
++    }
++
++    /** Tuck a client away: flag it archived so it drops off the lists but its row is retained. */
++    public boolean archive(long id) {
++        return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
++    }
++
+     public Client create(String name, String email) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+diff --git a/src/main/java/net/officefloor/hq/app/ClientsArchivePostLogic.java b/src/main/java/net/officefloor/hq/app/ClientsArchivePostLogic.java
+new file mode 100644
+index 0000000..c5a4fe8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientsArchivePostLogic.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/clients/archive — tuck a client away instead of deleting it. Flags the row archived so
++ * it drops off the main client list and the name search, but keeps the row so nothing is lost.
++ * Records one audit line (CLIENT_ARCHIVED id=&lt;id&gt;) so it is noted.
++ */
++public class ClientsArchivePostLogic {
++
++    public void service(@RequestBody ArchiveClient body, ClientRepository repository, Audit audit,
++            ObjectResponse<Client> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A client id is required.");
++        }
++        Client existing = repository.findById(body.getId());
++        if (existing == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such client.");
++        }
++        repository.archive(existing.id());
++        audit.record("CLIENT_ARCHIVED id=" + existing.id());
++        response.send(existing);
++    }
++}
+diff --git a/src/main/resources/db/migration/V17__clients_archived.sql b/src/main/resources/db/migration/V17__clients_archived.sql
+new file mode 100644
+index 0000000..5d74bbe
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__clients_archived.sql
+@@ -0,0 +1,5 @@
++-- Clients can be archived (tucked away) rather than deleted: an archived client drops off the main
++-- client list and the search, but its row (and everything it owns) is retained. Additive: a new
++-- versioned migration that adds a boolean flag defaulting to FALSE so all existing clients stay
++-- visible.
++ALTER TABLE clients ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/clients/archive.POST.yml b/src/main/resources/officefloor/rest/api/clients/archive.POST.yml
+new file mode 100644
+index 0000000..69edbb4
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientsArchivePostLogic
