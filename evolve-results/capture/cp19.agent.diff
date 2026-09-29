@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 70eabc2..7748025 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -8,6 +8,29 @@ import type { Feature } from '../../router/routes';
+ type Client = { id: number; name: string; email: string };
+ type Project = { id: number; name: string; clientId: number; clientName: string };
+ type Contact = { id: number; clientId: number; name: string; email: string; role: string };
++type ClientSummary = { projectCount: number; contactCount: number };
++
++// A client's at-a-glance counts: how many projects and contacts are kept for them. Owns its own
++// summary state, scoped to the one client it is showing; talks to that client's own
++// /api/clients/<id>/summary endpoint.
++function ClientSummaryBadges({ client }: { client: Client }) {
++  const [summary, setSummary] = useState<ClientSummary>({ projectCount: 0, contactCount: 0 });
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch(`/api/clients/${client.id}/summary`);
++      setSummary(await res.json());
++    }
++    void load();
++  }, [client.id]);
++
++  return (
++    <section data-testid="client-summary">
++      <span data-testid="client-projects-count">{summary.projectCount}</span>
++      <span data-testid="client-contacts-count">{summary.contactCount}</span>
++    </section>
++  );
++}
+ 
+ // A client's contacts: the people the user keeps for them (name, email, role), with a form to add
+ // another. Owns its own contact state, scoped to the one client it is showing; talks to that
+@@ -219,6 +242,7 @@ function ClientsPage() {
+         </table>
+       )}
+ 
++      {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
+       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
+       {open && <ClientProjects key={open.id} client={open} />}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientSummaryView.java b/src/main/java/net/officefloor/hq/app/client/ClientSummaryView.java
+new file mode 100644
+index 0000000..549101d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientSummaryView.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.client;
++
++/** A client's at-a-glance counts: how many projects and contacts are kept for them. */
++public class ClientSummaryView {
++
++    private final long projectCount;
++    private final long contactCount;
++
++    public ClientSummaryView(long projectCount, long contactCount) {
++        this.projectCount = projectCount;
++        this.contactCount = contactCount;
++    }
++
++    public long getProjectCount() {
++        return projectCount;
++    }
++
++    public long getContactCount() {
++        return contactCount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/GetClientSummary.java b/src/main/java/net/officefloor/hq/app/client/GetClientSummary.java
+new file mode 100644
+index 0000000..b2736ef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/GetClientSummary.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.client;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/clients/{id}/summary — one client's at-a-glance counts: how many projects and how many
++ * contacts are kept for them.
++ */
++public class GetClientSummary {
++
++    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++            ObjectResponse<ClientSummaryView> response) {
++        long projects = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM projects WHERE client_id = ?", Long.class,
++                Long.valueOf(id));
++        long contacts = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM contacts WHERE client_id = ?", Long.class,
++                Long.valueOf(id));
++        response.send(new ClientSummaryView(projects, contacts));
++    }
++}
+diff --git a/src/main/resources/db/migration/V11__client_counts_indexes.sql b/src/main/resources/db/migration/V11__client_counts_indexes.sql
+new file mode 100644
+index 0000000..01ab541
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__client_counts_indexes.sql
+@@ -0,0 +1,5 @@
++-- Client at-a-glance counts feature: a client's page shows how many projects and contacts it has.
++-- Those counts are per-client COUNT(*) lookups keyed by client_id, so index the foreign keys they
++-- scan. Additive and non-destructive — no data or column changes.
++CREATE INDEX idx_projects_client_id ON projects(client_id);
++CREATE INDEX idx_contacts_client_id ON contacts(client_id);
+diff --git a/src/main/resources/officefloor/rest/api/clients/{id}/summary.GET.yml b/src/main/resources/officefloor/rest/api/clients/{id}/summary.GET.yml
+new file mode 100644
+index 0000000..9eac8bd
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{id}/summary.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.client.GetClientSummary
