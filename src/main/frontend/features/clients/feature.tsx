@@ -14,7 +14,10 @@ type ClientStatement = { invoices: StatementInvoice[]; outstandingTotal: number 
 
 // Money, the way every invoice figure is shown across the app: a dollar sign and two decimals.
 function money(amount: number): string {
-  return `$${Number(amount).toFixed(2)}`;
+  return `$${Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // A client's statement: all of their invoices in one place, each with what is still owed on it, and

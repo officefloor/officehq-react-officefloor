@@ -40,7 +40,10 @@ type LineItem = {
 type Payment = { id: number; invoiceId: number; amount: number; date: string };
 
 function money(amount: number): string {
-  return `$${Number(amount).toFixed(2)}`;
+  return `$${Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // Budget figures are shown with thousands separators (e.g. $1,000.00) so larger amounts stay
