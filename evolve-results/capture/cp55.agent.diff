@@ -1,0 +1,172 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 5a281e1..4882fbc 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -9,8 +9,21 @@ type Summary = {
+   overdueCount: number;
+ };
+ 
++// One "top client" row: a client ranked by how much they still owe.
++type TopClient = {
++  clientId: number;
++  name: string;
++  outstanding: number;
++};
++
++// Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
++function money(amount: number): string {
++  return Number(amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
++}
++
+ export function DashboardPage() {
+   const [summary, setSummary] = useState<Summary | null>(null);
++  const [topClients, setTopClients] = useState<TopClient[]>([]);
+ 
+   useEffect(() => {
+     async function load() {
+@@ -18,15 +31,15 @@ export function DashboardPage() {
+       if (res.ok) {
+         setSummary(await res.json());
+       }
++      const top = await fetch('/api/dashboard/top-clients');
++      if (top.ok) {
++        setTopClients(await top.json());
++      }
+     }
+     void load();
+   }, []);
+ 
+-  // Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
+-  const outstanding = Number(summary?.outstandingTotal ?? 0).toLocaleString('en-US', {
+-    style: 'currency',
+-    currency: 'USD',
+-  });
++  const outstanding = money(summary?.outstandingTotal ?? 0);
+ 
+   return (
+     <section data-testid="dashboard-page">
+@@ -41,6 +54,16 @@ export function DashboardPage() {
+         <dt>Overdue invoices</dt>
+         <dd data-testid="dashboard-overdue-count">{summary?.overdueCount ?? 0}</dd>
+       </dl>
++
++      <h2>Top clients</h2>
++      <ol data-testid="dashboard-top-clients">
++        {topClients.map((client) => (
++          <li key={client.clientId} data-testid={`top-client-row-${client.clientId}`}>
++            <span data-testid="top-client-name">{client.name}</span>
++            <span data-testid="top-client-amount">{money(client.outstanding)}</span>
++          </li>
++        ))}
++      </ol>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardRepository.java b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+index c03a26d..c3ef42a 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardRepository.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app;
+ import java.math.BigDecimal;
+ import java.sql.Date;
+ import java.time.LocalDate;
++import java.util.List;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Repository;
+ 
+@@ -51,4 +52,38 @@ public class DashboardRepository {
+                 Long.class, Date.valueOf(asOf));
+         return new DashboardSummary(clients, projects, outstanding, overdue);
+     }
++
++    // What is still owed on an invoice, worked out the same way "due" is everywhere else
++    // (ClientOutstandingRepository / InvoiceRepository): its line-item total (qty * unit_price), less
++    // the discount (V29), plus tax (V30), minus what has been paid. DRAFT invoices (not yet issued)
++    // and VOID invoices (cancelled) do not count toward money owed (V24).
++    private static final String DUE =
++            "(COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
++                    + " WHERE li.invoice_id = i.id), 0)"
++                    + " * (100 - i.discount_pct) / 100 * (100 + i.tax_pct) / 100"
++                    + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
++                    + " WHERE pm.invoice_id = i.id), 0))";
++
++    /**
++     * The home screen's top clients ranked by how much they still owe (highest first), capped at
++     * {@code limit}. Non-archived clients only; a client with no owed invoices totals 0.00. Ties break
++     * by id so the order is deterministic under test.
++     */
++    public List<TopClient> topClients(int limit) {
++        return jdbc.query(
++                "SELECT c.id AS client_id, c.name AS name,"
++                        + " COALESCE(SUM(" + DUE + "), 0) AS outstanding"
++                        + " FROM clients c"
++                        + " LEFT JOIN projects p ON p.client_id = c.id"
++                        + " LEFT JOIN invoices i ON i.project_id = p.id"
++                        + " AND i.status NOT IN ('DRAFT', 'VOID')"
++                        + " WHERE c.archived = FALSE"
++                        + " GROUP BY c.id, c.name"
++                        + " ORDER BY outstanding DESC, c.id ASC"
++                        + " LIMIT ?",
++                (rs, n) -> new TopClient(
++                        rs.getLong("client_id"), rs.getString("name"),
++                        rs.getBigDecimal("outstanding")),
++                limit);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardTopClientsGetLogic.java b/src/main/java/net/officefloor/hq/app/DashboardTopClientsGetLogic.java
+new file mode 100644
+index 0000000..6680e8c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardTopClientsGetLogic.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/dashboard/top-clients — the home screen's top five clients ranked by how much they still
++ * owe (highest first). Read-only; the dashboard feature owns this alongside its summary.
++ */
++public class DashboardTopClientsGetLogic {
++
++    public void service(DashboardRepository repository, ObjectResponse<List<TopClient>> response) {
++        response.send(repository.topClients(5));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TopClient.java b/src/main/java/net/officefloor/hq/app/TopClient.java
+new file mode 100644
+index 0000000..21e57d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/TopClient.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * One row of the home dashboard's "top clients" panel: a client and how much they still owe, so the
++ * panel can rank clients by amount owed. Serialised as JSON by GET /api/dashboard/top-clients.
++ */
++public record TopClient(long clientId, String name, BigDecimal outstanding) {
++}
+diff --git a/src/main/resources/db/migration/V33__invoice_child_indexes.sql b/src/main/resources/db/migration/V33__invoice_child_indexes.sql
+new file mode 100644
+index 0000000..be29ee3
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__invoice_child_indexes.sql
+@@ -0,0 +1,6 @@
++-- Ranking clients by how much they owe sums each invoice's line items and payments (see
++-- DashboardRepository#topClients / ClientOutstandingRepository). Those per-invoice aggregates look
++-- up child rows by invoice_id, so index the FK columns to keep the roll-up cheap as invoices grow.
++-- Additive: a new versioned migration alongside the existing line_items and payments tables.
++CREATE INDEX IF NOT EXISTS idx_line_items_invoice_id ON line_items(invoice_id);
++CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id);
+diff --git a/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml b/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml
+new file mode 100644
+index 0000000..36a8b27
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.DashboardTopClientsGetLogic
