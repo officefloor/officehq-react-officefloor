@@ -1,0 +1,312 @@
+diff --git a/src/main/frontend/features/projects/InvoiceDetail.tsx b/src/main/frontend/features/projects/InvoiceDetail.tsx
+index 0738326..7c7711f 100644
+--- a/src/main/frontend/features/projects/InvoiceDetail.tsx
++++ b/src/main/frontend/features/projects/InvoiceDetail.tsx
+@@ -9,6 +9,7 @@ type LineItem = {
+   invoiceId: number;
+   description: string;
+   qty: number;
++  unit: string;
+   unitPrice: number;
+ };
+ 
+@@ -16,7 +17,7 @@ function money(n: number): string {
+   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+ }
+ 
+-type EditDraft = { description: string; qty: string; unitPrice: string };
++type EditDraft = { description: string; qty: string; unit: string; unitPrice: string };
+ 
+ // A payment a client has made against this invoice: how much (amount) and when (date, yyyy-MM-dd).
+ type Payment = {
+@@ -30,9 +31,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
++  const [unit, setUnit] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
+   const [editingId, setEditingId] = useState<number | null>(null);
+-  const [draft, setDraft] = useState<EditDraft>({ description: '', qty: '', unitPrice: '' });
++  const [draft, setDraft] = useState<EditDraft>({
++    description: '',
++    qty: '',
++    unit: '',
++    unitPrice: '',
++  });
+   const [payments, setPayments] = useState<Payment[]>([]);
+   const [paymentAmount, setPaymentAmount] = useState('');
+   const [paymentDate, setPaymentDate] = useState('');
+@@ -97,6 +104,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+         invoiceId,
+         description,
+         qty: Number(qty),
++        unit,
+         unitPrice: Number(unitPrice),
+       }),
+     });
+@@ -105,6 +113,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+       setLineItems((prev) => [...prev, created]);
+       setDescription('');
+       setQty('');
++      setUnit('');
+       setUnitPrice('');
+     }
+   }
+@@ -128,6 +137,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+     setDraft({
+       description: li.description,
+       qty: String(li.qty),
++      unit: li.unit,
+       unitPrice: String(li.unitPrice),
+     });
+   }
+@@ -140,6 +150,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+         id,
+         description: draft.description,
+         qty: Number(draft.qty),
++        unit: draft.unit,
+         unitPrice: Number(draft.unitPrice),
+       }),
+     });
+@@ -171,6 +182,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+           value={qty}
+           onChange={(e) => setQty(e.target.value)}
+         />
++        <input
++          data-testid="lineitem-form-unit"
++          placeholder="Unit"
++          value={unit}
++          onChange={(e) => setUnit(e.target.value)}
++        />
+         <input
+           data-testid="lineitem-form-unitprice"
+           placeholder="Unit price"
+@@ -187,6 +204,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+           <tr>
+             <th>Description</th>
+             <th>Qty</th>
++            <th>Unit</th>
+             <th>Unit price</th>
+             <th>Amount</th>
+             <th>Actions</th>
+@@ -210,6 +228,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+                     onChange={(e) => setDraft((d) => ({ ...d, qty: e.target.value }))}
+                   />
+                 </td>
++                <td>
++                  <input
++                    data-testid={`lineitem-edit-unit-${li.id}`}
++                    value={draft.unit}
++                    onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value }))}
++                  />
++                </td>
+                 <td>
+                   <input
+                     data-testid={`lineitem-edit-unitprice-${li.id}`}
+@@ -241,6 +266,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+               <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                 <td data-testid="lineitem-description">{li.description}</td>
+                 <td data-testid="lineitem-qty">{li.qty}</td>
++                <td data-testid="lineitem-unit">{li.unit}</td>
+                 <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
+                 <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
+                 <td>
+diff --git a/src/main/java/net/officefloor/hq/app/ChangeLineItem.java b/src/main/java/net/officefloor/hq/app/ChangeLineItem.java
+index 24465b2..9046803 100644
+--- a/src/main/java/net/officefloor/hq/app/ChangeLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/ChangeLineItem.java
+@@ -8,6 +8,7 @@ public class ChangeLineItem {
+     private long id;
+     private String description;
+     private int qty;
++    private String unit;
+     private BigDecimal unitPrice;
+ 
+     public long getId() {
+@@ -34,6 +35,14 @@ public class ChangeLineItem {
+         this.qty = qty;
+     }
+ 
++    public String getUnit() {
++        return unit;
++    }
++
++    public void setUnit(String unit) {
++        this.unit = unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItem.java b/src/main/java/net/officefloor/hq/app/LineItem.java
+index a3c9cc8..9164543 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItem.java
++++ b/src/main/java/net/officefloor/hq/app/LineItem.java
+@@ -5,8 +5,9 @@ import java.math.BigDecimal;
+ /**
+  * A line item on an invoice: one thing being charged for. Serialised as JSON by the
+  * /api/lineitems routes; belongs to exactly one invoice (invoiceId). Carries a description, a
+- * quantity (qty) and the price of each unit (unitPrice). Its contribution to the invoice total is
+- * qty * unitPrice.
++ * quantity (qty), the thing that quantity is measured in (unit, e.g. "hours") and the price of each
++ * unit (unitPrice). Its contribution to the invoice total is qty * unitPrice.
+  */
+-public record LineItem(long id, long invoiceId, String description, int qty, BigDecimal unitPrice) {
++public record LineItem(long id, long invoiceId, String description, int qty, String unit,
++        BigDecimal unitPrice) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemRepository.java b/src/main/java/net/officefloor/hq/app/LineItemRepository.java
+index 21a7be0..ec9c4ce 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItemRepository.java
++++ b/src/main/java/net/officefloor/hq/app/LineItemRepository.java
+@@ -19,47 +19,53 @@ public class LineItemRepository {
+ 
+     private static final org.springframework.jdbc.core.RowMapper<LineItem> MAPPER =
+             (rs, i) -> new LineItem(rs.getLong("id"), rs.getLong("invoice_id"),
+-                    rs.getString("description"), rs.getInt("qty"), rs.getBigDecimal("unit_price"));
++                    rs.getString("description"), rs.getInt("qty"), rs.getString("unit"),
++                    rs.getBigDecimal("unit_price"));
+ 
+     public List<LineItem> findByInvoice(long invoiceId) {
+         return jdbc.query(
+-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items"
++                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items"
+                         + " WHERE invoice_id = ? ORDER BY id",
+                 MAPPER, invoiceId);
+     }
+ 
+-    public LineItem create(long invoiceId, String description, int qty, BigDecimal unitPrice) {
++    public LineItem create(long invoiceId, String description, int qty, String unit,
++            BigDecimal unitPrice) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+             var ps = con.prepareStatement(
+-                    "INSERT INTO line_items (invoice_id, description, qty, unit_price)"
+-                            + " VALUES (?, ?, ?, ?)",
++                    "INSERT INTO line_items (invoice_id, description, qty, unit, unit_price)"
++                            + " VALUES (?, ?, ?, ?, ?)",
+                     new String[] {"id"});
+             ps.setLong(1, invoiceId);
+             ps.setString(2, description);
+             ps.setInt(3, qty);
+-            ps.setBigDecimal(4, unitPrice);
++            ps.setString(4, unit);
++            ps.setBigDecimal(5, unitPrice);
+             return ps;
+         }, keys);
+-        return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unitPrice);
++        return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unit, unitPrice);
+     }
+ 
+     public LineItem findById(long id) {
+         List<LineItem> found = jdbc.query(
+-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE id = ?",
++                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items"
++                        + " WHERE id = ?",
+                 MAPPER, id);
+         return found.isEmpty() ? null : found.get(0);
+     }
+ 
+-    public LineItem update(long id, String description, int qty, BigDecimal unitPrice) {
++    public LineItem update(long id, String description, int qty, String unit,
++            BigDecimal unitPrice) {
+         LineItem existing = findById(id);
+         if (existing == null) {
+             return null;
+         }
+         jdbc.update(
+-                "UPDATE line_items SET description = ?, qty = ?, unit_price = ? WHERE id = ?",
+-                description, qty, unitPrice, id);
+-        return new LineItem(id, existing.invoiceId(), description, qty, unitPrice);
++                "UPDATE line_items SET description = ?, qty = ?, unit = ?, unit_price = ?"
++                        + " WHERE id = ?",
++                description, qty, unit, unitPrice, id);
++        return new LineItem(id, existing.invoiceId(), description, qty, unit, unitPrice);
+     }
+ 
+     public boolean delete(long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemsPostLogic.java b/src/main/java/net/officefloor/hq/app/LineItemsPostLogic.java
+index 24f6b6b..5d2d424 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItemsPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/LineItemsPostLogic.java
+@@ -26,7 +26,8 @@ public class LineItemsPostLogic {
+         if (unitPrice == null || unitPrice.signum() < 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price is required.");
+         }
+-        response.send(repository.create(body.getInvoiceId(), description, body.getQty(),
++        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
++        response.send(repository.create(body.getInvoiceId(), description, body.getQty(), unit,
+                 unitPrice.setScale(2, RoundingMode.HALF_UP)));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java b/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java
+index 3457006..88cb0eb 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java
+@@ -26,7 +26,8 @@ public class LineItemsUpdatePostLogic {
+         if (unitPrice == null || unitPrice.signum() < 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price is required.");
+         }
+-        LineItem updated = repository.update(body.getId(), description, body.getQty(),
++        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
++        LineItem updated = repository.update(body.getId(), description, body.getQty(), unit,
+                 unitPrice.setScale(2, RoundingMode.HALF_UP));
+         if (updated == null) {
+             throw new HttpException(HttpStatus.NOT_FOUND, "No such line item.");
+diff --git a/src/main/java/net/officefloor/hq/app/NewLineItem.java b/src/main/java/net/officefloor/hq/app/NewLineItem.java
+index f75d936..a4183b0 100644
+--- a/src/main/java/net/officefloor/hq/app/NewLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/NewLineItem.java
+@@ -8,6 +8,7 @@ public class NewLineItem {
+     private long invoiceId;
+     private String description;
+     private int qty;
++    private String unit;
+     private BigDecimal unitPrice;
+ 
+     public long getInvoiceId() {
+@@ -34,6 +35,14 @@ public class NewLineItem {
+         this.qty = qty;
+     }
+ 
++    public String getUnit() {
++        return unit;
++    }
++
++    public void setUnit(String unit) {
++        this.unit = unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5c8b80e..af22e05 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -176,11 +176,13 @@ public class TestSupportController {
+     private void seedLineItems(Map<String, Object> invoice) {
+         long invoiceId = id(invoice, "id");
+         for (Map<String, Object> li : rows(invoice, "lineItems")) {
++            Object unit = li.get("unit");
+             jdbc.update(
+-                    "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
+-                            + " VALUES (?, ?, ?, ?, ?)",
++                    "INSERT INTO line_items (id, invoice_id, description, qty, unit, unit_price)"
++                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                     id(li, "id"), invoiceId, li.get("description"),
+                     ((Number) li.get("qty")).intValue(),
++                    unit == null ? "" : unit.toString(),
+                     new BigDecimal(li.get("unitPrice").toString()));
+         }
+     }
+diff --git a/src/main/resources/db/migration/V28__line_items_unit.sql b/src/main/resources/db/migration/V28__line_items_unit.sql
+new file mode 100644
+index 0000000..e7d8754
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__line_items_unit.sql
+@@ -0,0 +1,4 @@
++-- Charge lines now say what the quantity is measured in (unit), e.g. "hours". Additive: a new
++-- versioned migration adding the column to the existing line_items table (V12). Existing rows get
++-- an empty unit; the column is NOT NULL so every line carries a (possibly blank) unit.
++ALTER TABLE line_items ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT '';
