@@ -44,8 +44,9 @@ function isValidEmail(value: string): boolean {
 
 // A client's statement: all of their invoices in one place, each with what is still owed on it, and
 // the total still owed across them all. Kept behind an opener so the client detail stays compact.
-// Owns its own statement state, scoped to the one client it is showing; talks to that client's own
-// /api/clients/<id>/statement endpoint.
+// Opening it also shows a clean, printable summary (statement-print-view) headed with the client's
+// name and closed with the grand total they owe. Owns its own statement state, scoped to the one
+// client it is showing; talks to that client's own /api/clients/<id>/statement endpoint.
 function ClientStatement({ client }: { client: Client }) {
   const [statement] = useJsonResource<ClientStatement | null>(
     `/api/clients/${client.id}/statement`,
@@ -60,6 +61,26 @@ function ClientStatement({ client }: { client: Client }) {
       </button>
       {open && statement && (
         <>
+          <article data-testid="statement-print-view" className="statement-print-view">
+            <header data-testid="statement-heading">
+              <h2 data-testid="statement-client-name">{client.name}</h2>
+              <p data-testid="statement-client-email">{client.email}</p>
+            </header>
+            <table data-testid="statement-print-lines">
+              <tbody>
+                {statement.invoices.map((inv) => (
+                  <tr key={inv.id} data-testid={`statement-line-${inv.id}`}>
+                    <td data-testid="statement-line-label">Invoice #{inv.id}</td>
+                    <td data-testid="statement-line-amount">{money(inv.amountDue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p data-testid="statement-grand-total-row">
+              <span>Grand total owed</span>
+              <span data-testid="statement-grand-total">{money(statement.outstandingTotal)}</span>
+            </p>
+          </article>
           <table data-testid="client-statement-table">
             {statement.projects.map((project) => (
               <tbody
