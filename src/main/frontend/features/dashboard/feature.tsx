@@ -38,7 +38,7 @@ function DashboardPage() {
   // and puts every tile's label and value in one place to read (and relabel) at a glance.
   const tiles = [
     { testid: 'dashboard-clients', label: 'Clients', valueTestid: 'dashboard-clients-count', value: summary.clientsCount },
-    { testid: 'dashboard-projects', label: 'Projects', valueTestid: 'dashboard-projects-count', value: summary.projectsCount },
+    { testid: 'dashboard-projects', label: 'Jobs', valueTestid: 'dashboard-projects-count', value: summary.projectsCount },
     { testid: 'dashboard-outstanding', label: 'Outstanding', valueTestid: 'dashboard-outstanding-total', value: money(summary.outstandingTotal) },
     { testid: 'dashboard-overdue', label: 'Overdue invoices', valueTestid: 'dashboard-overdue-count', value: summary.overdueCount },
   ];

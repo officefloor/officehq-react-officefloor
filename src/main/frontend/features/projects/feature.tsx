@@ -832,7 +832,7 @@ function ProjectsPage() {
       <form data-testid="project-form" onSubmit={submit}>
         <input
           data-testid="project-form-name"
-          placeholder="Project name"
+          placeholder="Job name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -858,7 +858,7 @@ function ProjectsPage() {
           <option value="FINISHED">Finished</option>
         </select>
         <button data-testid="project-form-submit" type="submit">
-          Add project
+          Add job
         </button>
       </form>
 
@@ -895,7 +895,7 @@ function ProjectsPage() {
       </select>
 
       {projects.length === 0 ? (
-        <p data-testid="projects-empty">No projects yet.</p>
+        <p data-testid="projects-empty">No jobs yet.</p>
       ) : (
         <ProjectsTable
           projects={visible}
@@ -910,4 +910,4 @@ function ProjectsPage() {
   );
 }
 
-export const feature: Feature = { id: 'projects', label: 'Projects', Page: ProjectsPage };
+export const feature: Feature = { id: 'projects', label: 'Jobs', Page: ProjectsPage };

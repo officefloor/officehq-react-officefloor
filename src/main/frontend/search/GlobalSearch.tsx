@@ -67,7 +67,7 @@ export function GlobalSearch() {
     <section data-testid="global-search-panel">
       <input
         data-testid="global-search"
-        placeholder="Search clients and projects"
+        placeholder="Search clients and jobs"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
