@@ -16,11 +16,15 @@ function money(n: number): string {
   return `$${Number(n).toFixed(2)}`;
 }
 
+type EditDraft = { description: string; qty: string; unitPrice: string };
+
 export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<EditDraft>({ description: '', qty: '', unitPrice: '' });
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -51,6 +55,47 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       setDescription('');
       setQty('');
       setUnitPrice('');
+    }
+  }
+
+  async function onRemove(id: number) {
+    const res = await fetch('/api/lineitems/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      setLineItems((prev) => prev.filter((li) => li.id !== id));
+      if (editingId === id) {
+        setEditingId(null);
+      }
+    }
+  }
+
+  function startEdit(li: LineItem) {
+    setEditingId(li.id);
+    setDraft({
+      description: li.description,
+      qty: String(li.qty),
+      unitPrice: String(li.unitPrice),
+    });
+  }
+
+  async function onSaveEdit(id: number) {
+    const res = await fetch('/api/lineitems/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        description: draft.description,
+        qty: Number(draft.qty),
+        unitPrice: Number(draft.unitPrice),
+      }),
+    });
+    if (res.ok) {
+      const updated: LineItem = await res.json();
+      setLineItems((prev) => prev.map((li) => (li.id === id ? updated : li)));
+      setEditingId(null);
     }
   }
 
@@ -90,17 +135,79 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
             <th>Qty</th>
             <th>Unit price</th>
             <th>Amount</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {lineItems.map((li) => (
-            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
-              <td data-testid="lineitem-description">{li.description}</td>
-              <td data-testid="lineitem-qty">{li.qty}</td>
-              <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
-              <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
-            </tr>
-          ))}
+          {lineItems.map((li) =>
+            editingId === li.id ? (
+              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                <td>
+                  <input
+                    data-testid={`lineitem-edit-description-${li.id}`}
+                    value={draft.description}
+                    onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    data-testid={`lineitem-edit-qty-${li.id}`}
+                    value={draft.qty}
+                    onChange={(e) => setDraft((d) => ({ ...d, qty: e.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    data-testid={`lineitem-edit-unitprice-${li.id}`}
+                    value={draft.unitPrice}
+                    onChange={(e) => setDraft((d) => ({ ...d, unitPrice: e.target.value }))}
+                  />
+                </td>
+                <td data-testid="lineitem-amount">
+                  {money(Number(draft.qty) * Number(draft.unitPrice))}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-save-${li.id}`}
+                    onClick={() => void onSaveEdit(li.id)}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-cancel-${li.id}`}
+                    onClick={() => setEditingId(null)}
+                  >
+                    Cancel
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                <td data-testid="lineitem-description">{li.description}</td>
+                <td data-testid="lineitem-qty">{li.qty}</td>
+                <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
+                <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-edit-${li.id}`}
+                    onClick={() => startEdit(li)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-remove-${li.id}`}
+                    onClick={() => void onRemove(li.id)}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ),
+          )}
         </tbody>
       </table>
 

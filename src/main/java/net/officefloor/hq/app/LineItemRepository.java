@@ -43,4 +43,26 @@ public class LineItemRepository {
         }, keys);
         return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unitPrice);
     }
+
+    public LineItem findById(long id) {
+        List<LineItem> found = jdbc.query(
+                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE id = ?",
+                MAPPER, id);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    public LineItem update(long id, String description, int qty, BigDecimal unitPrice) {
+        LineItem existing = findById(id);
+        if (existing == null) {
+            return null;
+        }
+        jdbc.update(
+                "UPDATE line_items SET description = ?, qty = ?, unit_price = ? WHERE id = ?",
+                description, qty, unitPrice, id);
+        return new LineItem(id, existing.invoiceId(), description, qty, unitPrice);
+    }
+
+    public boolean delete(long id) {
+        return jdbc.update("DELETE FROM line_items WHERE id = ?", id) > 0;
+    }
 }

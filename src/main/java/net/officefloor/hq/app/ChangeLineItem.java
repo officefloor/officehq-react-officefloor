@@ -1,0 +1,44 @@
+package net.officefloor.hq.app;
+
+import java.math.BigDecimal;
+
+/** Request body for changing an existing line item (POST /api/lineitems/update). */
+public class ChangeLineItem {
+
+    private long id;
+    private String description;
+    private int qty;
+    private BigDecimal unitPrice;
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getQty() {
+        return qty;
+    }
+
+    public void setQty(int qty) {
+        this.qty = qty;
+    }
+
+    public BigDecimal getUnitPrice() {
+        return unitPrice;
+    }
+
+    public void setUnitPrice(BigDecimal unitPrice) {
+        this.unitPrice = unitPrice;
+    }
+}
