@@ -20,7 +20,8 @@ public class InvoiceRepository {
     private static final org.springframework.jdbc.core.RowMapper<Invoice> MAPPER =
             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
                     rs.getBigDecimal("amount"), rs.getString("status"),
-                    rs.getString("issued_date"), rs.getString("due_date"));
+                    rs.getString("issued_date"), rs.getString("due_date"),
+                    rs.getBigDecimal("due"));
 
     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
     // totals zero. Derived here so the amount always reflects the current line items.
@@ -28,19 +29,28 @@ public class InvoiceRepository {
             "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
                     + " WHERE li.invoice_id = i.id), 0)";
 
+    // What has been paid against the invoice: the sum of its payments (zero when none). The amount
+    // still due is the invoice amount minus this.
+    private static final String PAID_SUM =
+            "COALESCE((SELECT SUM(pm.amount) FROM payments pm"
+                    + " WHERE pm.invoice_id = i.id), 0)";
+
+    private static final String DUE = "(" + AMOUNT_SUM + " - " + PAID_SUM + ")";
+
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
-                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
-                        + " i.due_date FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+                        + " i.status, i.issued_date, i.due_date FROM invoices i"
+                        + " WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
 
     /** A project's invoices ordered by due date, earliest first (nulls last, id as tiebreak). */
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
-                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
-                        + " i.due_date FROM invoices i WHERE i.project_id = ?"
-                        + " ORDER BY i.due_date ASC NULLS LAST, i.id",
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+                        + " i.status, i.issued_date, i.due_date FROM invoices i"
+                        + " WHERE i.project_id = ? ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
     }
 
@@ -57,8 +67,9 @@ public class InvoiceRepository {
 
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
-                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
-                        + " i.due_date FROM invoices i WHERE i.id = ?", MAPPER, id);
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+                        + " i.status, i.issued_date, i.due_date FROM invoices i WHERE i.id = ?",
+                MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
     }
 
@@ -71,7 +82,9 @@ public class InvoiceRepository {
             ps.setBigDecimal(2, amount);
             return ps;
         }, keys);
-        return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null);
+        // A freshly created invoice has no payments yet, so the whole amount is still due.
+        return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
+                amount);
     }
 
     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */
