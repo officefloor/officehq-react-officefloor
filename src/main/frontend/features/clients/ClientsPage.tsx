@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ClientProjects } from './ClientProjects';
+import { ClientContacts } from './ClientContacts';
 
 // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
 type Client = { id: number; name: string; email: string };
@@ -120,6 +121,7 @@ export function ClientsPage() {
       )}
 
       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+      {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
     </section>
   );
 }
