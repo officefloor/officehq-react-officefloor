@@ -30,14 +30,22 @@ export function ProjectsPage() {
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
 
-  async function loadProjects(includeArchived = showArchived, tagId = tagFilter) {
+  async function loadProjects(
+    includeArchived = showArchived,
+    tagId = tagFilter,
+    status = statusFilter,
+  ) {
     const params = new URLSearchParams();
     if (includeArchived) {
       params.set('includeArchived', 'true');
     }
     if (tagId) {
       params.set('tagId', tagId);
+    }
+    if (status) {
+      params.set('status', status);
     }
     const qs = params.toString();
     const res = await fetch(`/api/projects${qs ? `?${qs}` : ''}`);
@@ -71,6 +79,11 @@ export function ProjectsPage() {
   function onFilterByTag(tagId: string) {
     setTagFilter(tagId);
     void loadProjects(showArchived, tagId);
+  }
+
+  function onFilterByStatus(status: string) {
+    setStatusFilter(status);
+    void loadProjects(showArchived, tagFilter, status);
   }
 
   async function onDelete(id: number) {
@@ -167,6 +180,19 @@ export function ProjectsPage() {
         {tags.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}
+          </option>
+        ))}
+      </select>
+
+      <select
+        data-testid="project-status-filter"
+        value={statusFilter}
+        onChange={(e) => onFilterByStatus(e.target.value)}
+      >
+        <option value="">All statuses</option>
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
           </option>
         ))}
       </select>

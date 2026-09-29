@@ -30,8 +30,28 @@ public class ProjectRepository {
      * what keeps a tucked-away project off the main list until the toggle reveals it.
      */
     public List<Project> findAll(boolean includeArchived) {
-        String where = includeArchived ? "" : " WHERE p.archived = FALSE";
-        return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
+        return findAll(includeArchived, null);
+    }
+
+    /**
+     * List projects, optionally narrowed to a single lifecycle {@code status} (ACTIVE, ON_HOLD or
+     * FINISHED) — this backs the "filter projects by status" dropdown. A null/blank status lists
+     * every status. Archived projects are hidden unless {@code includeArchived} is true.
+     */
+    public List<Project> findAll(boolean includeArchived, String status) {
+        StringBuilder sql = new StringBuilder(SELECT);
+        List<Object> args = new java.util.ArrayList<>();
+        String joiner = " WHERE";
+        if (!includeArchived) {
+            sql.append(joiner).append(" p.archived = FALSE");
+            joiner = " AND";
+        }
+        if (status != null && !status.isBlank()) {
+            sql.append(joiner).append(" p.status = ?");
+            args.add(status.trim());
+        }
+        sql.append(" ORDER BY p.id");
+        return jdbc.query(sql.toString(), MAPPER, args.toArray());
     }
 
     /**
