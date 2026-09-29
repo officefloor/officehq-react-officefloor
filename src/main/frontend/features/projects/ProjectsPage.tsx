@@ -35,6 +35,18 @@ export function ProjectsPage() {
     void loadClients();
   }, []);
 
+  async function onDelete(id: number) {
+    const res = await fetch('/api/projects/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setOpenProjectId((prev) => (prev === id ? null : prev));
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const res = await fetch('/api/projects', {
@@ -98,6 +110,13 @@ export function ProjectsPage() {
                     onClick={() => setOpenProjectId(p.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`project-delete-${p.id}`}
+                    onClick={() => void onDelete(p.id)}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>

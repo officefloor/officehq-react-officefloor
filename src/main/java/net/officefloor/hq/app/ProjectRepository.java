@@ -50,4 +50,18 @@ public class ProjectRepository {
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
         return new Project(keys.getKey().longValue(), name, clientId, clientName);
     }
+
+    /** Look up one project (with joined client name), or null when there is no such row. */
+    public Project findById(long id) {
+        List<Project> rows = jdbc.query(
+                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
+                        + " WHERE p.id = ?",
+                MAPPER, id);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public boolean delete(long id) {
+        return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
+    }
 }
