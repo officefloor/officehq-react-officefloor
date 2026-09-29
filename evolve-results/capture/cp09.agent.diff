@@ -1,0 +1,26 @@
+diff --git a/src/main/frontend/features/dashboard/feature.tsx b/src/main/frontend/features/dashboard/feature.tsx
+index e2405b9..d83b3dc 100644
+--- a/src/main/frontend/features/dashboard/feature.tsx
++++ b/src/main/frontend/features/dashboard/feature.tsx
+@@ -7,7 +7,7 @@ import type { Feature } from '../../router/routes';
+ type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
+ 
+ function money(amount: number): string {
+-  return Number(amount).toFixed(2);
++  return `$${Number(amount).toFixed(2)}`;
+ }
+ 
+ function DashboardPage() {
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 485f4d1..fd856b5 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -11,7 +11,7 @@ type Project = { id: number; name: string; clientId: number; clientName: string
+ type Invoice = { id: number; projectId: number; amount: number; status: string };
+ 
+ function money(amount: number): string {
+-  return Number(amount).toFixed(2);
++  return `$${Number(amount).toFixed(2)}`;
+ }
+ 
+ // A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its

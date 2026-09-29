@@ -1,0 +1,278 @@
+{
+  "checkpoint": 9,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp09_currency_format",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    4,
+    8
+  ],
+  "request": {
+    "spec": "Show money properly everywhere. Use a dollar sign and cents, like $100.00.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nShow money properly everywhere. Use a dollar sign and cents, like $100.00.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "3d2f74ca5058649d4a4b8115ffa2287ebc6473e6",
+  "reset_sha": "",
+  "preagent_sha": "3a5f82c971577602a69dbe19bcaf86f3381d4496",
+  "prev_sha": "3a5f82c971577602a69dbe19bcaf86f3381d4496",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2876565,
+    "input_tokens": 20,
+    "output_tokens": 2068,
+    "cache_read_tokens": 196425,
+    "cache_creation_tokens": 13647,
+    "num_turns": 10,
+    "duration_ms": 72048,
+    "duration_api_ms": 55210,
+    "model": "claude-opus-4-8",
+    "session_id": "3aea84bb-40d5-4309-bde9-b3bdad5baa8a",
+    "stop_reason": "success",
+    "result_text": "The test passes.\n\nI made the change as a small, local UI-display update, matching the spec's note that this is \"a UI-display change only.\" I updated the `money()` helper in both features that render currency:\n\n- **`features/projects/feature.tsx`** \u2014 invoice amounts (`invoice-amount`) and the project total (`project-invoices-total`) now render as `$100.00` / `$150.00`.\n- **`features/dashboard/feature.tsx`** \u2014 the outstanding total (`dashboard-outstanding-total`) now shows the dollar sign for consistency (\"everywhere\").\n\nThe clients feature has no money display, and no schema/server change was needed \u2014 the amounts are already stored and returned as numeric values; only the formatting changed. The audit record format (`amount=100.00`) is untouched, as the spec requires. `bin/e2e` passes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.2876565,
+        "num_turns": 10,
+        "duration_ms": 72048,
+        "duration_api_ms": 55210,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp09.agent.jsonl",
+  "agent_diff_file": "cp09.agent.diff",
+  "build_log_file": "cp09.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 15,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 645,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 365,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 220,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 211,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 321,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 275,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 337,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 378,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 304,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 217,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 272,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 222,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 1.13,
+            "impact": 104,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "lang": "typescript",
+                "cost": 44,
+                "mutation": 44,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/frontend/features/dashboard/feature.tsx",
+                "lang": "typescript",
+                "cost": 8,
+                "mutation": 8,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "money",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 22,
+                "cost": 44,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/dashboard/feature.tsx",
+                "name": "money",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 4,
+                "cost": 8,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 0.0,
+            "impact": 0,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [],
+            "drivers": [],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
