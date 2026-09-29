@@ -14,6 +14,9 @@ function ClientsPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
+  // substring match on the client name; an empty box shows everyone.
+  const [search, setSearch] = useState('');
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -41,8 +44,18 @@ function ClientsPage() {
     await load();
   }
 
+  const visible = clients.filter((c) =>
+    c.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
   return (
     <section data-testid="clients">
+      <input
+        data-testid="client-search"
+        placeholder="Search clients by name"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       <form data-testid="client-form" onSubmit={submit}>
         <input
           data-testid="client-form-name"
@@ -71,7 +84,7 @@ function ClientsPage() {
       ) : (
         <table data-testid="clients-table">
           <tbody>
-            {clients.map((c) => (
+            {visible.map((c) => (
               <tr key={c.id} data-testid={`client-row-${c.id}`}>
                 <td data-testid="client-name">{c.name}</td>
                 <td data-testid="client-email">{c.email}</td>
