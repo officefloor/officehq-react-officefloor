@@ -1,0 +1,306 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp07_client_detail_projects",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "When I open a client show me the projects I am doing for them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nWhen I open a client show me the projects I am doing for them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "75c8220a77a396210f8065a50e5df56c93db7c1f",
+  "reset_sha": "",
+  "preagent_sha": "068085a2188a9f4c93b233045173f223b6bbd1e7",
+  "prev_sha": "068085a2188a9f4c93b233045173f223b6bbd1e7",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5738500000000001,
+    "input_tokens": 26,
+    "output_tokens": 6143,
+    "cache_read_tokens": 345408,
+    "cache_creation_tokens": 24628,
+    "num_turns": 25,
+    "duration_ms": 113335,
+    "duration_api_ms": 96390,
+    "model": "claude-opus-4-8",
+    "session_id": "5ceef2a6-87f2-4a63-9c6f-a1702d76a8ff",
+    "stop_reason": "success",
+    "result_text": "The test passes. Let me summarize the full-stack change I made.\n\n## Summary\n\nImplemented \"when I open a client, show me the projects I am doing for them\" as an additive, local, full-stack change.\n\n**Server (new endpoint):**\n- `src/main/java/net/officefloor/hq/app/project/ListClientProjects.java` \u2014 logic class for `GET /api/clients/{id}/projects`, returning that one client's projects (joined to the client name), oldest first. Reuses the existing `ProjectView` and follows the same `@HttpPathParameter` pattern as `PayInvoice`.\n- `src/main/resources/officefloor/rest/api/clients/{id}/projects.GET.yml` \u2014 the new endpoint YAML wiring it up (one file per endpoint, under `/api/`).\n\n**Front-end (clients feature only):**\n- Added a `client-open-<id>` button to each client row.\n- Added a `ClientProjects` component that fetches `/api/clients/<id>/projects` and renders a `client-projects-table` reusing the `project-row-<id>` / `project-name` anchors \u2014 scoped to the opened client.\n\n**Schema:** no migration needed \u2014 the `projects.client_id` FK already exists, so this is a read-only view over existing data.\n\nNo changes to pinned scaffolding, the router, the spec, or the projects feature; the clients feature owns its own state and talks only to its own endpoint. `bin/e2e` passes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5738500000000001,
+        "num_turns": 25,
+        "duration_ms": 113335,
+        "duration_api_ms": 96390,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": "cp07.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 13,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 635,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 353,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 199,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 322,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 270,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 395,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 344,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 372,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 286,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 222,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 5.83,
+            "impact": 536,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "lang": "typescript",
+                "cost": 536,
+                "mutation": 536,
+                "godclass": 0,
+                "mut_fns": 6,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "ClientsPage",
+                "container": "",
+                "cc": 6,
+                "wmc_other": 6,
+                "cost": 360,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 56,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 40,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 40,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 32,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 8,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 4,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 0.36,
+            "impact": 11,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ListClientProjects.java",
+                "lang": "java",
+                "cost": 11,
+                "mutation": 0,
+                "godclass": 11,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/project/ListClientProjects.java",
+                "name": "ListClientProjects::service",
+                "container": "ListClientProjects",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 11,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

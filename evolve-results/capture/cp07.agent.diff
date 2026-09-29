@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index aa5402e..3b965d2 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -1,9 +1,38 @@
+ import React, { useEffect, useState } from 'react';
+ import type { Feature } from '../../router/routes';
+ 
+-// Clients feature: add a client (name + email) and list every client. Owns its own state; talks to
+-// its own /api/clients endpoints. data-testid anchors follow the spec's conventions.
++// Clients feature: add a client (name + email) and list every client. Opening a client
++// (client-open-<id>) reveals the projects being done for them — the client's own projects listing,
++// scoped via its /api/clients/<id>/projects endpoint. Owns its own state; talks to its own
++// /api/clients endpoints. data-testid anchors follow the spec's conventions.
+ type Client = { id: number; name: string; email: string };
++type Project = { id: number; name: string; clientId: number; clientName: string };
++
++// A client's detail: the projects being done for them. Owns its own project state, scoped to the one
++// client it is showing. Reuses the project-row-<id>/project-name anchors in a client-scoped table.
++function ClientProjects({ client }: { client: Client }) {
++  const [projects, setProjects] = useState<Project[]>([]);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch(`/api/clients/${client.id}/projects`);
++      setProjects(await res.json());
++    }
++    void load();
++  }, [client.id]);
++
++  return (
++    <table data-testid="client-projects-table">
++      <tbody>
++        {projects.map((p) => (
++          <tr key={p.id} data-testid={`project-row-${p.id}`}>
++            <td data-testid="project-name">{p.name}</td>
++          </tr>
++        ))}
++      </tbody>
++    </table>
++  );
++}
+ 
+ // Every client needs a proper email. Same shape the server enforces (see CreateClient) so the UI
+ // and the API agree on what "valid" means.
+@@ -17,6 +46,7 @@ function ClientsPage() {
+   // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
+   // substring match on the client name; an empty box shows everyone.
+   const [search, setSearch] = useState('');
++  const [openId, setOpenId] = useState<number | null>(null);
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -48,6 +78,8 @@ function ClientsPage() {
+     c.name.toLowerCase().includes(search.trim().toLowerCase()),
+   );
+ 
++  const open = clients.find((c) => c.id === openId) ?? null;
++
+   return (
+     <section data-testid="clients">
+       <input
+@@ -88,11 +120,18 @@ function ClientsPage() {
+               <tr key={c.id} data-testid={`client-row-${c.id}`}>
+                 <td data-testid="client-name">{c.name}</td>
+                 <td data-testid="client-email">{c.email}</td>
++                <td>
++                  <button data-testid={`client-open-${c.id}`} onClick={() => setOpenId(c.id)}>
++                    Open
++                  </button>
++                </td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       )}
++
++      {open && <ClientProjects key={open.id} client={open} />}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+new file mode 100644
+index 0000000..3f49a0a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+@@ -0,0 +1,22 @@
++package net.officefloor.hq.app.project;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/clients/{id}/projects — every project owned by one client, oldest first. */
++public class ListClientProjects {
++
++    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++            ObjectResponse<List<ProjectView>> response) {
++        List<ProjectView> projects = jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
++                        + "FROM projects p JOIN clients c ON c.id = p.client_id "
++                        + "WHERE p.client_id = ? ORDER BY p.id",
++                (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
++                        rs.getLong("client_id"), rs.getString("client_name")),
++                Long.valueOf(id));
++        response.send(projects);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{id}/projects.GET.yml b/src/main/resources/officefloor/rest/api/clients/{id}/projects.GET.yml
+new file mode 100644
+index 0000000..4b1f0a9
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{id}/projects.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.project.ListClientProjects
