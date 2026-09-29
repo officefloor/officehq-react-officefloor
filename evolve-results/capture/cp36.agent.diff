@@ -1,0 +1,112 @@
+diff --git a/src/main/frontend/features/clients/ClientProjects.tsx b/src/main/frontend/features/clients/ClientProjects.tsx
+index c55ff82..5be0fe3 100644
+--- a/src/main/frontend/features/clients/ClientProjects.tsx
++++ b/src/main/frontend/features/clients/ClientProjects.tsx
+@@ -7,21 +7,35 @@ type Project = { id: number; name: string; clientId: number; clientName: string
+ 
+ export function ClientProjects({ clientId }: { clientId: number }) {
+   const [projects, setProjects] = useState<Project[]>([]);
++  // Show only ACTIVE (and non-archived) projects by default; the toggle reveals every status,
++  // archived (hidden) ones included — that is the "also see finished and hidden" ask.
++  const [showAll, setShowAll] = useState(false);
+ 
+-  async function load() {
+-    const res = await fetch(`/api/projects?clientId=${clientId}`);
++  async function load(all: boolean) {
++    const query = all
++      ? `clientId=${clientId}&includeArchived=true`
++      : `clientId=${clientId}&status=ACTIVE`;
++    const res = await fetch(`/api/projects?${query}`);
+     if (res.ok) {
+       setProjects(await res.json());
+     }
+   }
+ 
+   useEffect(() => {
+-    void load();
+-  }, [clientId]);
++    void load(showAll);
++  }, [clientId, showAll]);
+ 
+   return (
+     <section data-testid="client-projects">
+       <h2>Projects</h2>
++      <button
++        type="button"
++        data-testid="client-projects-show-all"
++        aria-pressed={showAll}
++        onClick={() => setShowAll((v) => !v)}
++      >
++        {showAll ? 'Show active only' : 'Show finished and hidden'}
++      </button>
+       {projects.length === 0 ? (
+         <p data-testid="client-projects-empty">No projects yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 8e2bf67..8299688 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -68,8 +68,28 @@ public class ProjectRepository {
+ 
+     /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
+     public List<Project> findByClient(long clientId) {
+-        return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
+-                MAPPER, clientId);
++        return findByClient(clientId, false, null);
++    }
++
++    /**
++     * Projects done for one client, optionally narrowed to a single lifecycle {@code status} (e.g.
++     * ACTIVE) — this backs the client page showing only active projects by default. Archived
++     * projects are hidden unless {@code includeArchived} is true (the "also show finished and
++     * hidden" toggle reveals every status, archived included).
++     */
++    public List<Project> findByClient(long clientId, boolean includeArchived, String status) {
++        StringBuilder sql = new StringBuilder(SELECT + " WHERE p.client_id = ?");
++        List<Object> args = new java.util.ArrayList<>();
++        args.add(clientId);
++        if (!includeArchived) {
++            sql.append(" AND p.archived = FALSE");
++        }
++        if (status != null && !status.isBlank()) {
++            sql.append(" AND p.status = ?");
++            args.add(status.trim());
++        }
++        sql.append(" ORDER BY p.id");
++        return jdbc.query(sql.toString(), MAPPER, args.toArray());
+     }
+ 
+     public Project create(String name, long clientId, String status) {
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+index 3717cd3..ec222a1 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+@@ -23,7 +23,7 @@ public class ProjectsGetLogic {
+         } else if (clientId == null || clientId.isBlank()) {
+             response.send(repository.findAll(withArchived, status));
+         } else {
+-            response.send(repository.findByClient(Long.parseLong(clientId.trim())));
++            response.send(repository.findByClient(Long.parseLong(clientId.trim()), withArchived, status));
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5d1c7eb..f4999be 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -83,9 +83,13 @@ public class TestSupportController {
+     private void seedProjects(Map<String, Object> fixture) {
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             Object status = p.get("status");
+-            jdbc.update("INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
++            Object archived = p.get("archived");
++            jdbc.update(
++                    "INSERT INTO projects (id, name, client_id, status, archived)"
++                            + " VALUES (?, ?, ?, ?, ?)",
+                     id(p, "id"), p.get("name"), id(p, "clientId"),
+-                    status == null ? "ACTIVE" : status.toString());
++                    status == null ? "ACTIVE" : status.toString(),
++                    archived != null && Boolean.parseBoolean(archived.toString()));
+         }
+     }
+ 
