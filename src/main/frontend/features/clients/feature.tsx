@@ -20,7 +20,12 @@ type Contact = {
 };
 type ClientSummary = { projectCount: number; contactCount: number };
 type StatementInvoice = { id: number; projectId: number; amountDue: number };
-type ClientStatement = { invoices: StatementInvoice[]; outstandingTotal: number };
+type StatementProject = { projectId: number; invoices: StatementInvoice[]; subtotal: number };
+type ClientStatement = {
+  invoices: StatementInvoice[];
+  projects: StatementProject[];
+  outstandingTotal: number;
+};
 
 // Money, the way every invoice figure is shown across the app: a dollar sign and two decimals.
 function money(amount: number): string {
@@ -56,13 +61,21 @@ function ClientStatement({ client }: { client: Client }) {
       {open && statement && (
         <>
           <table data-testid="client-statement-table">
-            <tbody>
-              {statement.invoices.map((inv) => (
-                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
-                  <td data-testid="statement-invoice-due">{money(inv.amountDue)}</td>
+            {statement.projects.map((project) => (
+              <tbody
+                key={project.projectId}
+                data-testid={`statement-project-${project.projectId}`}
+              >
+                {project.invoices.map((inv) => (
+                  <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+                    <td data-testid="statement-invoice-due">{money(inv.amountDue)}</td>
+                  </tr>
+                ))}
+                <tr data-testid="statement-project-subtotal-row">
+                  <td data-testid="statement-project-subtotal">{money(project.subtotal)}</td>
                 </tr>
-              ))}
-            </tbody>
+              </tbody>
+            ))}
           </table>
           <p data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</p>
         </>

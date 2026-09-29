@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.client;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.web.HttpPathParameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,10 +36,24 @@ public class GetClientStatement {
                         rs.getBigDecimal("amount_due")),
                 Long.valueOf(id));
 
+        // Group the invoices under their job (project), keeping the query's id order both within a
+        // job and across jobs (first-seen), and running a subtotal of what is still due per job.
+        Map<Long, List<StatementInvoiceView>> byProject = new LinkedHashMap<>();
+        Map<Long, BigDecimal> subtotals = new LinkedHashMap<>();
         BigDecimal outstanding = BigDecimal.ZERO;
         for (StatementInvoiceView invoice : invoices) {
+            Long projectId = invoice.getProjectId();
+            byProject.computeIfAbsent(projectId, k -> new ArrayList<>()).add(invoice);
+            subtotals.merge(projectId, invoice.getAmountDue(), BigDecimal::add);
             outstanding = outstanding.add(invoice.getAmountDue());
         }
-        response.send(new ClientStatementView(invoices, outstanding));
+
+        List<StatementProjectView> projects = new ArrayList<>();
+        for (Map.Entry<Long, List<StatementInvoiceView>> entry : byProject.entrySet()) {
+            projects.add(new StatementProjectView(entry.getKey(), entry.getValue(),
+                    subtotals.get(entry.getKey())));
+        }
+
+        response.send(new ClientStatementView(invoices, projects, outstanding));
     }
 }
