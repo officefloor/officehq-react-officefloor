@@ -23,6 +23,8 @@ public class Project {
 
     private boolean archived;
 
+    private String status;
+
     public Long getId() {
         return id;
     }
@@ -53,5 +55,13 @@ public class Project {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

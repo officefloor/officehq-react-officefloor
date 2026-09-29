@@ -19,7 +19,7 @@ public class DeleteProject {
         Project project = repository.findById(projectId)
                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such project"));
         ProjectView removed = new ProjectView(project.getId(), project.getName(),
-                project.getClientId(), null, project.isArchived());
+                project.getClientId(), null, project.isArchived(), project.getStatus());
         repository.deleteById(projectId);
         audit.record("PROJECT_DELETED id=" + projectId);
         response.send(removed);

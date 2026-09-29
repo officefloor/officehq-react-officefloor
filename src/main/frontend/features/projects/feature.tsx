@@ -7,12 +7,14 @@ import type { Feature } from '../../router/routes';
 // /api/projects and /api/invoices endpoints and reads /api/clients to populate the client picker.
 // data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
+type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
 type Project = {
   id: number;
   name: string;
   clientId: number;
   clientName: string;
   archived: boolean;
+  status: ProjectStatus;
 };
 type Invoice = {
   id: number;
@@ -574,6 +576,7 @@ function ProjectsPage() {
   const [tagFilter, setTagFilter] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [openId, setOpenId] = useState<number | null>(null);
   // Archived projects are tucked away (retained, not deleted) and hidden by default; this toggle
   // reveals them again.
@@ -612,10 +615,11 @@ function ProjectsPage() {
     await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId) }),
+      body: JSON.stringify({ name, clientId: Number(clientId), status }),
     });
     setName('');
     setClientId('');
+    setStatus('ACTIVE');
     await loadProjects();
   }
 
@@ -666,6 +670,15 @@ function ProjectsPage() {
             </option>
           ))}
         </select>
+        <select
+          data-testid="project-form-status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+        >
+          <option value="ACTIVE">Active</option>
+          <option value="ON_HOLD">On hold</option>
+          <option value="FINISHED">Finished</option>
+        </select>
         <button data-testid="project-form-submit" type="submit">
           Add project
         </button>
@@ -701,6 +714,7 @@ function ProjectsPage() {
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
+                <td data-testid="project-status">{p.status}</td>
                 <td>
                   <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
                     Open
