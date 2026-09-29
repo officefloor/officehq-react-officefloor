@@ -1,0 +1,389 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp01_clients",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "I want to keep track of my clients. Let me add a client with their name and email.\nShow me all my clients in one list.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nI want to keep track of my clients. Let me add a client with their name and email.\nShow me all my clients in one list.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "3f6ad76a4865d44998b4be9d0d98b43ca72c0ed8",
+  "reset_sha": "",
+  "preagent_sha": "4544c685bf456de5b561dca26165e6b48d9102df",
+  "prev_sha": "4544c685bf456de5b561dca26165e6b48d9102df",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8942890000000001,
+    "input_tokens": 24,
+    "output_tokens": 14496,
+    "cache_read_tokens": 357756,
+    "cache_creation_tokens": 35171,
+    "num_turns": 34,
+    "duration_ms": 192577,
+    "duration_api_ms": 175989,
+    "model": "claude-opus-4-8",
+    "session_id": "629369b9-eb3e-4287-9919-8d36b8e5e65a",
+    "stop_reason": "success",
+    "result_text": "Both tests pass. The full-stack change is complete and verified.\n\n## Summary\n\nI implemented client tracking (add a client with name + email, list all clients) as a small, additive full-stack change:\n\n**Database** (`src/main/resources/db/migration/V1__clients.sql`)\n- New Flyway migration creating a `clients` table (`id` IDENTITY, `name`, `email`).\n\n**Server** (OfficeFloor REST on the Spring Boot host)\n- `Client` record + `NewClient` request DTO.\n- `ClientRepository` \u2014 `JdbcTemplate` data access (`findAll` ordered by id; `create` returning the generated id).\n- Two additive endpoints, one YAML + one logic class each: `GET /api/clients` (`ClientsGetLogic`) and `POST /api/clients` (`ClientsPostLogic`), placed under `rest/api/` so they bypass the SPA fallback.\n- Extended `TestSupportController`: `reset` now `TRUNCATE TABLE clients RESTART IDENTITY`; `seed` inserts client rows with the fixture's explicit ids via `JdbcTemplate` (per the CLAUDE.md rule).\n\n**Front-end** (React)\n- Built the additive routing mechanism the skeleton `router/routes.ts` had as a TODO: features self-register by dropping a `route.tsx`, auto-discovered via `import.meta.glob` \u2014 so adding the feature was a new file, not an edit to the router.\n- Wired the base shell (`main.tsx`) to render nav buttons (`nav-clients`) and the active page \u2014 no per-feature branching.\n- New `features/clients/` feature (`ClientsPage.tsx` + `route.tsx`) with the form (`client-form-name`, `client-form-email`, `client-form-submit`), the `clients-empty` state, and the `clients-table` with `client-row-<id>` / `client-name` / `client-email` cells.\n\nAll `data-testid` anchors match the spec exactly, and both `@core` tests pass. No audit records were required by the request or the spec, so none were added.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.8942890000000001,
+        "num_turns": 34,
+        "duration_ms": 192577,
+        "duration_api_ms": 175989,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": "cp01.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 2,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 226,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 355,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 14.15,
+            "impact": 1300,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "lang": "typescript",
+                "cost": 200,
+                "mutation": 0,
+                "godclass": 200,
+                "mut_fns": 0,
+                "new_fns": 6
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "lang": "typescript",
+                "cost": 118,
+                "mutation": 108,
+                "godclass": 10,
+                "mut_fns": 1,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/frontend/router/routes.ts",
+                "lang": "typescript",
+                "cost": 7,
+                "mutation": 0,
+                "godclass": 7,
+                "mut_fns": 0,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "ClientsPage",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 150,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "name": "App",
+                "container": "",
+                "cc": 6,
+                "wmc_other": 0,
+                "cost": 108,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "onSubmit",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 28,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 1,
+                "cost": 9,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/router/routes.ts",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 6,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 1,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 1,
+                "cost": 1,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 3,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 14.84,
+            "impact": 456,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 38,
+                "mutation": 38,
+                "godclass": 0,
+                "mut_fns": 3,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientRepository.java",
+                "lang": "java",
+                "cost": 19,
+                "mutation": 0,
+                "godclass": 19,
+                "mut_fns": 0,
+                "new_fns": 3
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewClient.java",
+                "lang": "java",
+                "cost": 12,
+                "mutation": 0,
+                "godclass": 12,
+                "mut_fns": 0,
+                "new_fns": 4
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientsPostLogic.java",
+                "lang": "java",
+                "cost": 4,
+                "mutation": 0,
+                "godclass": 4,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientsGetLogic.java",
+                "lang": "java",
+                "cost": 3,
+                "mutation": 0,
+                "godclass": 3,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 2,
+                "wmc_other": 2,
+                "cost": 28,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientRepository.java",
+                "name": "ClientRepository::create",
+                "container": "ClientRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 11,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::TestSupportController",
+                "container": "TestSupportController",
+                "cc": 1,
+                "wmc_other": 2,
+                "cost": 6,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientRepository.java",
+                "name": "ClientRepository::findAll",
+                "container": "ClientRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientsPostLogic.java",
+                "name": "ClientsPostLogic::service",
+                "container": "ClientsPostLogic",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::reset",
+                "container": "TestSupportController",
+                "cc": 1,
+                "wmc_other": 2,
+                "cost": 4,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientRepository.java",
+                "name": "ClientRepository::ClientRepository",
+                "container": "ClientRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ClientsGetLogic.java",
+                "name": "ClientsGetLogic::service",
+                "container": "ClientsGetLogic",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewClient.java",
+                "name": "NewClient::getName",
+                "container": "NewClient",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewClient.java",
+                "name": "NewClient::setName",
+                "container": "NewClient",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
