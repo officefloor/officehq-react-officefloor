@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 public class NoteRepository {
 
     private static final String PROJECT = "project";
+    private static final String INVOICE = "invoice";
 
     private final JdbcTemplate jdbc;
 
@@ -32,5 +33,19 @@ public class NoteRepository {
     public void create(long projectId, String text) {
         jdbc.update("INSERT INTO notes (target_type, target_id, body) VALUES (?, ?, ?)",
                 PROJECT, projectId, text);
+    }
+
+    /** An invoice's notes, newest first (created_at descending, id as a stable tie-break). */
+    public List<Note> findByInvoice(long invoiceId) {
+        return jdbc.query(
+                "SELECT id, body FROM notes WHERE target_type = ? AND target_id = ?"
+                        + " ORDER BY created_at DESC, id DESC",
+                MAPPER, INVOICE, invoiceId);
+    }
+
+    /** Write a new note on an invoice; stamped with the current time so it sorts to the top. */
+    public void createForInvoice(long invoiceId, String text) {
+        jdbc.update("INSERT INTO notes (target_type, target_id, body) VALUES (?, ?, ?)",
+                INVOICE, invoiceId, text);
     }
 }

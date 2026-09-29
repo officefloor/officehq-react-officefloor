@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { InvoiceNotes } from './InvoiceNotes';
 
 // The detail of a single invoice, shown when an invoice is opened from the project's invoice list.
 // Owns its own state (CLAUDE.md — features own their state). Lists the invoice's line items — the
@@ -351,6 +352,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
           ))}
         </tbody>
       </table>
+
+      <InvoiceNotes invoiceId={invoiceId} />
     </section>
   );
 }

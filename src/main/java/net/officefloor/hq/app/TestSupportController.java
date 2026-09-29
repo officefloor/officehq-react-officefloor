@@ -2,7 +2,9 @@ package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -148,7 +150,7 @@ public class TestSupportController {
                     "INSERT INTO notes (id, target_type, target_id, body, created_at)"
                             + " VALUES (?, ?, ?, ?, ?)",
                     id(n, "id"), n.get("targetType"), id(n, "targetId"), n.get("text"),
-                    at == null ? null : OffsetDateTime.parse(at.toString()));
+                    at == null ? null : parseInstant(at.toString()));
         }
         // notes are also inserted app-side (NoteRepository) via the IDENTITY generator, so advance
         // it past any seeded ids (see bumpIdentity).
@@ -208,6 +210,17 @@ public class TestSupportController {
         if (!payments.isEmpty()) {
             bumpIdentity("payments");
         }
+    }
+
+    /**
+     * A note's {@code at} timestamp. Accepts a full offset date-time (e.g. {@code
+     * 2026-02-01T09:00:00Z}) or a plain date (e.g. {@code 2026-02-01}), which is read as the start of
+     * that day in UTC — enough for specs that only need the newest-first ordering.
+     */
+    private static OffsetDateTime parseInstant(String at) {
+        return at.contains("T")
+                ? OffsetDateTime.parse(at)
+                : LocalDate.parse(at).atStartOfDay().atOffset(ZoneOffset.UTC);
     }
 
     /** The list of fixture rows under {@code key}, or empty when the spec omitted that table. */

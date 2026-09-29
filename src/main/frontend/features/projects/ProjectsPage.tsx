@@ -22,6 +22,9 @@ export function ProjectsPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  // When an invoice's detail is drilled into (inside ProjectInvoices), the other project-level
+  // sections step aside so the invoice — and its own notes — are the focus.
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   async function loadProjects(f: Filters) {
     const params = new URLSearchParams();
@@ -70,6 +73,11 @@ export function ProjectsPage() {
 
   function closeIfOpen(id: number) {
     setOpenProjectId((prev) => (prev === id ? null : prev));
+  }
+
+  function openProject(id: number) {
+    setOpenProjectId(id);
+    setInvoiceOpen(false);
   }
 
   async function onDelete(id: number) {
@@ -162,7 +170,7 @@ export function ProjectsPage() {
                   <button
                     type="button"
                     data-testid={`project-open-${p.id}`}
-                    onClick={() => setOpenProjectId(p.id)}
+                    onClick={() => openProject(p.id)}
                   >
                     Open
                   </button>
@@ -189,11 +197,15 @@ export function ProjectsPage() {
 
       {openProjectId !== null ? (
         <>
-          <ProjectBudget projectId={openProjectId} />
-          <ProjectNotes projectId={openProjectId} />
-          <ProjectTags projectId={openProjectId} />
-          <ProjectTasks projectId={openProjectId} />
-          <ProjectInvoices projectId={openProjectId} />
+          {invoiceOpen ? null : (
+            <>
+              <ProjectBudget projectId={openProjectId} />
+              <ProjectNotes projectId={openProjectId} />
+              <ProjectTags projectId={openProjectId} />
+              <ProjectTasks projectId={openProjectId} />
+            </>
+          )}
+          <ProjectInvoices projectId={openProjectId} onOpenInvoiceChange={(id) => setInvoiceOpen(id !== null)} />
         </>
       ) : null}
     </section>

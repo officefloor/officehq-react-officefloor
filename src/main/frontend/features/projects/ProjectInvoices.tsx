@@ -18,12 +18,25 @@ function money(n: number): string {
   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
-export function ProjectInvoices({ projectId }: { projectId: number }) {
+export function ProjectInvoices({
+  projectId,
+  onOpenInvoiceChange,
+}: {
+  projectId: number;
+  onOpenInvoiceChange?: (invoiceId: number | null) => void;
+}) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
   const [sort, setSort] = useState('');
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+
+  // Drilling into an invoice's detail is a focused view: let the page hide the other project-level
+  // sections (each of which owns its own state) while an invoice is open, and restore them on close.
+  function openInvoice(id: number | null) {
+    setOpenInvoiceId(id);
+    onOpenInvoiceChange?.(id);
+  }
 
   async function load(sortBy = sort) {
     const query = sortBy ? `&sort=${encodeURIComponent(sortBy)}` : '';
@@ -110,7 +123,16 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
       </form>
 
       {openInvoiceId !== null ? (
-        <InvoiceDetail invoiceId={openInvoiceId} />
+        <>
+          <button
+            type="button"
+            data-testid="invoice-close"
+            onClick={() => openInvoice(null)}
+          >
+            Back to invoices
+          </button>
+          <InvoiceDetail invoiceId={openInvoiceId} />
+        </>
       ) : (
         <>
       <div data-testid="invoice-controls">
@@ -142,7 +164,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
                 <button
                   type="button"
                   data-testid={`invoice-open-${inv.id}`}
-                  onClick={() => setOpenInvoiceId(inv.id)}
+                  onClick={() => openInvoice(inv.id)}
                 >
                   Open
                 </button>
