@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 // A project's invoices, shown when a project is opened from the projects list. Owns its own state
 // (CLAUDE.md — features own their state). Lists the project's invoices, a derived total, and a form
 // to add one. Amounts render with 2 decimals.
-type Invoice = { id: number; projectId: number; amount: number };
+type Invoice = { id: number; projectId: number; amount: number; status: string };
 
 function money(n: number): string {
   return Number(n).toFixed(2);
@@ -38,6 +38,18 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     }
   }
 
+  async function payInvoice(id: number) {
+    const res = await fetch('/api/invoices/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      const paid: Invoice = await res.json();
+      setInvoices((prev) => prev.map((inv) => (inv.id === paid.id ? paid : inv)));
+    }
+  }
+
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
 
   return (
@@ -59,12 +71,26 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Status</th>
+            <th />
           </tr>
         </thead>
         <tbody>
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
               <td data-testid="invoice-amount">{money(inv.amount)}</td>
+              <td data-testid="invoice-status">{inv.status}</td>
+              <td>
+                {inv.status === 'PAID' ? null : (
+                  <button
+                    type="button"
+                    data-testid={`invoice-pay-${inv.id}`}
+                    onClick={() => void payInvoice(inv.id)}
+                  >
+                    Mark paid
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
