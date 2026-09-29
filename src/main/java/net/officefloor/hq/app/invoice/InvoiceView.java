@@ -8,15 +8,17 @@ public class InvoiceView {
     private final Long id;
     private final Long projectId;
     private final BigDecimal amount;
+    private final BigDecimal amountDue;
     private final String status;
     private final String issuedDate;
     private final String dueDate;
 
-    public InvoiceView(Long id, Long projectId, BigDecimal amount, String status,
-            String issuedDate, String dueDate) {
+    public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal amountDue,
+            String status, String issuedDate, String dueDate) {
         this.id = id;
         this.projectId = projectId;
         this.amount = amount;
+        this.amountDue = amountDue;
         this.status = status;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
@@ -32,6 +34,10 @@ public class InvoiceView {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    public BigDecimal getAmountDue() {
+        return amountDue;
     }
 
     public String getStatus() {

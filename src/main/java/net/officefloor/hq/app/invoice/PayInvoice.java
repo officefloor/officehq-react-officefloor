@@ -28,7 +28,7 @@ public class PayInvoice {
         BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
         audit.record("INVOICE_PAID id=" + saved.getId() + " amount=" + amount.toPlainString());
         response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
-                saved.getStatus(),
+                saved.getAmount(), saved.getStatus(),
                 saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),
                 saved.getDueDate() == null ? null : saved.getDueDate().toString()));
     }
