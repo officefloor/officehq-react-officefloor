@@ -1,0 +1,345 @@
+diff --git a/src/main/frontend/features/projects/InvoiceDetail.tsx b/src/main/frontend/features/projects/InvoiceDetail.tsx
+index ac6ef8d..c11eb62 100644
+--- a/src/main/frontend/features/projects/InvoiceDetail.tsx
++++ b/src/main/frontend/features/projects/InvoiceDetail.tsx
+@@ -16,11 +16,15 @@ function money(n: number): string {
+   return `$${Number(n).toFixed(2)}`;
+ }
+ 
++type EditDraft = { description: string; qty: string; unitPrice: string };
++
+ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
++  const [editingId, setEditingId] = useState<number | null>(null);
++  const [draft, setDraft] = useState<EditDraft>({ description: '', qty: '', unitPrice: '' });
+ 
+   async function load() {
+     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
+@@ -54,6 +58,47 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+     }
+   }
+ 
++  async function onRemove(id: number) {
++    const res = await fetch('/api/lineitems/remove', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      setLineItems((prev) => prev.filter((li) => li.id !== id));
++      if (editingId === id) {
++        setEditingId(null);
++      }
++    }
++  }
++
++  function startEdit(li: LineItem) {
++    setEditingId(li.id);
++    setDraft({
++      description: li.description,
++      qty: String(li.qty),
++      unitPrice: String(li.unitPrice),
++    });
++  }
++
++  async function onSaveEdit(id: number) {
++    const res = await fetch('/api/lineitems/update', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({
++        id,
++        description: draft.description,
++        qty: Number(draft.qty),
++        unitPrice: Number(draft.unitPrice),
++      }),
++    });
++    if (res.ok) {
++      const updated: LineItem = await res.json();
++      setLineItems((prev) => prev.map((li) => (li.id === id ? updated : li)));
++      setEditingId(null);
++    }
++  }
++
+   const total = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
+ 
+   return (
+@@ -90,17 +135,79 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+             <th>Qty</th>
+             <th>Unit price</th>
+             <th>Amount</th>
++            <th>Actions</th>
+           </tr>
+         </thead>
+         <tbody>
+-          {lineItems.map((li) => (
+-            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+-              <td data-testid="lineitem-description">{li.description}</td>
+-              <td data-testid="lineitem-qty">{li.qty}</td>
+-              <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
+-              <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
+-            </tr>
+-          ))}
++          {lineItems.map((li) =>
++            editingId === li.id ? (
++              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
++                <td>
++                  <input
++                    data-testid={`lineitem-edit-description-${li.id}`}
++                    value={draft.description}
++                    onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
++                  />
++                </td>
++                <td>
++                  <input
++                    data-testid={`lineitem-edit-qty-${li.id}`}
++                    value={draft.qty}
++                    onChange={(e) => setDraft((d) => ({ ...d, qty: e.target.value }))}
++                  />
++                </td>
++                <td>
++                  <input
++                    data-testid={`lineitem-edit-unitprice-${li.id}`}
++                    value={draft.unitPrice}
++                    onChange={(e) => setDraft((d) => ({ ...d, unitPrice: e.target.value }))}
++                  />
++                </td>
++                <td data-testid="lineitem-amount">
++                  {money(Number(draft.qty) * Number(draft.unitPrice))}
++                </td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-save-${li.id}`}
++                    onClick={() => void onSaveEdit(li.id)}
++                  >
++                    Save
++                  </button>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-cancel-${li.id}`}
++                    onClick={() => setEditingId(null)}
++                  >
++                    Cancel
++                  </button>
++                </td>
++              </tr>
++            ) : (
++              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
++                <td data-testid="lineitem-description">{li.description}</td>
++                <td data-testid="lineitem-qty">{li.qty}</td>
++                <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
++                <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-edit-${li.id}`}
++                    onClick={() => startEdit(li)}
++                  >
++                    Edit
++                  </button>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-remove-${li.id}`}
++                    onClick={() => void onRemove(li.id)}
++                  >
++                    Remove
++                  </button>
++                </td>
++              </tr>
++            ),
++          )}
+         </tbody>
+       </table>
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/ChangeLineItem.java b/src/main/java/net/officefloor/hq/app/ChangeLineItem.java
+new file mode 100644
+index 0000000..24465b2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ChangeLineItem.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/** Request body for changing an existing line item (POST /api/lineitems/update). */
++public class ChangeLineItem {
++
++    private long id;
++    private String description;
++    private int qty;
++    private BigDecimal unitPrice;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public void setDescription(String description) {
++        this.description = description;
++    }
++
++    public int getQty() {
++        return qty;
++    }
++
++    public void setQty(int qty) {
++        this.qty = qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    public void setUnitPrice(BigDecimal unitPrice) {
++        this.unitPrice = unitPrice;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemRepository.java b/src/main/java/net/officefloor/hq/app/LineItemRepository.java
+index 7d136e5..21a7be0 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItemRepository.java
++++ b/src/main/java/net/officefloor/hq/app/LineItemRepository.java
+@@ -43,4 +43,26 @@ public class LineItemRepository {
+         }, keys);
+         return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unitPrice);
+     }
++
++    public LineItem findById(long id) {
++        List<LineItem> found = jdbc.query(
++                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE id = ?",
++                MAPPER, id);
++        return found.isEmpty() ? null : found.get(0);
++    }
++
++    public LineItem update(long id, String description, int qty, BigDecimal unitPrice) {
++        LineItem existing = findById(id);
++        if (existing == null) {
++            return null;
++        }
++        jdbc.update(
++                "UPDATE line_items SET description = ?, qty = ?, unit_price = ? WHERE id = ?",
++                description, qty, unitPrice, id);
++        return new LineItem(id, existing.invoiceId(), description, qty, unitPrice);
++    }
++
++    public boolean delete(long id) {
++        return jdbc.update("DELETE FROM line_items WHERE id = ?", id) > 0;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemsRemovePostLogic.java b/src/main/java/net/officefloor/hq/app/LineItemsRemovePostLogic.java
+new file mode 100644
+index 0000000..fb48d4b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/LineItemsRemovePostLogic.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/lineitems/remove — remove a charge line from an invoice; the total recomputes. */
++public class LineItemsRemovePostLogic {
++
++    public void service(@RequestBody RemoveLineItem body, LineItemRepository repository,
++            ObjectResponse<LineItem> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A line item id is required.");
++        }
++        LineItem existing = repository.findById(body.getId());
++        if (existing == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such line item.");
++        }
++        repository.delete(existing.id());
++        response.send(existing);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java b/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java
+new file mode 100644
+index 0000000..3457006
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/LineItemsUpdatePostLogic.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/lineitems/update — change an existing charge line; the total recomputes. */
++public class LineItemsUpdatePostLogic {
++
++    public void service(@RequestBody ChangeLineItem body, LineItemRepository repository,
++            ObjectResponse<LineItem> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A line item id is required.");
++        }
++        String description = body.getDescription() == null ? "" : body.getDescription().trim();
++        if (description.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A description is required.");
++        }
++        if (body.getQty() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A positive quantity is required.");
++        }
++        BigDecimal unitPrice = body.getUnitPrice();
++        if (unitPrice == null || unitPrice.signum() < 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price is required.");
++        }
++        LineItem updated = repository.update(body.getId(), description, body.getQty(),
++                unitPrice.setScale(2, RoundingMode.HALF_UP));
++        if (updated == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such line item.");
++        }
++        response.send(updated);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/RemoveLineItem.java b/src/main/java/net/officefloor/hq/app/RemoveLineItem.java
+new file mode 100644
+index 0000000..e25452d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/RemoveLineItem.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for removing a line item from an invoice (POST /api/lineitems/remove). */
++public class RemoveLineItem {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/lineitems/remove.POST.yml b/src/main/resources/officefloor/rest/api/lineitems/remove.POST.yml
+new file mode 100644
+index 0000000..d513214
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/lineitems/remove.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.LineItemsRemovePostLogic
+diff --git a/src/main/resources/officefloor/rest/api/lineitems/update.POST.yml b/src/main/resources/officefloor/rest/api/lineitems/update.POST.yml
+new file mode 100644
+index 0000000..ebc1fba
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/lineitems/update.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.LineItemsUpdatePostLogic
