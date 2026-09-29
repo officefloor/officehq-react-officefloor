@@ -16,7 +16,7 @@ type StatementInvoice = {
 type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
 
 function money(n: number): string {
-  return `$${Number(n).toFixed(2)}`;
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export function ClientStatement({ clientId }: { clientId: number }) {

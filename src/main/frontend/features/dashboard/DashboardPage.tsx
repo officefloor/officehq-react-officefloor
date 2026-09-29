@@ -23,7 +23,10 @@ export function DashboardPage() {
   }, []);
 
   // Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
-  const outstanding = `$${Number(summary?.outstandingTotal ?? 0).toFixed(2)}`;
+  const outstanding = Number(summary?.outstandingTotal ?? 0).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
 
   return (
     <section data-testid="dashboard-page">

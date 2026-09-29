@@ -21,7 +21,7 @@ type InvoicePage = {
 };
 
 function money(n: number): string {
-  return `$${Number(n).toFixed(2)}`;
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 // The lifecycle stages an invoice can sit at (see V5/V8 migrations: DRAFT -> SENT -> PAID). The

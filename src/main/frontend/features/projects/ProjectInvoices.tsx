@@ -15,7 +15,7 @@ type Invoice = {
 };
 
 function money(n: number): string {
-  return `$${Number(n).toFixed(2)}`;
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export function ProjectInvoices({ projectId }: { projectId: number }) {
