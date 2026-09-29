@@ -1,0 +1,198 @@
+diff --git a/src/main/frontend/features/search/SearchPage.tsx b/src/main/frontend/features/search/SearchPage.tsx
+new file mode 100644
+index 0000000..81dbfa9
+--- /dev/null
++++ b/src/main/frontend/features/search/SearchPage.tsx
+@@ -0,0 +1,65 @@
++import React, { useEffect, useState } from 'react';
++
++// Global search feature: owns its own state (CLAUDE.md — features own their state, no global store).
++// One box looks across BOTH clients and projects; the server (GET /api/search) matches each by name
++// and returns them grouped by kind, which we render as a "Clients" group and a "Projects" group.
++type Client = { id: number; name: string; email: string };
++type Project = { id: number; name: string; clientId: number; clientName: string };
++type SearchResults = { clients: Client[]; projects: Project[] };
++
++const EMPTY: SearchResults = { clients: [], projects: [] };
++
++export function SearchPage() {
++  const [query, setQuery] = useState('');
++  const [results, setResults] = useState<SearchResults>(EMPTY);
++
++  useEffect(() => {
++    const term = query.trim();
++    if (!term) {
++      setResults(EMPTY);
++      return;
++    }
++    let cancelled = false;
++    void (async () => {
++      const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
++      if (res.ok && !cancelled) {
++        setResults(await res.json());
++      }
++    })();
++    return () => {
++      cancelled = true;
++    };
++  }, [query]);
++
++  return (
++    <section data-testid="search-page">
++      <h1>Search</h1>
++      <input
++        data-testid="global-search"
++        placeholder="Search clients and projects"
++        value={query}
++        onChange={(e) => setQuery(e.target.value)}
++      />
++
++      <div data-testid="search-clients">
++        <h2>Clients</h2>
++        {results.clients.map((c) => (
++          <div key={c.id} data-testid={`client-row-${c.id}`}>
++            <span data-testid="client-name">{c.name}</span>
++            <span data-testid="client-email">{c.email}</span>
++          </div>
++        ))}
++      </div>
++
++      <div data-testid="search-projects">
++        <h2>Projects</h2>
++        {results.projects.map((p) => (
++          <div key={p.id} data-testid={`project-row-${p.id}`}>
++            <span data-testid="project-name">{p.name}</span>
++            <span data-testid="project-client">{p.clientName}</span>
++          </div>
++        ))}
++      </div>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/search/route.tsx b/src/main/frontend/features/search/route.tsx
+new file mode 100644
+index 0000000..f1ff90c
+--- /dev/null
++++ b/src/main/frontend/features/search/route.tsx
+@@ -0,0 +1,10 @@
++import type { FeatureRoute } from '../../router/routes';
++import { SearchPage } from './SearchPage';
++
++// Order below the dashboard so the one global search box is the landing page at '/'.
++export const route: FeatureRoute = {
++  section: 'search',
++  label: 'Search',
++  order: -1,
++  Page: SearchPage,
++};
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index 9516961..825453d 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -26,6 +26,22 @@ public class ClientRepository {
+                 (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+     }
+ 
++    /**
++     * Clients whose name matches the global search term (case-insensitive substring). Archived
++     * clients stay hidden, matching the plain list. A blank term matches nothing — the global
++     * search only surfaces results once something is typed.
++     */
++    public List<Client> searchByName(String term) {
++        if (term == null || term.isBlank()) {
++            return List.of();
++        }
++        return jdbc.query(
++                "SELECT id, name, email FROM clients"
++                        + " WHERE archived = FALSE AND LOWER(name) LIKE ? ORDER BY id",
++                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
++                "%" + term.trim().toLowerCase() + "%");
++    }
++
+     /** Look up one client, or null when there is no such row. */
+     public Client findById(long id) {
+         List<Client> rows = jdbc.query(
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index fe07d68..ed7021b 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -92,6 +92,20 @@ public class ProjectRepository {
+         return jdbc.query(sql.toString(), MAPPER, args.toArray());
+     }
+ 
++    /**
++     * Projects whose name matches the global search term (case-insensitive substring). Archived
++     * projects stay hidden, matching the plain list. A blank term matches nothing — the global
++     * search only surfaces results once something is typed.
++     */
++    public List<Project> searchByName(String term) {
++        if (term == null || term.isBlank()) {
++            return List.of();
++        }
++        return jdbc.query(
++                SELECT + " WHERE p.archived = FALSE AND LOWER(p.name) LIKE ? ORDER BY p.id",
++                MAPPER, "%" + term.trim().toLowerCase() + "%");
++    }
++
+     public Project create(String name, long clientId, String status) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+diff --git a/src/main/java/net/officefloor/hq/app/SearchGetLogic.java b/src/main/java/net/officefloor/hq/app/SearchGetLogic.java
+new file mode 100644
+index 0000000..4d6ab73
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SearchGetLogic.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/search?q=&lt;term&gt; — the one global search box. It looks across both clients and
++ * projects, matching each by name (case-insensitive substring) and returning the matches grouped by
++ * kind. A blank term returns empty groups.
++ */
++public class SearchGetLogic {
++
++    public void service(@HttpQueryParameter("q") String q,
++            ClientRepository clients, ProjectRepository projects,
++            ObjectResponse<SearchResults> response) {
++        response.send(new SearchResults(clients.searchByName(q), projects.searchByName(q)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/SearchResults.java b/src/main/java/net/officefloor/hq/app/SearchResults.java
+new file mode 100644
+index 0000000..681a655
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SearchResults.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++
++/**
++ * The result of the one global search box: matches across both entity kinds, grouped so the UI can
++ * show a "Clients" group and a "Projects" group. Serialised as JSON by GET /api/search.
++ */
++public record SearchResults(List<Client> clients, List<Project> projects) {
++}
+diff --git a/src/main/resources/db/migration/V26__name_search_indexes.sql b/src/main/resources/db/migration/V26__name_search_indexes.sql
+new file mode 100644
+index 0000000..29fad47
+--- /dev/null
++++ b/src/main/resources/db/migration/V26__name_search_indexes.sql
+@@ -0,0 +1,5 @@
++-- The one global search box (GET /api/search) matches clients and projects by a case-insensitive
++-- substring of their name. Index each name column so the search stays cheap as the lists grow.
++-- Additive: a new versioned migration, no change to an applied one.
++CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
++CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
+diff --git a/src/main/resources/officefloor/rest/api/search.GET.yml b/src/main/resources/officefloor/rest/api/search.GET.yml
+new file mode 100644
+index 0000000..7893956
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/search.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.SearchGetLogic
