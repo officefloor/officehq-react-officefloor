@@ -18,22 +18,25 @@ public class ProjectRepository {
 
     private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
             (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
-                    rs.getLong("client_id"), rs.getString("client_name"));
+                    rs.getLong("client_id"), rs.getString("client_name"),
+                    rs.getBoolean("archived"));
 
-    public List<Project> findAll() {
-        return jdbc.query(
-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
-                        + " ORDER BY p.id",
-                MAPPER);
+    private static final String SELECT =
+            "SELECT p.id, p.name, p.client_id, p.archived, c.name AS client_name"
+                    + " FROM projects p JOIN clients c ON p.client_id = c.id";
+
+    /**
+     * List projects. Archived projects are hidden unless {@code includeArchived} is true — that is
+     * what keeps a tucked-away project off the main list until the toggle reveals it.
+     */
+    public List<Project> findAll(boolean includeArchived) {
+        String where = includeArchived ? "" : " WHERE p.archived = FALSE";
+        return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
     }
 
-    /** Projects done for one client — reused by the client detail view. */
+    /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
     public List<Project> findByClient(long clientId) {
-        return jdbc.query(
-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
-                        + " WHERE p.client_id = ? ORDER BY p.id",
+        return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
                 MAPPER, clientId);
     }
 
@@ -48,20 +51,21 @@ public class ProjectRepository {
         }, keys);
         String clientName = jdbc.queryForObject(
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
-        return new Project(keys.getKey().longValue(), name, clientId, clientName);
+        return new Project(keys.getKey().longValue(), name, clientId, clientName, false);
     }
 
     /** Look up one project (with joined client name), or null when there is no such row. */
     public Project findById(long id) {
-        List<Project> rows = jdbc.query(
-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
-                        + " WHERE p.id = ?",
-                MAPPER, id);
+        List<Project> rows = jdbc.query(SELECT + " WHERE p.id = ?", MAPPER, id);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     public boolean delete(long id) {
         return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
+    }
+
+    /** Tuck a project away: flag it archived so it drops off the lists but its row is retained. */
+    public boolean archive(long id) {
+        return jdbc.update("UPDATE projects SET archived = TRUE WHERE id = ?", id) > 0;
     }
 }

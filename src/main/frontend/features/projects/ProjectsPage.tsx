@@ -4,7 +4,7 @@ import { ProjectTasks } from './ProjectTasks';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
-type Project = { id: number; name: string; clientId: number; clientName: string };
+type Project = { id: number; name: string; clientId: number; clientName: string; archived: boolean };
 type Client = { id: number; name: string };
 
 export function ProjectsPage() {
@@ -13,9 +13,10 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
-  async function loadProjects() {
-    const res = await fetch('/api/projects');
+  async function loadProjects(includeArchived = showArchived) {
+    const res = await fetch(`/api/projects${includeArchived ? '?includeArchived=true' : ''}`);
     if (res.ok) {
       setProjects(await res.json());
     }
@@ -45,6 +46,24 @@ export function ProjectsPage() {
       setProjects((prev) => prev.filter((p) => p.id !== id));
       setOpenProjectId((prev) => (prev === id ? null : prev));
     }
+  }
+
+  async function onArchive(id: number) {
+    const res = await fetch('/api/projects/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      setOpenProjectId((prev) => (prev === id ? null : prev));
+      await loadProjects();
+    }
+  }
+
+  function onToggleArchived() {
+    const next = !showArchived;
+    setShowArchived(next);
+    void loadProjects(next);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -87,6 +106,10 @@ export function ProjectsPage() {
         </button>
       </form>
 
+      <button type="button" data-testid="projects-show-archived" onClick={onToggleArchived}>
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
       ) : (
@@ -110,6 +133,13 @@ export function ProjectsPage() {
                     onClick={() => setOpenProjectId(p.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`project-archive-${p.id}`}
+                    onClick={() => void onArchive(p.id)}
+                  >
+                    Archive
                   </button>
                   <button
                     type="button"
