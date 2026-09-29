@@ -17,8 +17,8 @@ export function DashboardPage() {
     void load();
   }, []);
 
-  // Money owed is always shown to 2 decimal places (e.g. 300 -> "300.00").
-  const outstanding = Number(summary?.outstandingTotal ?? 0).toFixed(2);
+  // Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
+  const outstanding = `$${Number(summary?.outstandingTotal ?? 0).toFixed(2)}`;
 
   return (
     <section data-testid="dashboard-page">
