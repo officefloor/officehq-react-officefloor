@@ -37,6 +37,17 @@ public class InvoiceRepository {
                 MAPPER, projectId);
     }
 
+    /** Every invoice across all projects, joined to its project name, ordered by id. */
+    public List<InvoiceListing> findAllWithProject() {
+        return jdbc.query(
+                "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status"
+                        + " FROM invoices i JOIN projects p ON p.id = i.project_id"
+                        + " ORDER BY i.id",
+                (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
+                        rs.getString("project_name"), rs.getBigDecimal("amount"),
+                        rs.getString("status")));
+    }
+
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
