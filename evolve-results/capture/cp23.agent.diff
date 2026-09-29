@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 37f32f3..5ec03eb 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -211,6 +211,7 @@ function InvoiceDetail({
+ function ProjectDetail({ project }: { project: Project }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [tasks, setTasks] = useState<Task[]>([]);
++  const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'DONE'>('ALL');
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
+   const [sortByDue, setSortByDue] = useState(false);
+@@ -263,6 +264,10 @@ function ProjectDetail({ project }: { project: Project }) {
+     await load();
+   }
+ 
++  const shownTasks = tasks.filter((t) =>
++    taskFilter === 'OPEN' ? !t.done : taskFilter === 'DONE' ? t.done : true,
++  );
++
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+   const shownInvoices = sortByDue
+     ? [...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+@@ -272,9 +277,19 @@ function ProjectDetail({ project }: { project: Project }) {
+     <section data-testid="project-detail">
+       <h2 data-testid="project-detail-name">{project.name}</h2>
+ 
++      <select
++        data-testid="task-filter"
++        value={taskFilter}
++        onChange={(e) => setTaskFilter(e.target.value as 'ALL' | 'OPEN' | 'DONE')}
++      >
++        <option value="ALL">All tasks</option>
++        <option value="OPEN">Open</option>
++        <option value="DONE">Done</option>
++      </select>
++
+       <table data-testid="project-tasks-table">
+         <tbody>
+-          {tasks.map((t) => (
++          {shownTasks.map((t) => (
+             <tr key={t.id} data-testid={`task-row-${t.id}`}>
+               <td data-testid="task-title">{t.title}</td>
+               <td data-testid="task-status">{t.done ? 'DONE' : 'OPEN'}</td>
