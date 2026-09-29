@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index d849ea1..157af84 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -257,11 +257,17 @@ function ClientsPage() {
+       return;
+     }
+     setEmailError('');
+-    await fetch('/api/clients', {
++    const res = await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ name, email }),
+     });
++    // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
++    // form as-is rather than clearing or reloading (nothing was added).
++    if (!res.ok) {
++      setEmailError('A client with this email already exists.');
++      return;
++    }
+     setName('');
+     setEmail('');
+     await load();
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 0ad5aa0..c0b6f46 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -8,4 +8,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** Clients still in play — archived ones are tucked away and excluded. */
+     List<Client> findByArchivedFalse();
++
++    /** Whether a client already uses this email — two clients cannot share one. */
++    boolean existsByEmail(String email);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/CreateClient.java b/src/main/java/net/officefloor/hq/app/client/CreateClient.java
+index 63e64f4..bb7cbed 100644
+--- a/src/main/java/net/officefloor/hq/app/client/CreateClient.java
++++ b/src/main/java/net/officefloor/hq/app/client/CreateClient.java
+@@ -19,6 +19,12 @@ public class CreateClient {
+             throw new HttpException(HttpStatus.BAD_REQUEST,
+                     "A client requires a valid email address");
+         }
++        // Two clients cannot share an email; reject a duplicate before it reaches the unique
++        // constraint (see V24__clients_email_unique.sql).
++        if (repository.existsByEmail(email)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A client with this email already exists");
++        }
+         Client client = new Client();
+         client.setName(body.getName());
+         client.setEmail(email);
+diff --git a/src/main/resources/db/migration/V24__clients_email_unique.sql b/src/main/resources/db/migration/V24__clients_email_unique.sql
+new file mode 100644
+index 0000000..fa60339
+--- /dev/null
++++ b/src/main/resources/db/migration/V24__clients_email_unique.sql
+@@ -0,0 +1,4 @@
++-- Two clients cannot share an email. Enforce uniqueness at the database as the last line of
++-- defence, matching the UI/server rule (the server rejects a duplicate before it reaches here).
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_unique UNIQUE (email);
