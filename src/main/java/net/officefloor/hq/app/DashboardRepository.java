@@ -19,11 +19,18 @@ public class DashboardRepository {
     public DashboardSummary summary() {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
-        // Money still owed = sum of amounts on invoices that have actually been SENT (excludes
-        // DRAFT invoices not yet issued, and PAID invoices already settled). COALESCE keeps the
-        // total at 0.00 (never null) when nothing is outstanding.
+        // Money still owed = for every issued invoice (stored status SENT), the sum of its
+        // line-item amount (qty * unit_price) minus whatever has been paid against it. Amount is
+        // derived from line items (V13), so the stored amount column is not used. DRAFT invoices are
+        // not yet issued and VOID invoices were cancelled, so both are excluded (their stored status
+        // is not SENT). COALESCE keeps the total at 0.00 (never null) when nothing is outstanding.
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                "SELECT COALESCE(SUM("
+                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
+                        + " WHERE li.invoice_id = i.id), 0)"
+                        + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
+                        + " WHERE pm.invoice_id = i.id), 0)), 0)"
+                        + " FROM invoices i WHERE i.status = 'SENT'",
                 BigDecimal.class);
         // Overdue = invoices that have been SENT and whose due date has already passed relative to
         // the dashboard's reference date. That date is seeded (dashboard_settings.as_of) so the

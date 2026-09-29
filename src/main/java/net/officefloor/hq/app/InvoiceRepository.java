@@ -42,7 +42,8 @@ public class InvoiceRepository {
     // amount is paid, and PAID once the payments cover the amount. Derived here so the status always
     // reflects the payments on file.
     private static final String DERIVED_STATUS =
-            "CASE WHEN i.status = 'DRAFT' THEN 'DRAFT'"
+            "CASE WHEN i.status = 'VOID' THEN 'VOID'"
+                    + " WHEN i.status = 'DRAFT' THEN 'DRAFT'"
                     + " WHEN " + AMOUNT_SUM + " > 0 AND " + PAID_SUM + " >= " + AMOUNT_SUM
                     + " THEN 'PAID'"
                     + " WHEN " + PAID_SUM + " > 0 THEN 'PARTIAL'"
@@ -140,6 +141,12 @@ public class InvoiceRepository {
     /** Flip an invoice to PAID and return the updated row (null if no such invoice). */
     public Invoice markPaid(long id) {
         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", id);
+        return findById(id);
+    }
+
+    /** Cancel (void) an invoice and return the updated row (null if no such invoice). */
+    public Invoice markVoid(long id) {
+        jdbc.update("UPDATE invoices SET status = 'VOID' WHERE id = ?", id);
         return findById(id);
     }
 }
