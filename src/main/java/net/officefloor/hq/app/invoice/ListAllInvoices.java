@@ -19,7 +19,9 @@ public class ListAllInvoices {
                 rs.getLong("project_id"), rs.getString("project_name"), rs.getBigDecimal("amount"),
                 rs.getString("status"));
         boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
-        String base = "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status "
+        String base = "SELECT i.id, i.project_id, p.name AS project_name, i.status, "
+                + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+                + "WHERE li.invoice_id = i.id), 0) AS amount "
                 + "FROM invoices i JOIN projects p ON p.id = i.project_id ";
         List<AllInvoiceView> invoices = all
                 ? jdbc.query(base + "ORDER BY i.id", mapper)

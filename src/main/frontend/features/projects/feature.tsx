@@ -18,8 +18,113 @@ type Invoice = {
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
 
+type LineItem = {
+  id: number;
+  invoiceId: number;
+  description: string;
+  qty: number;
+  unitPrice: number;
+};
+
 function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
+}
+
+// An opened invoice's detail: the things it is charging for, listed as line items (description, how
+// many, price each), the total worked out for you, and a form to add another line. Owns its own
+// line-item state, scoped to the one invoice it is showing.
+function InvoiceDetail({
+  invoiceId,
+  onChange,
+  onClose,
+}: {
+  invoiceId: number;
+  onChange: () => void;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [description, setDescription] = useState('');
+  const [qty, setQty] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
+
+  async function load() {
+    const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
+    setItems(await res.json());
+  }
+
+  useEffect(() => {
+    void load();
+  }, [invoiceId]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!description.trim() || qty.trim() === '' || unitPrice.trim() === '') {
+      return;
+    }
+    await fetch(`/api/invoices/${invoiceId}/line-items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description,
+        qty: Number(qty),
+        unitPrice: Number(unitPrice),
+      }),
+    });
+    setDescription('');
+    setQty('');
+    setUnitPrice('');
+    await load();
+    onChange();
+  }
+
+  const total = items.reduce((sum, li) => sum + Number(li.qty) * Number(li.unitPrice), 0);
+
+  return (
+    <section data-testid="invoice-detail">
+      <button data-testid="invoice-detail-close" type="button" onClick={onClose}>
+        Back to invoices
+      </button>
+
+      <table data-testid="invoice-lineitems-table">
+        <tbody>
+          {items.map((li) => (
+            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+              <td data-testid="lineitem-description">{li.description}</td>
+              <td data-testid="lineitem-qty">{li.qty}</td>
+              <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
+              <td data-testid="lineitem-amount">{money(Number(li.qty) * Number(li.unitPrice))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p data-testid="invoice-amount">{money(total)}</p>
+
+      <form data-testid="lineitem-form" onSubmit={submit}>
+        <input
+          data-testid="lineitem-form-description"
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <input
+          data-testid="lineitem-form-qty"
+          placeholder="How many"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+        />
+        <input
+          data-testid="lineitem-form-unitprice"
+          placeholder="Price each"
+          value={unitPrice}
+          onChange={(e) => setUnitPrice(e.target.value)}
+        />
+        <button data-testid="lineitem-form-submit" type="submit">
+          Add line item
+        </button>
+      </form>
+    </section>
+  );
 }
 
 // A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its
@@ -30,6 +135,7 @@ function ProjectDetail({ project }: { project: Project }) {
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
+  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch(`/api/invoices?projectId=${project.id}`);
@@ -124,32 +230,48 @@ function ProjectDetail({ project }: { project: Project }) {
         Sort by due date
       </button>
 
-      <table data-testid="project-invoices-table">
-        <tbody>
-          {shownInvoices.map((inv) => (
-            <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-              <td data-testid="invoice-amount">{money(inv.amount)}</td>
-              <td data-testid="invoice-issued">{inv.issuedDate}</td>
-              <td data-testid="invoice-due">{inv.dueDate}</td>
-              <td data-testid="invoice-status">{inv.status}</td>
-              <td>
-                {inv.status === 'DRAFT' && (
-                  <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
-                    Send
-                  </button>
-                )}
-                {inv.status === 'SENT' && (
-                  <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
-                    Mark paid
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {openInvoiceId === null ? (
+        <>
+          <table data-testid="project-invoices-table">
+            <tbody>
+              {shownInvoices.map((inv) => (
+                <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
+                  <td data-testid="invoice-issued">{inv.issuedDate}</td>
+                  <td data-testid="invoice-due">{inv.dueDate}</td>
+                  <td data-testid="invoice-status">{inv.status}</td>
+                  <td>
+                    <button
+                      data-testid={`invoice-open-${inv.id}`}
+                      onClick={() => setOpenInvoiceId(inv.id)}
+                    >
+                      Open
+                    </button>
+                    {inv.status === 'DRAFT' && (
+                      <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
+                        Send
+                      </button>
+                    )}
+                    {inv.status === 'SENT' && (
+                      <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
+                        Mark paid
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-      <p data-testid="project-invoices-total">{money(total)}</p>
+          <p data-testid="project-invoices-total">{money(total)}</p>
+        </>
+      ) : (
+        <InvoiceDetail
+          invoiceId={openInvoiceId}
+          onChange={load}
+          onClose={() => setOpenInvoiceId(null)}
+        />
+      )}
     </section>
   );
 }

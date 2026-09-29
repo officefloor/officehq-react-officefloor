@@ -36,6 +36,7 @@ public class TestSupportController {
         // (and their identity counters restarted) regardless of FK order.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
@@ -73,18 +74,24 @@ public class TestSupportController {
                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
         for (Map<String, Object> in : invoices) {
             Object status = in.get("status");
+            Object amount = in.get("amount");
             Object issuedDate = in.get("issuedDate");
             Object dueDate = in.get("dueDate");
-            // Insert only the columns the fixture supplies for the (optional) dates, so the
-            // table's own defaults apply when a fixture omits them (a plain null would trip the
-            // NOT NULL columns). status defaults to DRAFT — a new invoice starts as a draft.
-            StringBuilder cols = new StringBuilder("id, project_id, amount, status");
-            StringBuilder marks = new StringBuilder("?, ?, ?, ?");
+            // Insert only the columns the fixture supplies, so the table's own defaults apply when a
+            // fixture omits them (a plain null would trip the NOT NULL columns). status defaults to
+            // DRAFT and amount defaults to 0 — an invoice's amount is now derived from its line
+            // items, so fixtures list lineItems rather than a single typed amount.
+            StringBuilder cols = new StringBuilder("id, project_id, status");
+            StringBuilder marks = new StringBuilder("?, ?, ?");
             List<Object> args = new java.util.ArrayList<>(List.of(
                     ((Number) in.get("id")).longValue(),
                     ((Number) in.get("projectId")).longValue(),
-                    ((Number) in.get("amount")).doubleValue(),
                     status == null ? "DRAFT" : status.toString()));
+            if (amount != null) {
+                cols.append(", amount");
+                marks.append(", ?");
+                args.add(((Number) amount).doubleValue());
+            }
             if (issuedDate != null) {
                 cols.append(", issued_date");
                 marks.append(", ?");
@@ -97,6 +104,17 @@ public class TestSupportController {
             }
             jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
                     args.toArray());
+            List<Map<String, Object>> lineItems =
+                    (List<Map<String, Object>>) in.getOrDefault("lineItems", List.of());
+            for (Map<String, Object> li : lineItems) {
+                jdbc.update(
+                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
+                                + " VALUES (?, ?, ?, ?, ?)",
+                        ((Number) li.get("id")).longValue(),
+                        ((Number) in.get("id")).longValue(), li.get("description"),
+                        ((Number) li.get("qty")).intValue(),
+                        ((Number) li.get("unitPrice")).doubleValue());
+            }
         }
         List<Map<String, Object>> tasks =
                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
