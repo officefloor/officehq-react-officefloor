@@ -21,6 +21,8 @@ public class Project {
     @Column(name = "client_id")
     private Long clientId;
 
+    private boolean archived;
+
     public Long getId() {
         return id;
     }
@@ -43,5 +45,13 @@ public class Project {
 
     public void setClientId(Long clientId) {
         this.clientId = clientId;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 }

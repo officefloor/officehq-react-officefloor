@@ -7,7 +7,13 @@ import type { Feature } from '../../router/routes';
 // /api/projects and /api/invoices endpoints and reads /api/clients to populate the client picker.
 // data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
-type Project = { id: number; name: string; clientId: number; clientName: string };
+type Project = {
+  id: number;
+  name: string;
+  clientId: number;
+  clientName: string;
+  archived: boolean;
+};
 type Invoice = {
   id: number;
   projectId: number;
@@ -376,6 +382,9 @@ function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
+  // Archived projects are tucked away (retained, not deleted) and hidden by default; this toggle
+  // reveals them again.
+  const [showArchived, setShowArchived] = useState(false);
 
   async function loadProjects() {
     const res = await fetch('/api/projects');
@@ -415,7 +424,16 @@ function ProjectsPage() {
     await loadProjects();
   }
 
+  async function archive(id: number) {
+    await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
+    if (openId === id) {
+      setOpenId(null);
+    }
+    await loadProjects();
+  }
+
   const open = projects.find((p) => p.id === openId) ?? null;
+  const visible = showArchived ? projects : projects.filter((p) => !p.archived);
 
   return (
     <section data-testid="projects">
@@ -443,18 +461,29 @@ function ProjectsPage() {
         </button>
       </form>
 
+      <button
+        data-testid="projects-show-archived"
+        type="button"
+        onClick={() => setShowArchived((v) => !v)}
+      >
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
       ) : (
         <table data-testid="projects-table">
           <tbody>
-            {projects.map((p) => (
+            {visible.map((p) => (
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
                 <td>
                   <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
                     Open
+                  </button>
+                  <button data-testid={`project-archive-${p.id}`} onClick={() => archive(p.id)}>
+                    Archive
                   </button>
                   <button data-testid={`project-delete-${p.id}`} onClick={() => remove(p.id)}>
                     Delete

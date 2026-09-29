@@ -11,11 +11,12 @@ public class ListClientProjects {
     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
             ObjectResponse<List<ProjectView>> response) {
         List<ProjectView> projects = jdbc.query(
-                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
+                "SELECT p.id, p.name, p.client_id, p.archived, c.name AS client_name "
                         + "FROM projects p JOIN clients c ON c.id = p.client_id "
-                        + "WHERE p.client_id = ? ORDER BY p.id",
+                        + "WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
-                        rs.getLong("client_id"), rs.getString("client_name")),
+                        rs.getLong("client_id"), rs.getString("client_name"),
+                        rs.getBoolean("archived")),
                 Long.valueOf(id));
         response.send(projects);
     }
