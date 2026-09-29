@@ -1,0 +1,752 @@
+{
+  "checkpoint": 43,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp43_global_search",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Give me one search box. Have it look across both clients and projects.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nGive me one search box. Have it look across both clients and projects.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "70b59030af2afeec693cb1deb37741017290bcb4",
+  "reset_sha": "",
+  "preagent_sha": "0d397e917e4819284105c900c4cfa60cf68489d2",
+  "prev_sha": "0d397e917e4819284105c900c4cfa60cf68489d2",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3306455,
+    "input_tokens": 62,
+    "output_tokens": 13735,
+    "cache_read_tokens": 1130869,
+    "cache_creation_tokens": 42035,
+    "num_turns": 31,
+    "duration_ms": 252506,
+    "duration_api_ms": 234037,
+    "model": "claude-opus-4-8",
+    "session_id": "d8723c6f-6e5b-4687-b870-481e881ec643",
+    "stop_reason": "success",
+    "result_text": "The test passes. The full-stack change is complete:\n\n- **Migration** `V23__search_indexes.sql` \u2014 indexes `clients.name` and `projects.name` for the name lookups the search scans (additive, non-destructive).\n- **Server** \u2014 a new `GET /api/search?q=<term>` endpoint: `search.GET.yml` + `Search` logic doing a case-insensitive substring match across both tables (excluding archived clients), returning matches grouped by kind via `SearchView` / `SearchClientView` / `SearchProjectView`.\n- **Front-end** \u2014 a self-contained `GlobalSearch` component (owns its own state, talks to its own `/api/search` endpoint), mounted once in the app shell so the one search box is visible at `/`. It reuses the `client-row-<id>`/`client-name` and `project-row-<id>`/`project-name` anchors inside `search-clients` and `search-projects` panels, matching the spec exactly.\n\nThe one edit to `main.tsx` was necessary because the spec loads `/` and expects `global-search` with no nav click \u2014 the search is app-level chrome, not a nav-activated page, so it's composed into the shell rather than added to the feature router (`routes.ts` untouched).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.3306455,
+        "num_turns": 31,
+        "duration_ms": 252506,
+        "duration_api_ms": 234037,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp43.agent.jsonl",
+  "agent_diff_file": "cp43.agent.diff",
+  "build_log_file": "cp43.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 53,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients, excluding archived": false,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name, excluding archived": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount": true,
+      "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid": true,
+      "cp06_client_search.spec.ts::filters clients by name and skips archived matches": false,
+      "cp07_client_detail_projects.spec.ts::lists the client's active projects by default": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": false,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show commas": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": false,
+      "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true,
+      "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts": false,
+      "cp18_contact_email_validation.spec.ts::rejects a bad contact email": true,
+      "cp19_client_badges.spec.ts::shows project and contact counts": true,
+      "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off": true,
+      "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items, with commas": true,
+      "cp22_line_items_edit.spec.ts::removing a line item lowers the total": true,
+      "cp23_task_filter.spec.ts::shows only open or only done tasks": true,
+      "cp24_project_delete_audit.spec.ts::removing archives the project and records it": true,
+      "cp25_project_archive.spec.ts::archiving hides the project but keeps it": true,
+      "cp26_project_tags.spec.ts::shows, adds and removes tags on a project": true,
+      "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag": true,
+      "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top": true,
+      "cp29_client_archive.spec.ts::archiving hides the client but keeps it": true,
+      "cp30_invoice_payments.spec.ts::shows and records payments on an invoice": true,
+      "cp31_invoice_amount_due.spec.ts::shows the amount due and a partial status when part paid": true,
+      "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status": true,
+      "cp33_client_statement.spec.ts::shows the total owed with commas": true,
+      "cp34_project_status.spec.ts::shows a project's status": true,
+      "cp34_project_status.spec.ts::sets the status when creating a project": true,
+      "cp35_project_status_filter.spec.ts::shows only projects at the chosen status": true,
+      "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest": true,
+      "cp37_project_budget.spec.ts::shows budget, invoiced and remaining": true,
+      "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date": true,
+      "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time": true,
+      "cp40_thousands_separator.spec.ts::shows commas in large amounts": true,
+      "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it": true,
+      "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding": true,
+      "cp42_client_primary_contact.spec.ts::shows and changes the main contact": true,
+      "cp43_global_search.spec.ts::finds matching clients and projects": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients, excluding archived",
+        "category": "core",
+        "passed": false,
+        "duration_ms": 5613,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^client-row-/)\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m3\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId(/^client-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m\n\n\n  16 |\n  17 |     await expect(page.getByTestId('clients-table')).toBeVisible();\n> 18 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(2);\n     |                                                    ^\n  19 |     await expect(page.getByTestId('client-row-1').getByTestId('client-name')).toHaveText('Acme Ltd');\n  20 |     await expect(page.getByTestId('client-row-3')).toHaveCount(0);\n  21 |   });\n\n    at /home/daniel/ui-work/202609291349/gated-chain2/e2e/specs/cp01_clients.spec.ts:18:52 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^client-row-/)\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m3\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId(/^client-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 3 elements\u001b[22m\n\u001b[2m  -   unexpected value \"3\"\u001b[22m"
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 399,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 222,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 312,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name, excluding archived",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 269,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 318,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adding a line item to a new invoice sets its amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 432,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::recording a full payment marks the invoice paid",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 455,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name and skips archived matches",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5161,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^client-row-/)\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m4\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId(/^client-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 0 elements\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to 0 elements\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to 4 elements\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\n\n  15 |     await page.goto('/');\n  16 |     await page.getByTestId('nav-clients').click();\n> 17 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(3); // archived excluded from the list\n     |                                                    ^\n  18 |\n  19 |     await page.getByTestId('client-search').fill('glob');\n  20 |     await expect(page.getByTestId(/^client-row-/)).toHaveCount(1);\n\n    at /home/daniel/ui-work/202609291349/gated-chain2/e2e/specs/cp06_client_search.spec.ts:17:52 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId(/^client-row-/)\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m4\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId(/^client-row-/)\u001b[22m\n\u001b[2m  -   locator resolved to 0 elements\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22"
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's active projects by default",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5283,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('dashboard-outstanding-total')\nExpected string: \u001b[32m\"$\u001b[7m30\u001b[27m0.00\"\u001b[39m\nReceived string: \u001b[31m\"$0.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('dashboard-outstanding-total')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\n\n  26 |     await expect(page.getByTestId('dashboard-clients-count')).toHaveText('2');\n  27 |     await expect(page.getByTestId('dashboard-projects-count')).toHaveText('2');\n> 28 |     await expect(page.getByTestId('dashboard-outstanding-total')).toHaveText('$300.00');\n     |                                                                   ^\n  29 |   });\n  30 | });\n  31"
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show commas",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 256,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 264,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 415,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 230,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 265,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 362,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m\"INVOICE_SENT id=1 amount=100.00\"\u001b[39m\nReceived array: \u001b[31m[\"INVOICE_SENT id=1 amount=0.00\"]\u001b[39m\n\n  19 |     await page.getByTestId('invoice-send-1').click();\n  20 |     await expect(page.getByTestId('invoice-row-1').getByTestId('invoice-status')).toHaveText('SENT');\n> 21 |     expect(auditLines()).toContain('INVOICE_SENT id=1 amount=100.00');\n     |                          ^\n  22 |   });\n  23 |\n  24 |   test('a sent invoice becomes paid once a covering payment is recorded', { tag: '@functionality' }, async ({ page }) => {\n\n    at /home/daniel/ui-work/202609291349/gated-chain2/e2e/specs/cp13_invoice_lifecycle.spec.ts:21:26 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m\"INVOICE_SENT id=1 amount=100.00\"\u001b[39m\nReceived array: \u001b[31m[\"INVOICE_SENT id=1 amount=0.00\"]\u001b[39m"
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a sent invoice becomes paid once a covering payment is recorded",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 293,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 282,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 230,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 381,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_outstanding_sent_only.spec.ts::the outstanding total excludes drafts",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5137,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('dashboard-outstanding-total')\nExpected string: \u001b[32m\"$\u001b[7m30\u001b[27m0.00\"\u001b[39m\nReceived string: \u001b[31m\"$0.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('dashboard-outstanding-total')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"dashboard-outstanding-total\">$0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"$0.00\"\u001b[22m\n\n\n  20 |\n  21 |     // 100 + 200 sent-and-unpaid; the 50 draft and 30 paid are excluded.\n> 22 |     await expect(page.getByTestId('dashboard-outstanding-total')).toHaveText('$300.00');\n     |                                                                   ^\n  23 |   });\n  24 | });\n  25 |\n\n    at /home/daniel/ui-work/202609291349/gated-chain2/e2e/specs/cp17_outstanding_sent_only.spec.ts:22:67 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b"
+      },
+      {
+        "test_id": "cp18_contact_email_validation.spec.ts::rejects a bad contact email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 333,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_client_badges.spec.ts::shows project and contact counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 201,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_project_tasks.spec.ts::lists tasks and lets me tick one off",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 350,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_invoice_line_items.spec.ts::invoice amount is the sum of its line items, with commas",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_line_items_edit.spec.ts::removing a line item lowers the total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 443,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_task_filter.spec.ts::shows only open or only done tasks",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 225,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_project_delete_audit.spec.ts::removing archives the project and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 305,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_project_archive.spec.ts::archiving hides the project but keeps it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 311,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_project_tags.spec.ts::shows, adds and removes tags on a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 560,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_project_tag_filter.spec.ts::shows only projects with the chosen tag",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 168,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_project_notes.spec.ts::shows notes newest first and adds a new one on top",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 378,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_client_archive.spec.ts::archiving hides the client but keeps it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 299,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_invoice_payments.spec.ts::shows and records payments on an invoice",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 436,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_invoice_amount_due.spec.ts::shows the amount due and a partial status when part paid",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_invoice_status_derived.spec.ts::a part payment then full payment drive the status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 605,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_client_statement.spec.ts::shows the total owed with commas",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 249,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::shows a project's status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_project_status.spec.ts::sets the status when creating a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 308,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_project_status_filter.spec.ts::shows only projects at the chosen status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_client_active_projects_default.spec.ts::shows active projects, with a toggle for the rest",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 244,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_project_budget.spec.ts::shows budget, invoiced and remaining",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 212,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_dashboard_overdue.spec.ts::counts sent invoices past their due date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_invoice_pagination.spec.ts::pages through the invoice list ten at a time",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 243,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_thousands_separator.spec.ts::shows commas in large amounts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::cancelling voids the invoice and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_invoice_cancel_audit.spec.ts::a voided invoice is excluded from outstanding",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 243,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_client_primary_contact.spec.ts::shows and changes the main contact",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 337,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_global_search.spec.ts::finds matching clients and projects",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 237,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 2.74,
+            "impact": 252,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "lang": "typescript",
+                "cost": 122,
+                "mutation": 0,
+                "godclass": 122,
+                "mut_fns": 0,
+                "new_fns": 6
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "lang": "typescript",
+                "cost": 4,
+                "mutation": 4,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "GlobalSearch",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 57,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 38,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 14,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/main.tsx",
+                "name": "App",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 2,
+                "cost": 4,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/search/GlobalSearch.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 4,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 14.45,
+            "impact": 444,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/Search.java",
+                "lang": "java",
+                "cost": 69,
+                "mutation": 0,
+                "godclass": 69,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchProjectView.java",
+                "lang": "java",
+                "cost": 18,
+                "mutation": 0,
+                "godclass": 18,
+                "mut_fns": 0,
+                "new_fns": 5
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchClientView.java",
+                "lang": "java",
+                "cost": 14,
+                "mutation": 0,
+                "godclass": 14,
+                "mut_fns": 0,
+                "new_fns": 4
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchView.java",
+                "lang": "java",
+                "cost": 10,
+                "mutation": 0,
+                "godclass": 10,
+                "mut_fns": 0,
+                "new_fns": 3
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/Search.java",
+                "name": "Search::service",
+                "container": "Search",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 69,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchProjectView.java",
+                "name": "SearchProjectView::SearchProjectView",
+                "container": "SearchProjectView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchClientView.java",
+                "name": "SearchClientView::SearchClientView",
+                "container": "SearchClientView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchView.java",
+                "name": "SearchView::SearchView",
+                "container": "SearchView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchClientView.java",
+                "name": "SearchClientView::getId",
+                "container": "SearchClientView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchClientView.java",
+                "name": "SearchClientView::getName",
+                "container": "SearchClientView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchClientView.java",
+                "name": "SearchClientView::getEmail",
+                "container": "SearchClientView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchProjectView.java",
+                "name": "SearchProjectView::getId",
+                "container": "SearchProjectView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchProjectView.java",
+                "name": "SearchProjectView::getName",
+                "container": "SearchProjectView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/search/SearchProjectView.java",
+                "name": "SearchProjectView::getClientId",
+                "container": "SearchProjectView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 2,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

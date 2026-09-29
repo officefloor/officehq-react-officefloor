@@ -1,0 +1,259 @@
+diff --git a/src/main/frontend/main.tsx b/src/main/frontend/main.tsx
+index 07a1f8d..1ecb89f 100644
+--- a/src/main/frontend/main.tsx
++++ b/src/main/frontend/main.tsx
+@@ -1,6 +1,7 @@
+ import React, { useState } from 'react';
+ import { createRoot } from 'react-dom/client';
+ import { features } from './router/routes';
++import { GlobalSearch } from './search/GlobalSearch';
+ 
+ // Minimal base shell. Features register additively via the manifest router (router/routes.ts); the
+ // shell renders a nav link per feature and the active feature's page. Navigation is via nav-* clicks
+@@ -17,6 +18,7 @@ function App() {
+           </button>
+         ))}
+       </nav>
++      <GlobalSearch />
+       <main data-testid="app-home">{current ? <current.Page /> : null}</main>
+     </div>
+   );
+diff --git a/src/main/frontend/search/GlobalSearch.tsx b/src/main/frontend/search/GlobalSearch.tsx
+new file mode 100644
+index 0000000..50618e7
+--- /dev/null
++++ b/src/main/frontend/search/GlobalSearch.tsx
+@@ -0,0 +1,69 @@
++import React, { useEffect, useState } from 'react';
++
++// One global search box that looks across both clients and projects at once, showing the matches
++// grouped by kind. App-level chrome (mounted in the shell, always visible), so it owns its own
++// search state and talks to its own /api/search endpoint. It reuses the client-row-<id>/client-name
++// and project-row-<id>/project-name anchors within its own grouped result panels.
++type SearchClient = { id: number; name: string; email: string };
++type SearchProject = { id: number; name: string; clientId: number; clientName: string };
++type Results = { clients: SearchClient[]; projects: SearchProject[] };
++
++const EMPTY: Results = { clients: [], projects: [] };
++
++export function GlobalSearch() {
++  const [query, setQuery] = useState('');
++  const [results, setResults] = useState<Results>(EMPTY);
++
++  useEffect(() => {
++    const term = query.trim();
++    if (!term) {
++      setResults(EMPTY);
++      return;
++    }
++    let cancelled = false;
++    async function load() {
++      const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
++      const data: Results = await res.json();
++      if (!cancelled) {
++        setResults(data);
++      }
++    }
++    void load();
++    return () => {
++      cancelled = true;
++    };
++  }, [query]);
++
++  return (
++    <section data-testid="global-search-panel">
++      <input
++        data-testid="global-search"
++        placeholder="Search clients and projects"
++        value={query}
++        onChange={(e) => setQuery(e.target.value)}
++      />
++      <div data-testid="search-clients">
++        <table>
++          <tbody>
++            {results.clients.map((c) => (
++              <tr key={c.id} data-testid={`client-row-${c.id}`}>
++                <td data-testid="client-name">{c.name}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++      <div data-testid="search-projects">
++        <table>
++          <tbody>
++            {results.projects.map((p) => (
++              <tr key={p.id} data-testid={`project-row-${p.id}`}>
++                <td data-testid="project-name">{p.name}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++    </section>
++  );
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/Search.java b/src/main/java/net/officefloor/hq/app/search/Search.java
+new file mode 100644
+index 0000000..933a59f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/Search.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.search;
++
++import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/search?q=&lt;term&gt; — one search box that looks across both clients and projects,
++ * returning the matches grouped by kind. The match is a case-insensitive substring on each entity's
++ * name; archived clients are tucked away and excluded. An empty term matches nothing.
++ */
++public class Search {
++
++    public void service(@HttpQueryParameter("q") String q, JdbcTemplate jdbc,
++            ObjectResponse<SearchView> response) {
++        String term = q == null ? "" : q.trim();
++        if (term.isEmpty()) {
++            response.send(new SearchView(List.of(), List.of()));
++            return;
++        }
++        String like = "%" + term.toLowerCase() + "%";
++        List<SearchClientView> clients = jdbc.query(
++                "SELECT id, name, email FROM clients "
++                        + "WHERE archived = FALSE AND LOWER(name) LIKE ? ORDER BY id",
++                (rs, i) -> new SearchClientView(rs.getLong("id"), rs.getString("name"),
++                        rs.getString("email")),
++                like);
++        List<SearchProjectView> projects = jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
++                        + "FROM projects p JOIN clients c ON c.id = p.client_id "
++                        + "WHERE LOWER(p.name) LIKE ? ORDER BY p.id",
++                (rs, i) -> new SearchProjectView(rs.getLong("id"), rs.getString("name"),
++                        rs.getLong("client_id"), rs.getString("client_name")),
++                like);
++        response.send(new SearchView(clients, projects));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchClientView.java b/src/main/java/net/officefloor/hq/app/search/SearchClientView.java
+new file mode 100644
+index 0000000..de8a17d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchClientView.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.search;
++
++/** A client that matched a global search — the id, name and email the search results surface. */
++public class SearchClientView {
++
++    private final Long id;
++    private final String name;
++    private final String email;
++
++    public SearchClientView(Long id, String name, String email) {
++        this.id = id;
++        this.name = name;
++        this.email = email;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchProjectView.java b/src/main/java/net/officefloor/hq/app/search/SearchProjectView.java
+new file mode 100644
+index 0000000..a685902
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchProjectView.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.search;
++
++/** A project that matched a global search — joined with its client's name, as the results surface. */
++public class SearchProjectView {
++
++    private final Long id;
++    private final String name;
++    private final Long clientId;
++    private final String clientName;
++
++    public SearchProjectView(Long id, String name, Long clientId, String clientName) {
++        this.id = id;
++        this.name = name;
++        this.clientId = clientId;
++        this.clientName = clientName;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public String getClientName() {
++        return clientName;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchView.java b/src/main/java/net/officefloor/hq/app/search/SearchView.java
+new file mode 100644
+index 0000000..10fd0f6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/search/SearchView.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.search;
++
++import java.util.List;
++
++/** The result of one global search: the matching clients and projects, grouped by kind. */
++public class SearchView {
++
++    private final List<SearchClientView> clients;
++    private final List<SearchProjectView> projects;
++
++    public SearchView(List<SearchClientView> clients, List<SearchProjectView> projects) {
++        this.clients = clients;
++        this.projects = projects;
++    }
++
++    public List<SearchClientView> getClients() {
++        return clients;
++    }
++
++    public List<SearchProjectView> getProjects() {
++        return projects;
++    }
++}
+diff --git a/src/main/resources/db/migration/V23__search_indexes.sql b/src/main/resources/db/migration/V23__search_indexes.sql
+new file mode 100644
+index 0000000..5ab5e09
+--- /dev/null
++++ b/src/main/resources/db/migration/V23__search_indexes.sql
+@@ -0,0 +1,5 @@
++-- Global search feature: one search box looks across both clients and projects by name. Each match
++-- is a case-insensitive substring lookup on the entity's name, so index the name columns the search
++-- scans. Additive and non-destructive — no data or column changes.
++CREATE INDEX idx_clients_name ON clients(name);
++CREATE INDEX idx_projects_name ON projects(name);
+diff --git a/src/main/resources/officefloor/rest/api/search.GET.yml b/src/main/resources/officefloor/rest/api/search.GET.yml
+new file mode 100644
+index 0000000..e52461b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/search.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.search.Search
