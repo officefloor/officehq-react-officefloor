@@ -2,23 +2,32 @@ import React, { useEffect, useState } from 'react';
 
 // Dashboard feature: a read-only home screen summarising clients, projects and money still owed.
 // Owns its own state (CLAUDE.md — features own their state, no global store).
+// Clients are paid in different currencies, which are never added together: the outstanding total
+// is kept separate, one figure per currency.
+type OutstandingByCurrency = {
+  currency: string;
+  amount: number;
+};
+
 type Summary = {
   clientsCount: number;
   projectsCount: number;
-  outstandingTotal: number;
+  outstanding: OutstandingByCurrency[];
   overdueCount: number;
 };
 
-// One "top client" row: a client ranked by how much they still owe.
+// One "top client" row: a client ranked by how much they still owe, shown in their own currency.
 type TopClient = {
   clientId: number;
   name: string;
   outstanding: number;
+  currency: string;
 };
 
-// Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
-function money(amount: number): string {
-  return Number(amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+// Money owed is shown with the currency's symbol and 2 decimals (e.g. 300 USD -> "$300.00",
+// 200 EUR -> "€200.00").
+function money(amount: number, currency = 'USD'): string {
+  return Number(amount).toLocaleString('en-US', { style: 'currency', currency });
 }
 
 export function DashboardPage() {
@@ -39,7 +48,7 @@ export function DashboardPage() {
     void load();
   }, []);
 
-  const outstanding = money(summary?.outstandingTotal ?? 0);
+  const outstanding = summary?.outstanding ?? [];
 
   return (
     <section data-testid="dashboard-page">
@@ -50,7 +59,11 @@ export function DashboardPage() {
         <dt>Jobs</dt>
         <dd data-testid="dashboard-projects-count">{summary?.projectsCount ?? 0}</dd>
         <dt>Outstanding</dt>
-        <dd data-testid="dashboard-outstanding-total">{outstanding}</dd>
+        {outstanding.map((o) => (
+          <dd key={o.currency} data-testid={`dashboard-outstanding-${o.currency}`}>
+            {money(o.amount, o.currency)}
+          </dd>
+        ))}
         <dt>Overdue invoices</dt>
         <dd data-testid="dashboard-overdue-count">{summary?.overdueCount ?? 0}</dd>
       </dl>
@@ -60,7 +73,7 @@ export function DashboardPage() {
         {topClients.map((client) => (
           <li key={client.clientId} data-testid={`top-client-row-${client.clientId}`}>
             <span data-testid="top-client-name">{client.name}</span>
-            <span data-testid="top-client-amount">{money(client.outstanding)}</span>
+            <span data-testid="top-client-amount">{money(client.outstanding, client.currency)}</span>
           </li>
         ))}
       </ol>

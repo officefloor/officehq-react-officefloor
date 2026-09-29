@@ -22,9 +22,14 @@ public class ClientRepository {
      */
     public List<Client> findAll() {
         return jdbc.query(
-                "SELECT id, name, email FROM clients WHERE archived = FALSE ORDER BY id",
-                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+                "SELECT id, name, email, currency FROM clients WHERE archived = FALSE ORDER BY id",
+                MAPPER);
     }
+
+    /** Maps a client row (name/email plus the currency their money is shown in). */
+    private static final org.springframework.jdbc.core.RowMapper<Client> MAPPER =
+            (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email"),
+                    rs.getString("currency"));
 
     /**
      * Clients whose name matches the global search term (case-insensitive substring). Archived
@@ -36,17 +41,17 @@ public class ClientRepository {
             return List.of();
         }
         return jdbc.query(
-                "SELECT id, name, email FROM clients"
+                "SELECT id, name, email, currency FROM clients"
                         + " WHERE archived = FALSE AND LOWER(name) LIKE ? ORDER BY id",
-                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
+                MAPPER,
                 "%" + term.trim().toLowerCase() + "%");
     }
 
     /** Look up one client, or null when there is no such row. */
     public Client findById(long id) {
         List<Client> rows = jdbc.query(
-                "SELECT id, name, email FROM clients WHERE id = ?",
-                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
+                "SELECT id, name, email, currency FROM clients WHERE id = ?",
+                MAPPER,
                 id);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -57,8 +62,8 @@ public class ClientRepository {
      */
     public List<Client> findArchived() {
         return jdbc.query(
-                "SELECT id, name, email FROM clients WHERE archived = TRUE ORDER BY id",
-                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+                "SELECT id, name, email, currency FROM clients WHERE archived = TRUE ORDER BY id",
+                MAPPER);
     }
 
     /** Tuck a client away: flag it archived so it drops off the lists but its row is retained. */
@@ -74,7 +79,16 @@ public class ClientRepository {
     /** Correct a client's name/email. Returns the updated row, or null when there is no such row. */
     public Client update(long id, String name, String email) {
         int rows = jdbc.update("UPDATE clients SET name = ?, email = ? WHERE id = ?", name, email, id);
-        return rows > 0 ? new Client(id, name, email) : null;
+        return rows > 0 ? findById(id) : null;
+    }
+
+    /**
+     * Set the currency a client is paid in (their money is shown in it everywhere). Returns the
+     * updated row, or null when there is no such client.
+     */
+    public Client updateCurrency(long id, String currency) {
+        int rows = jdbc.update("UPDATE clients SET currency = ? WHERE id = ?", currency, id);
+        return rows > 0 ? findById(id) : null;
     }
 
     /**
@@ -108,6 +122,8 @@ public class ClientRepository {
             ps.setString(2, email);
             return ps;
         }, keys);
-        return new Client(keys.getKey().longValue(), name, email);
+        // A new client starts on the app's default currency (USD, the column default); the owner
+        // can set another afterwards.
+        return new Client(keys.getKey().longValue(), name, email, "USD");
     }
 }

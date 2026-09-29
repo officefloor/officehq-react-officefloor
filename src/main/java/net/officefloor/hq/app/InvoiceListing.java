@@ -8,5 +8,5 @@ import java.math.BigDecimal;
  * Serialised as JSON by GET /api/invoices/all.
  */
 public record InvoiceListing(long id, long projectId, String projectName, BigDecimal amount,
-        String status) {
+        String status, String currency) {
 }

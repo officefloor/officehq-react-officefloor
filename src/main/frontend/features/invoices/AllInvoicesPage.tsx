@@ -11,6 +11,7 @@ type InvoiceListing = {
   projectName: string;
   amount: number;
   status: string;
+  currency: string;
 };
 
 type InvoicePage = {
@@ -20,8 +21,10 @@ type InvoicePage = {
   pageSize: number;
 };
 
-function money(n: number): string {
-  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+// Each invoice's money is shown in its client's currency; currencies are never added together, so
+// there is no combined total here.
+function money(n: number, currency = 'USD'): string {
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency });
 }
 
 // The lifecycle stages an invoice can sit at (see V5/V8 migrations: DRAFT -> SENT -> PAID). The
@@ -95,7 +98,7 @@ export function AllInvoicesPage() {
               {invoices.map((inv) => (
                 <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
                   <td data-testid="invoice-project">{inv.projectName}</td>
-                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
+                  <td data-testid="invoice-amount">{money(inv.amount, inv.currency)}</td>
                   <td data-testid="invoice-status">{inv.status}</td>
                 </tr>
               ))}

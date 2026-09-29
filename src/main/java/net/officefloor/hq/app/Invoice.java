@@ -12,5 +12,5 @@ import java.math.BigDecimal;
  * discount, the tax and the final total ((subtotal minus the discount) times (1 + taxPct/100)).
  */
 public record Invoice(long id, long projectId, BigDecimal amount, String status, String issuedDate,
-        String dueDate, BigDecimal due, BigDecimal discountPct, BigDecimal taxPct) {
+        String dueDate, BigDecimal due, BigDecimal discountPct, BigDecimal taxPct, String currency) {
 }

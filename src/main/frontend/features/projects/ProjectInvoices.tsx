@@ -12,10 +12,12 @@ type Invoice = {
   issuedDate: string | null;
   dueDate: string | null;
   due: number;
+  currency: string;
 };
 
-function money(n: number): string {
-  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+// The client's money is shown in their own currency (e.g. USD -> "$100.00", EUR -> "€100.00").
+function money(n: number, currency = 'USD'): string {
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency });
 }
 
 export function ProjectInvoices({
@@ -101,6 +103,9 @@ export function ProjectInvoices({
   }
 
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  // All of a project's invoices belong to one client, so they share a currency; use the first row's
+  // (falling back to USD for an empty list).
+  const currency = invoices[0]?.currency ?? 'USD';
 
   return (
     <section data-testid="project-invoices">
@@ -155,8 +160,8 @@ export function ProjectInvoices({
         <tbody>
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-              <td data-testid="invoice-amount">{money(inv.amount)}</td>
-              <td data-testid="invoice-due-amount">{money(inv.due)}</td>
+              <td data-testid="invoice-amount">{money(inv.amount, inv.currency)}</td>
+              <td data-testid="invoice-due-amount">{money(inv.due, inv.currency)}</td>
               <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
               <td data-testid="invoice-status">{inv.status}</td>
@@ -192,7 +197,7 @@ export function ProjectInvoices({
         </tbody>
         <tfoot>
           <tr>
-            <td data-testid="project-invoices-total">{money(total)}</td>
+            <td data-testid="project-invoices-total">{money(total, currency)}</td>
           </tr>
         </tfoot>
       </table>

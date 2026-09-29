@@ -64,7 +64,11 @@ public class ClientStatementRepository {
         BigDecimal outstandingTotal = invoices.stream()
                 .map(StatementInvoice::due)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ClientStatement(groupByProject(invoices), invoices, outstandingTotal);
+        // The client's money is shown in their own currency throughout the statement; default to
+        // USD when the client cannot be found (e.g. an unknown id), matching the column default.
+        String currency = jdbc.query("SELECT currency FROM clients WHERE id = ?",
+                rs -> rs.next() ? rs.getString("currency") : "USD", clientId);
+        return new ClientStatement(groupByProject(invoices), invoices, outstandingTotal, currency);
     }
 
     /**

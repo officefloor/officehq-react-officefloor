@@ -22,7 +22,13 @@ public class InvoiceRepository {
                     rs.getBigDecimal("amount"), rs.getString("status"),
                     rs.getString("issued_date"), rs.getString("due_date"),
                     rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"),
-                    rs.getBigDecimal("tax_pct"));
+                    rs.getBigDecimal("tax_pct"), rs.getString("currency"));
+
+    // The invoice's money is shown in its client's currency, so every single-invoice read joins
+    // through the project to the client and carries the currency alongside the derived amounts.
+    private static final String CURRENCY =
+            "(SELECT c.currency FROM projects p JOIN clients c ON c.id = p.client_id"
+                    + " WHERE p.id = i.project_id)";
 
     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
     // totals zero. Derived here so the amount always reflects the current line items.
@@ -66,7 +72,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, " + CURRENCY + " AS currency"
                         + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
@@ -75,7 +81,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, " + CURRENCY + " AS currency"
                         + " FROM invoices i WHERE i.project_id = ?"
                         + " ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
@@ -84,14 +90,17 @@ public class InvoiceRepository {
     private static final org.springframework.jdbc.core.RowMapper<InvoiceListing> LISTING_MAPPER =
             (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
                     rs.getString("project_name"), rs.getBigDecimal("amount"),
-                    rs.getString("status"));
+                    rs.getString("status"), rs.getString("currency"));
 
-    // Every invoice joined to its project name, ordered by id. The derived status is an expression,
-    // so filtering by stage wraps this as a subquery and filters on the aliased column.
+    // Every invoice joined to its project name and its client's currency, ordered by id. The derived
+    // status is an expression, so filtering by stage wraps this as a subquery and filters on the
+    // aliased column.
     private static final String LISTING_SELECT =
             "SELECT i.id AS id, i.project_id AS project_id, p.name AS project_name, "
-                    + AMOUNT_SUM + " AS amount, " + DERIVED_STATUS + " AS status FROM invoices i"
-                    + " JOIN projects p ON p.id = i.project_id";
+                    + AMOUNT_SUM + " AS amount, " + DERIVED_STATUS + " AS status,"
+                    + " c.currency AS currency FROM invoices i"
+                    + " JOIN projects p ON p.id = i.project_id"
+                    + " JOIN clients c ON c.id = p.client_id";
 
     /** Every invoice across all projects, joined to its project name, ordered by id. */
     public List<InvoiceListing> findAllWithProject() {
@@ -108,7 +117,8 @@ public class InvoiceRepository {
                     LISTING_MAPPER, limit, offset);
         }
         return jdbc.query(
-                "SELECT id, project_id, project_name, amount, status FROM (" + LISTING_SELECT
+                "SELECT id, project_id, project_name, amount, status, currency FROM ("
+                        + LISTING_SELECT
                         + ") t WHERE t.status = ? ORDER BY id LIMIT ? OFFSET ?",
                 LISTING_MAPPER, status, limit, offset);
     }
@@ -126,7 +136,7 @@ public class InvoiceRepository {
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, " + CURRENCY + " AS currency"
                         + " FROM invoices i WHERE i.id = ?",
                 MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
@@ -142,9 +152,14 @@ public class InvoiceRepository {
             return ps;
         }, keys);
         // A freshly created invoice has no payments yet, so the whole amount is still due, and no
-        // discount or tax yet (discount_pct and tax_pct default to 0).
+        // discount or tax yet (discount_pct and tax_pct default to 0). Its money is shown in the
+        // owning client's currency.
+        String currency = jdbc.queryForObject(
+                "SELECT c.currency FROM projects p JOIN clients c ON c.id = p.client_id"
+                        + " WHERE p.id = ?",
+                String.class, projectId);
         return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
-                amount, BigDecimal.ZERO, BigDecimal.ZERO);
+                amount, BigDecimal.ZERO, BigDecimal.ZERO, currency);
     }
 
     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */

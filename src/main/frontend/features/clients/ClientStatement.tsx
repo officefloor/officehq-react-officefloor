@@ -25,10 +25,12 @@ type Statement = {
   projects: StatementProject[];
   invoices: StatementInvoice[];
   outstandingTotal: number;
+  currency: string;
 };
 
-function money(n: number): string {
-  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+// The client's money is shown in their own currency throughout the statement.
+function money(n: number, currency = 'USD'): string {
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency });
 }
 
 export function ClientStatement({ clientId }: { clientId: number }) {
@@ -70,8 +72,8 @@ export function ClientStatement({ clientId }: { clientId: number }) {
                   {project.invoices.map((inv) => (
                     <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
                       <td data-testid="statement-invoice-project">{inv.projectName}</td>
-                      <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
-                      <td data-testid="statement-invoice-due">{money(inv.due)}</td>
+                      <td data-testid="statement-invoice-amount">{money(inv.amount, statement.currency)}</td>
+                      <td data-testid="statement-invoice-due">{money(inv.due, statement.currency)}</td>
                       <td data-testid="statement-invoice-status">{inv.status}</td>
                     </tr>
                   ))}
@@ -80,7 +82,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
                   <tr>
                     <td>Subtotal</td>
                     <td colSpan={3} data-testid="statement-project-subtotal">
-                      {money(project.subtotal)}
+                      {money(project.subtotal, statement.currency)}
                     </td>
                   </tr>
                 </tfoot>
@@ -89,11 +91,11 @@ export function ClientStatement({ clientId }: { clientId: number }) {
           ))}
           <p>
             Total owed:{' '}
-            <span data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</span>
+            <span data-testid="client-outstanding-total">{money(statement.outstandingTotal, statement.currency)}</span>
           </p>
           <p className="statement-grand-total-line">
             Grand total owed:{' '}
-            <strong data-testid="statement-grand-total">{money(statement.outstandingTotal)}</strong>
+            <strong data-testid="statement-grand-total">{money(statement.outstandingTotal, statement.currency)}</strong>
           </p>
         </article>
       ) : null}

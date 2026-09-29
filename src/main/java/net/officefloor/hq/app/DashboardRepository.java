@@ -20,21 +20,26 @@ public class DashboardRepository {
     public DashboardSummary summary() {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
-        // Money still owed = for every issued invoice (stored status SENT), its discounted amount
-        // (the sum of its line items qty * unit_price, with the invoice's discount_pct taken off)
-        // minus whatever has been paid against it. Amount is derived from line items (V13) and the
-        // discount from discount_pct (V29), so what is owed reflects the discount everywhere. DRAFT
-        // invoices are not yet issued and VOID invoices were cancelled, so both are excluded (their
-        // stored status is not SENT). COALESCE keeps the total at 0.00 (never null) when nothing is
-        // outstanding.
-        BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM("
+        // Money still owed, kept SEPARATE per currency (clients are paid in different currencies,
+        // which are never added together). For every issued invoice (stored status SENT), its
+        // discounted amount (the sum of its line items qty * unit_price, with the invoice's
+        // discount_pct taken off) minus whatever has been paid against it, grouped by the owning
+        // client's currency. Amount is derived from line items (V13) and the discount from
+        // discount_pct (V29). DRAFT invoices are not yet issued and VOID invoices were cancelled, so
+        // both are excluded (their stored status is not SENT). One row per currency, ordered by code.
+        List<OutstandingByCurrency> outstanding = jdbc.query(
+                "SELECT c.currency AS currency, COALESCE(SUM("
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
                         + " WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100"
                         + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
-                        + " WHERE pm.invoice_id = i.id), 0)), 0)"
-                        + " FROM invoices i WHERE i.status = 'SENT'",
-                BigDecimal.class);
+                        + " WHERE pm.invoice_id = i.id), 0)), 0) AS amount"
+                        + " FROM invoices i"
+                        + " JOIN projects p ON p.id = i.project_id"
+                        + " JOIN clients c ON c.id = p.client_id"
+                        + " WHERE i.status = 'SENT'"
+                        + " GROUP BY c.currency ORDER BY c.currency",
+                (rs, n) -> new OutstandingByCurrency(
+                        rs.getString("currency"), rs.getBigDecimal("amount")));
         // Overdue = invoices that have been SENT and whose due date has already passed relative to
         // the dashboard's reference date. That date is seeded (dashboard_settings.as_of) so the
         // count is deterministic under test; when unset we fall back to the current date. DRAFT
@@ -71,19 +76,19 @@ public class DashboardRepository {
      */
     public List<TopClient> topClients(int limit) {
         return jdbc.query(
-                "SELECT c.id AS client_id, c.name AS name,"
+                "SELECT c.id AS client_id, c.name AS name, c.currency AS currency,"
                         + " COALESCE(SUM(" + DUE + "), 0) AS outstanding"
                         + " FROM clients c"
                         + " LEFT JOIN projects p ON p.client_id = c.id"
                         + " LEFT JOIN invoices i ON i.project_id = p.id"
                         + " AND i.status NOT IN ('DRAFT', 'VOID')"
                         + " WHERE c.archived = FALSE"
-                        + " GROUP BY c.id, c.name"
+                        + " GROUP BY c.id, c.name, c.currency"
                         + " ORDER BY outstanding DESC, c.id ASC"
                         + " LIMIT ?",
                 (rs, n) -> new TopClient(
                         rs.getLong("client_id"), rs.getString("name"),
-                        rs.getBigDecimal("outstanding")),
+                        rs.getBigDecimal("outstanding"), rs.getString("currency")),
                 limit);
     }
 }

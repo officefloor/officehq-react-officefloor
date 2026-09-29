@@ -10,5 +10,5 @@ import java.util.List;
  * by GET /api/clients/statement?clientId=&lt;id&gt;.
  */
 public record ClientStatement(List<StatementProject> projects, List<StatementInvoice> invoices,
-        BigDecimal outstandingTotal) {
+        BigDecimal outstandingTotal, String currency) {
 }

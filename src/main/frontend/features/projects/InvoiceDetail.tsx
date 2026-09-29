@@ -14,8 +14,9 @@ type LineItem = {
   unitPrice: number;
 };
 
-function money(n: number): string {
-  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+// The invoice's money is shown in the client's currency (e.g. USD -> "$100.00", EUR -> "€100.00").
+function money(n: number, currency = 'USD'): string {
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency });
 }
 
 type EditDraft = { description: string; qty: string; unit: string; unitPrice: string };
@@ -47,6 +48,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [status, setStatus] = useState('');
   const [discountPct, setDiscountPct] = useState(0);
   const [taxPct, setTaxPct] = useState(0);
+  const [currency, setCurrency] = useState('USD');
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -69,10 +71,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   async function loadStatus() {
     const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
     if (res.ok) {
-      const inv: { status: string; discountPct: number; taxPct: number } = await res.json();
+      const inv: { status: string; discountPct: number; taxPct: number; currency: string } =
+        await res.json();
       setStatus(inv.status);
       setDiscountPct(Number(inv.discountPct));
       setTaxPct(Number(inv.taxPct));
+      setCurrency(inv.currency);
     }
   }
 
@@ -256,7 +260,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
                   />
                 </td>
                 <td data-testid="lineitem-amount">
-                  {money(Number(draft.qty) * Number(draft.unitPrice))}
+                  {money(Number(draft.qty) * Number(draft.unitPrice), currency)}
                 </td>
                 <td>
                   <button
@@ -280,8 +284,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
                 <td data-testid="lineitem-description">{li.description}</td>
                 <td data-testid="lineitem-qty">{li.qty}</td>
                 <td data-testid="lineitem-unit">{li.unit}</td>
-                <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
-                <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
+                <td data-testid="lineitem-unitprice">{money(li.unitPrice, currency)}</td>
+                <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice), currency)}</td>
                 <td>
                   <button
                     type="button"
@@ -305,16 +309,16 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       </table>
 
       <p>
-        Subtotal: <span data-testid="invoice-subtotal">{money(subtotal)}</span>
+        Subtotal: <span data-testid="invoice-subtotal">{money(subtotal, currency)}</span>
       </p>
       <p>
-        Discount: <span data-testid="invoice-discount">{money(discount)}</span>
+        Discount: <span data-testid="invoice-discount">{money(discount, currency)}</span>
       </p>
       <p>
-        Tax: <span data-testid="invoice-tax">{money(tax)}</span>
+        Tax: <span data-testid="invoice-tax">{money(tax, currency)}</span>
       </p>
       <p>
-        Total: <span data-testid="invoice-amount">{money(total)}</span>
+        Total: <span data-testid="invoice-amount">{money(total, currency)}</span>
       </p>
 
       <h3>Payments</h3>
@@ -346,7 +350,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
         <tbody>
           {payments.map((p) => (
             <tr key={p.id} data-testid={`payment-row-${p.id}`}>
-              <td data-testid="payment-amount">{money(p.amount)}</td>
+              <td data-testid="payment-amount">{money(p.amount, currency)}</td>
               <td data-testid="payment-date">{p.date}</td>
             </tr>
           ))}
