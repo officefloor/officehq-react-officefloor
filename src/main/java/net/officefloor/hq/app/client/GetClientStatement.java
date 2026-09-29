@@ -11,8 +11,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * all of their projects) gathered in one place, each with what is still owed on it, plus the total
  * still owed across them all.
  *
- * <p>An invoice's amount is the sum of its line items (qty * unit price) less its discount; the
- * amount still due is that amount less everything paid against it (the sum of its payments). The
+ * <p>An invoice's amount is the sum of its line items (qty * unit price) less its discount, with
+ * sales tax then added on top of that discounted base; the amount still due is that amount less
+ * everything paid against it (the sum of its payments). The
  * outstanding total is the sum of those dues, so a fully paid client shows nothing owed.
  */
 public class GetClientStatement {
@@ -23,6 +24,7 @@ public class GetClientStatement {
                 "SELECT i.id AS id, i.project_id AS project_id, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
+                        + "* (100 + i.tax_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = i.id), 0) AS amount_due "
                         + "FROM invoices i JOIN projects pr ON pr.id = i.project_id "

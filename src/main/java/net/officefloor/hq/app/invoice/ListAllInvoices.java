@@ -37,7 +37,8 @@ public class ListAllInvoices {
 
         String select = "SELECT i.id, i.project_id, p.name AS project_name, i.status, "
                 + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
-                + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 AS amount ";
+                + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
+                + "* (100 + i.tax_pct) / 100 AS amount ";
         Object[] pageArgs = append(filterArgs, PAGE_SIZE, offset);
         List<AllInvoiceView> items = jdbc.query(
                 select + from + "ORDER BY i.id LIMIT ? OFFSET ?", mapper, pageArgs);

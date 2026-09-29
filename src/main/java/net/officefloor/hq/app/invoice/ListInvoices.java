@@ -10,16 +10,19 @@ public class ListInvoices {
 
     public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
             ObjectResponse<List<InvoiceView>> response) {
-        // The invoice amount is the sum of its line items (qty * unit price) less its discount; an
-        // invoice with no lines totals zero. The amount due is that amount less everything paid
-        // against it (the sum of its payments), so a fully paid invoice shows zero still to pay.
+        // The invoice amount is the sum of its line items (qty * unit price) less its discount, then
+        // with sales tax added on top of that discounted base (tax is worked out after the
+        // discount); an invoice with no lines totals zero. The amount due is that amount less
+        // everything paid against it (the sum of its payments), so a fully paid invoice shows zero
+        // still to pay.
         List<InvoiceView> invoices = jdbc.query(
-                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
+                "SELECT id, project_id, status, issued_date, due_date, discount_pct, tax_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
-                        + "AS amount, "
+                        + "* (100 + tax_pct) / 100 AS amount, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                        + "* (100 + tax_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
                         + " WHERE project_id = ? ORDER BY id",
@@ -34,6 +37,7 @@ public class ListInvoices {
                             amount, amountDue, status, rs.getString("issued_date"),
                             rs.getString("due_date"));
                     view.setDiscountPct(rs.getBigDecimal("discount_pct"));
+                    view.setTaxPct(rs.getBigDecimal("tax_pct"));
                     return view;
                 },
                 Long.valueOf(projectId));

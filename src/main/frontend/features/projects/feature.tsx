@@ -25,6 +25,7 @@ type Invoice = {
   issuedDate: string;
   dueDate: string;
   discountPct: number;
+  taxPct: number;
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
 type Tag = { id: number; name: string };
@@ -87,15 +88,18 @@ function InvoiceDetail({
   const [status, setStatus] = useState('');
   // The percentage discount taken off this invoice's subtotal (0 unless one is set).
   const [discountPct, setDiscountPct] = useState(0);
+  // The percentage sales tax added on top after the discount (0 unless one is set).
+  const [taxPct, setTaxPct] = useState(0);
 
   // The status is worked out from the payments recorded against the invoice, so re-read it whenever
-  // a payment is added rather than flipping it by hand. The discount percentage comes back on the
-  // same read.
+  // a payment is added rather than flipping it by hand. The discount and tax percentages come back
+  // on the same read.
   async function loadStatus() {
     const res = await fetch(`/api/invoices/${invoiceId}`);
     const inv: Invoice = await res.json();
     setStatus(inv.status);
     setDiscountPct(Number(inv.discountPct) || 0);
+    setTaxPct(Number(inv.taxPct) || 0);
   }
 
   async function load() {
@@ -204,11 +208,13 @@ function InvoiceDetail({
     onChange();
   }
 
-  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
-  // the final total is the subtotal less the discount.
+  // The subtotal is the sum of the line items; the discount is that percentage taken off it. Sales
+  // tax is then added on top of the discounted base (worked out after the discount), and the final
+  // total is the subtotal less the discount plus that tax.
   const subtotal = items.reduce((sum, li) => sum + amountOf(li), 0);
   const discount = (subtotal * discountPct) / 100;
-  const total = subtotal - discount;
+  const tax = ((subtotal - discount) * taxPct) / 100;
+  const total = subtotal - discount + tax;
 
   return (
     <section data-testid="invoice-detail">
@@ -262,6 +268,7 @@ function InvoiceDetail({
 
       <p data-testid="invoice-subtotal">{money(subtotal)}</p>
       <p data-testid="invoice-discount">{money(discount)}</p>
+      <p data-testid="invoice-tax">{money(tax)}</p>
       <p data-testid="invoice-amount">{money(total)}</p>
 
       <form data-testid="lineitem-form" onSubmit={submit}>

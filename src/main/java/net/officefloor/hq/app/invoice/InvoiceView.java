@@ -15,6 +15,9 @@ public class InvoiceView {
     // The percentage discount taken off the subtotal; 0 unless the invoice carries one. Set after
     // construction so the existing callers that don't surface a discount stay untouched.
     private BigDecimal discountPct = BigDecimal.ZERO;
+    // The percentage sales tax added on top after the discount; 0 unless the invoice carries one.
+    // Set after construction so callers that don't surface a tax stay untouched.
+    private BigDecimal taxPct = BigDecimal.ZERO;
 
     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal amountDue,
             String status, String issuedDate, String dueDate) {
@@ -61,5 +64,13 @@ public class InvoiceView {
 
     public void setDiscountPct(BigDecimal discountPct) {
         this.discountPct = discountPct;
+    }
+
+    public BigDecimal getTaxPct() {
+        return taxPct;
+    }
+
+    public void setTaxPct(BigDecimal taxPct) {
+        this.taxPct = taxPct;
     }
 }

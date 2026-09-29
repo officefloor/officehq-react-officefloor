@@ -15,13 +15,17 @@ public class GetInvoice {
 
     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
             ObjectResponse<InvoiceView> response) {
+        // The amount is the subtotal (sum of line items) less its discount, then with sales tax
+        // added on top of that discounted base — tax is worked out after the discount. The amount
+        // due is that same taxed amount less everything paid against it.
         InvoiceView invoice = jdbc.query(
-                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
+                "SELECT id, project_id, status, issued_date, due_date, discount_pct, tax_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
-                        + "AS amount, "
+                        + "* (100 + tax_pct) / 100 AS amount, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                        + "* (100 + tax_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
                         + " WHERE id = ?",
@@ -34,6 +38,7 @@ public class GetInvoice {
                             amount, amountDue, status, rs.getString("issued_date"),
                             rs.getString("due_date"));
                     view.setDiscountPct(rs.getBigDecimal("discount_pct"));
+                    view.setTaxPct(rs.getBigDecimal("tax_pct"));
                     return view;
                 },
                 Long.valueOf(id)).stream().findFirst()

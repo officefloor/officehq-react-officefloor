@@ -18,13 +18,15 @@ public class GetDashboard {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
         // Money owed is the total of every SENT invoice, and an invoice's total is the sum of its
-        // line items less its discount (the source of truth everywhere else) — so a cancelled
-        // (VOID) invoice, no longer SENT, drops out of what is owed, and a discount is reflected in
-        // what is owed. The discount is applied per invoice (its own percentage off its own
-        // subtotal) before the totals are summed.
+        // line items less its discount, with sales tax then added on top (the source of truth
+        // everywhere else) — so a cancelled (VOID) invoice, no longer SENT, drops out of what is
+        // owed, and both a discount and its tax are reflected in what is owed. The discount and tax
+        // are applied per invoice (its own percentages off/on its own subtotal) before the totals
+        // are summed.
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100), 0) FROM ("
-                        + "SELECT i.discount_pct AS discount_pct, "
+                "SELECT COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100 "
+                        + "* (100 + inv.tax_pct) / 100), 0) FROM ("
+                        + "SELECT i.discount_pct AS discount_pct, i.tax_pct AS tax_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = i.id), 0) AS subtotal "
                         + "FROM invoices i WHERE i.status = 'SENT') inv",
