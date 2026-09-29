@@ -1,0 +1,248 @@
+diff --git a/src/main/frontend/features/clients/ClientContacts.tsx b/src/main/frontend/features/clients/ClientContacts.tsx
+index 13a5b67..fba76cc 100644
+--- a/src/main/frontend/features/clients/ClientContacts.tsx
++++ b/src/main/frontend/features/clients/ClientContacts.tsx
+@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
+ 
+ // A client's contacts (name, email, role), shown when a client is opened from the clients list.
+ // Owns its own state (CLAUDE.md — features own their state; no global store) and a form to add one.
+-type Contact = { id: number; clientId: number; name: string; email: string; role: string };
++type Contact = {
++  id: number;
++  clientId: number;
++  name: string;
++  email: string;
++  role: string;
++  primary: boolean;
++};
+ 
+ // A contact needs a proper email too. Kept in sync with the server-side check in ContactsPostLogic
+ // and the DB CHECK constraint (V10__contacts_email_check.sql).
+@@ -26,6 +33,20 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+     void load();
+   }, [clientId]);
+ 
++  // The client has one main contact; pick another to make it the main one.
++  const primaryContact = contacts.find((c) => c.primary) ?? null;
++
++  async function onMakePrimary(contactId: number) {
++    const res = await fetch('/api/contacts/primary', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ clientId, contactId }),
++    });
++    if (res.ok) {
++      setContacts(await res.json());
++    }
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     if (!EMAIL_PATTERN.test(email.trim())) {
+@@ -52,6 +73,10 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+   return (
+     <section data-testid="client-contacts">
+       <h2>Contacts</h2>
++      <p>
++        Main contact:{' '}
++        <span data-testid="client-primary-contact">{primaryContact?.name ?? ''}</span>
++      </p>
+       <form data-testid="contact-form" onSubmit={onSubmit}>
+         <input
+           data-testid="contact-form-name"
+@@ -87,6 +112,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+             <th>Name</th>
+             <th>Email</th>
+             <th>Role</th>
++            <th />
+           </tr>
+         </thead>
+         <tbody>
+@@ -95,6 +121,16 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+               <td data-testid="contact-name">{c.name}</td>
+               <td data-testid="contact-email">{c.email}</td>
+               <td data-testid="contact-role">{c.role}</td>
++              <td>
++                <button
++                  type="button"
++                  data-testid={`contact-primary-${c.id}`}
++                  disabled={c.primary}
++                  onClick={() => onMakePrimary(c.id)}
++                >
++                  {c.primary ? 'Main contact' : 'Make main'}
++                </button>
++              </td>
+             </tr>
+           ))}
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/Contact.java b/src/main/java/net/officefloor/hq/app/Contact.java
+index caa74ff..c300e26 100644
+--- a/src/main/java/net/officefloor/hq/app/Contact.java
++++ b/src/main/java/net/officefloor/hq/app/Contact.java
+@@ -2,7 +2,9 @@ package net.officefloor.hq.app;
+ 
+ /**
+  * A person to reach at a client (name, email, role). Serialised as JSON by the /api/contacts
+- * routes; carries its client_id so the UI can list a single client's contacts.
++ * routes; carries its client_id so the UI can list a single client's contacts. {@code primary}
++ * marks the client's one main contact (V25__contacts_primary.sql).
+  */
+-public record Contact(long id, long clientId, String name, String email, String role) {
++public record Contact(long id, long clientId, String name, String email, String role,
++        boolean primary) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ContactRepository.java b/src/main/java/net/officefloor/hq/app/ContactRepository.java
+index ad79f3f..69e9594 100644
+--- a/src/main/java/net/officefloor/hq/app/ContactRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ContactRepository.java
+@@ -18,16 +18,34 @@ public class ContactRepository {
+ 
+     private static final org.springframework.jdbc.core.RowMapper<Contact> MAPPER =
+             (rs, i) -> new Contact(rs.getLong("id"), rs.getLong("client_id"),
+-                    rs.getString("name"), rs.getString("email"), rs.getString("role"));
++                    rs.getString("name"), rs.getString("email"), rs.getString("role"),
++                    rs.getBoolean("is_primary"));
+ 
+     /** Contacts for one client — used by the client detail view. */
+     public List<Contact> findByClient(long clientId) {
+         return jdbc.query(
+-                "SELECT id, client_id, name, email, role FROM contacts"
++                "SELECT id, client_id, name, email, role, is_primary FROM contacts"
+                         + " WHERE client_id = ? ORDER BY id",
+                 MAPPER, clientId);
+     }
+ 
++    /** True when the given contact belongs to the given client. */
++    public boolean existsForClient(long clientId, long contactId) {
++        Integer count = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM contacts WHERE id = ? AND client_id = ?",
++                Integer.class, contactId, clientId);
++        return count != null && count > 0;
++    }
++
++    /**
++     * Make one contact the client's main contact: set it primary and clear every other contact of
++     * the same client, so at most one row per client is primary.
++     */
++    public void setPrimary(long clientId, long contactId) {
++        jdbc.update("UPDATE contacts SET is_primary = (id = ?) WHERE client_id = ?",
++                contactId, clientId);
++    }
++
+     public Contact create(long clientId, String name, String email, String role) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+@@ -40,6 +58,6 @@ public class ContactRepository {
+             ps.setString(4, role);
+             return ps;
+         }, keys);
+-        return new Contact(keys.getKey().longValue(), clientId, name, email, role);
++        return new Contact(keys.getKey().longValue(), clientId, name, email, role, false);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ContactsPrimaryPostLogic.java b/src/main/java/net/officefloor/hq/app/ContactsPrimaryPostLogic.java
+new file mode 100644
+index 0000000..c0aeacf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ContactsPrimaryPostLogic.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/contacts/primary — choose a client's one main contact. Sets the chosen contact primary
++ * and clears any previous primary for the same client, then returns the client's contacts. Records
++ * one audit line (CONTACT_MADE_PRIMARY clientId=&lt;id&gt; contactId=&lt;id&gt;).
++ */
++public class ContactsPrimaryPostLogic {
++
++    public void service(@RequestBody SetPrimaryContact body, ContactRepository repository,
++            Audit audit, ObjectResponse<List<Contact>> response) {
++        if (body.getClientId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A client is required.");
++        }
++        if (body.getContactId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A contact is required.");
++        }
++        if (!repository.existsForClient(body.getClientId(), body.getContactId())) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such contact for this client.");
++        }
++        repository.setPrimary(body.getClientId(), body.getContactId());
++        audit.record("CONTACT_MADE_PRIMARY clientId=" + body.getClientId()
++                + " contactId=" + body.getContactId());
++        response.send(repository.findByClient(body.getClientId()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/SetPrimaryContact.java b/src/main/java/net/officefloor/hq/app/SetPrimaryContact.java
+new file mode 100644
+index 0000000..f5f8b5d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SetPrimaryContact.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app;
++
++/** Request body for choosing a client's main contact (POST /api/contacts/primary). */
++public class SetPrimaryContact {
++
++    private long clientId;
++    private long contactId;
++
++    public long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(long clientId) {
++        this.clientId = clientId;
++    }
++
++    public long getContactId() {
++        return contactId;
++    }
++
++    public void setContactId(long contactId) {
++        this.contactId = contactId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 7fce12d..5c8b80e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -106,10 +106,13 @@ public class TestSupportController {
+ 
+     private void seedContacts(Map<String, Object> fixture) {
+         for (Map<String, Object> ct : rows(fixture, "contacts")) {
++            Object primary = ct.get("primary");
+             jdbc.update(
+-                    "INSERT INTO contacts (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
++                    "INSERT INTO contacts (id, client_id, name, email, role, is_primary)"
++                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                     id(ct, "id"), id(ct, "clientId"),
+-                    ct.get("name"), ct.get("email"), ct.get("role"));
++                    ct.get("name"), ct.get("email"), ct.get("role"),
++                    primary != null && Boolean.parseBoolean(primary.toString()));
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V25__contacts_primary.sql b/src/main/resources/db/migration/V25__contacts_primary.sql
+new file mode 100644
+index 0000000..3a55936
+--- /dev/null
++++ b/src/main/resources/db/migration/V25__contacts_primary.sql
+@@ -0,0 +1,4 @@
++-- A client has one main (primary) contact. Additive boolean flag on contacts; at most one row per
++-- client is TRUE — the app clears the others when a new primary is chosen. Existing rows default to
++-- FALSE (no primary picked yet).
++ALTER TABLE contacts ADD COLUMN is_primary BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/contacts/primary.POST.yml b/src/main/resources/officefloor/rest/api/contacts/primary.POST.yml
+new file mode 100644
+index 0000000..8aed69d
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/contacts/primary.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ContactsPrimaryPostLogic
