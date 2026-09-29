@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/features/clients/ClientProjects.tsx b/src/main/frontend/features/clients/ClientProjects.tsx
+new file mode 100644
+index 0000000..c55ff82
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientProjects.tsx
+@@ -0,0 +1,45 @@
++import React, { useEffect, useState } from 'react';
++
++// A client's projects, shown when a client is opened from the clients list. Owns its own state
++// (CLAUDE.md — features own their state; clients does not import the projects feature). Reuses the
++// project-row-<id>/project-name anchors so the projects listing reads the same in this context.
++type Project = { id: number; name: string; clientId: number; clientName: string };
++
++export function ClientProjects({ clientId }: { clientId: number }) {
++  const [projects, setProjects] = useState<Project[]>([]);
++
++  async function load() {
++    const res = await fetch(`/api/projects?clientId=${clientId}`);
++    if (res.ok) {
++      setProjects(await res.json());
++    }
++  }
++
++  useEffect(() => {
++    void load();
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-projects">
++      <h2>Projects</h2>
++      {projects.length === 0 ? (
++        <p data-testid="client-projects-empty">No projects yet.</p>
++      ) : (
++        <table data-testid="client-projects-table">
++          <thead>
++            <tr>
++              <th>Name</th>
++            </tr>
++          </thead>
++          <tbody>
++            {projects.map((p) => (
++              <tr key={p.id} data-testid={`project-row-${p.id}`}>
++                <td data-testid="project-name">{p.name}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 01eccfe..fde7556 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { ClientProjects } from './ClientProjects';
+ 
+ // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
+ type Client = { id: number; name: string; email: string };
+@@ -13,6 +14,7 @@ export function ClientsPage() {
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState('');
++  const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
+   // The list can get long; filter by name, case-insensitively. Empty box shows every client.
+   const query = search.trim().toLowerCase();
+@@ -94,6 +96,7 @@ export function ClientsPage() {
+             <tr>
+               <th>Name</th>
+               <th>Email</th>
++              <th />
+             </tr>
+           </thead>
+           <tbody>
+@@ -101,11 +104,22 @@ export function ClientsPage() {
+               <tr key={c.id} data-testid={`client-row-${c.id}`}>
+                 <td data-testid="client-name">{c.name}</td>
+                 <td data-testid="client-email">{c.email}</td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`client-open-${c.id}`}
++                    onClick={() => setOpenClientId(c.id)}
++                  >
++                    Open
++                  </button>
++                </td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       )}
++
++      {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index da22cd0..4a46b3b 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -16,13 +16,25 @@ public class ProjectRepository {
+         this.jdbc = jdbc;
+     }
+ 
++    private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
++            (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
++                    rs.getLong("client_id"), rs.getString("client_name"));
++
+     public List<Project> findAll() {
+         return jdbc.query(
+                 "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+                         + " FROM projects p JOIN clients c ON p.client_id = c.id"
+                         + " ORDER BY p.id",
+-                (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
+-                        rs.getLong("client_id"), rs.getString("client_name")));
++                MAPPER);
++    }
++
++    /** Projects done for one client — reused by the client detail view. */
++    public List<Project> findByClient(long clientId) {
++        return jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
++                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
++                        + " WHERE p.client_id = ? ORDER BY p.id",
++                MAPPER, clientId);
+     }
+ 
+     public Project create(String name, long clientId) {
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+index 7a1e528..5579b88 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+@@ -1,12 +1,21 @@
+ package net.officefloor.hq.app;
+ 
+ import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/projects — list all projects (each with its client's name). */
++/**
++ * GET /api/projects — list all projects (each with its client's name). With an optional
++ * {@code ?clientId=<id>} it lists only the projects done for that client.
++ */
+ public class ProjectsGetLogic {
+ 
+-    public void service(ProjectRepository repository, ObjectResponse<List<Project>> response) {
+-        response.send(repository.findAll());
++    public void service(@HttpQueryParameter("clientId") String clientId,
++            ProjectRepository repository, ObjectResponse<List<Project>> response) {
++        if (clientId == null || clientId.isBlank()) {
++            response.send(repository.findAll());
++        } else {
++            response.send(repository.findByClient(Long.parseLong(clientId.trim())));
++        }
+     }
+ }
