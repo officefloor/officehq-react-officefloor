@@ -1,0 +1,185 @@
+diff --git a/src/main/frontend/features/projects/InvoiceDetail.tsx b/src/main/frontend/features/projects/InvoiceDetail.tsx
+index 5093a58..3258c6a 100644
+--- a/src/main/frontend/features/projects/InvoiceDetail.tsx
++++ b/src/main/frontend/features/projects/InvoiceDetail.tsx
+@@ -45,6 +45,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+   const [paymentDate, setPaymentDate] = useState('');
+   const [status, setStatus] = useState('');
+   const [discountPct, setDiscountPct] = useState(0);
++  const [taxPct, setTaxPct] = useState(0);
+ 
+   async function load() {
+     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
+@@ -62,13 +63,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+ 
+   // The invoice's status is worked out server-side from the payments recorded against it, so we
+   // re-read it whenever the payments change rather than tracking it by hand. The invoice also
+-  // carries its discount percentage, which we read here to show the discount and final total.
++  // carries its discount and tax percentages, which we read here to show the discount, the tax and
++  // the final total.
+   async function loadStatus() {
+     const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
+     if (res.ok) {
+-      const inv: { status: string; discountPct: number } = await res.json();
++      const inv: { status: string; discountPct: number; taxPct: number } = await res.json();
+       setStatus(inv.status);
+       setDiscountPct(Number(inv.discountPct));
++      setTaxPct(Number(inv.taxPct));
+     }
+   }
+ 
+@@ -164,11 +167,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+     }
+   }
+ 
+-  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
+-  // the final total is the subtotal minus the discount.
++  // The subtotal is the sum of the line items; the discount is that percentage taken off it. Sales
++  // tax is then added on top, worked out on the discounted amount (subtotal minus discount). The
++  // final total is the discounted amount plus the tax.
+   const subtotal = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
+   const discount = subtotal * (discountPct / 100);
+-  const total = subtotal - discount;
++  const tax = (subtotal - discount) * (taxPct / 100);
++  const total = subtotal - discount + tax;
+ 
+   return (
+     <section data-testid="invoice-detail">
+@@ -304,6 +309,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+       <p>
+         Discount: <span data-testid="invoice-discount">{money(discount)}</span>
+       </p>
++      <p>
++        Tax: <span data-testid="invoice-tax">{money(tax)}</span>
++      </p>
+       <p>
+         Total: <span data-testid="invoice-amount">{money(total)}</span>
+       </p>
+diff --git a/src/main/java/net/officefloor/hq/app/Invoice.java b/src/main/java/net/officefloor/hq/app/Invoice.java
+index 8a8225d..b508643 100644
+--- a/src/main/java/net/officefloor/hq/app/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/Invoice.java
+@@ -7,9 +7,10 @@ import java.math.BigDecimal;
+  * exactly one project (projectId). Carries a payment status (UNPAID by default, PAID once settled)
+  * and two dates: issuedDate (when it went out) and dueDate (when it is due), as ISO yyyy-MM-dd.
+  * {@code due} is how much is still owed: the invoice amount minus everything paid against it.
+- * {@code discountPct} is a percentage (0..100) taken off the subtotal; the front-end shows the
+- * subtotal, the discount and the final total (subtotal minus the discount).
++ * {@code discountPct} is a percentage (0..100) taken off the subtotal; {@code taxPct} is a sales
++ * tax percentage (0..100) added on top after the discount. The front-end shows the subtotal, the
++ * discount, the tax and the final total ((subtotal minus the discount) times (1 + taxPct/100)).
+  */
+ public record Invoice(long id, long projectId, BigDecimal amount, String status, String issuedDate,
+-        String dueDate, BigDecimal due, BigDecimal discountPct) {
++        String dueDate, BigDecimal due, BigDecimal discountPct, BigDecimal taxPct) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index 1e1e0a6..c40f2a7 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -21,7 +21,8 @@ public class InvoiceRepository {
+             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
+                     rs.getBigDecimal("amount"), rs.getString("status"),
+                     rs.getString("issued_date"), rs.getString("due_date"),
+-                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"));
++                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"),
++                    rs.getBigDecimal("tax_pct"));
+ 
+     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
+     // totals zero. Derived here so the amount always reflects the current line items.
+@@ -41,9 +42,14 @@ public class InvoiceRepository {
+     private static final String DISCOUNTED_AMOUNT =
+             "(" + AMOUNT_SUM + " * (100 - i.discount_pct) / 100)";
+ 
+-    // What is still owed on the invoice: its discounted amount minus what has been paid, so the
+-    // discount flows through everywhere "owed" is shown.
+-    private static final String DUE = "(" + DISCOUNTED_AMOUNT + " - " + PAID_SUM + ")";
++    // Sales tax (tax_pct, V30) is added on top after the discount, so the taxed amount is the
++    // discounted amount times (1 + tax_pct/100). This is what the client actually pays.
++    private static final String TAXED_AMOUNT =
++            "(" + DISCOUNTED_AMOUNT + " * (100 + i.tax_pct) / 100)";
++
++    // What is still owed on the invoice: its taxed (post-discount) amount minus what has been paid,
++    // so the discount and the tax both flow through everywhere "owed" is shown.
++    private static final String DUE = "(" + TAXED_AMOUNT + " - " + PAID_SUM + ")";
+ 
+     // An invoice's status is worked out from its recorded payments, not flipped by hand: it stays
+     // DRAFT until issued, reads SENT once issued but unpaid, PARTIAL once some (but not all) of the
+@@ -60,7 +66,7 @@ public class InvoiceRepository {
+     public List<Invoice> findByProject(long projectId) {
+         return jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                         + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
+                 MAPPER, projectId);
+     }
+@@ -69,7 +75,7 @@ public class InvoiceRepository {
+     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
+         return jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                         + " FROM invoices i WHERE i.project_id = ?"
+                         + " ORDER BY i.due_date ASC NULLS LAST, i.id",
+                 MAPPER, projectId);
+@@ -120,7 +126,7 @@ public class InvoiceRepository {
+     public Invoice findById(long id) {
+         List<Invoice> found = jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
+                         + " FROM invoices i WHERE i.id = ?",
+                 MAPPER, id);
+         return found.isEmpty() ? null : found.get(0);
+@@ -136,9 +142,9 @@ public class InvoiceRepository {
+             return ps;
+         }, keys);
+         // A freshly created invoice has no payments yet, so the whole amount is still due, and no
+-        // discount yet (discount_pct defaults to 0).
++        // discount or tax yet (discount_pct and tax_pct default to 0).
+         return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
+-                amount, BigDecimal.ZERO);
++                amount, BigDecimal.ZERO, BigDecimal.ZERO);
+     }
+ 
+     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1849619..9c975c3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -161,16 +161,19 @@ public class TestSupportController {
+             Object issuedDate = inv.get("issuedDate");
+             Object dueDate = inv.get("dueDate");
+             Object discountPct = inv.get("discountPct");
++            Object taxPct = inv.get("taxPct");
+             // Amount is derived from the invoice's line items (V13), so it is not seeded directly;
+-            // the column defaults to 0. discount_pct (V29) defaults to 0 when the fixture omits it.
++            // the column defaults to 0. discount_pct (V29) and tax_pct (V30) default to 0 when the
++            // fixture omits them.
+             jdbc.update(
+                     "INSERT INTO invoices (id, project_id, status, issued_date, due_date,"
+-                            + " discount_pct) VALUES (?, ?, ?, ?, ?, ?)",
++                            + " discount_pct, tax_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     id(inv, "id"), id(inv, "projectId"),
+                     status == null ? "DRAFT" : status.toString(),
+                     issuedDate == null ? null : Date.valueOf(issuedDate.toString()),
+                     dueDate == null ? null : Date.valueOf(dueDate.toString()),
+-                    discountPct == null ? BigDecimal.ZERO : new BigDecimal(discountPct.toString()));
++                    discountPct == null ? BigDecimal.ZERO : new BigDecimal(discountPct.toString()),
++                    taxPct == null ? BigDecimal.ZERO : new BigDecimal(taxPct.toString()));
+             seedLineItems(inv);
+         }
+     }
+diff --git a/src/main/resources/db/migration/V30__invoices_tax_pct.sql b/src/main/resources/db/migration/V30__invoices_tax_pct.sql
+new file mode 100644
+index 0000000..3b28e41
+--- /dev/null
++++ b/src/main/resources/db/migration/V30__invoices_tax_pct.sql
+@@ -0,0 +1,6 @@
++-- An invoice can carry a sales tax added on top, worked out after any discount. tax_pct is that
++-- percentage (0..100); the final total is (subtotal minus the discount) times (1 + tax_pct/100).
++-- Additive: a new versioned migration alongside the existing invoices table. Existing rows get 0
++-- (no tax); the column is NOT NULL so every invoice carries a (possibly zero) tax rate.
++ALTER TABLE invoices ADD COLUMN tax_pct NUMERIC(5, 2) NOT NULL DEFAULT 0
++    CHECK (tax_pct >= 0 AND tax_pct <= 100);
