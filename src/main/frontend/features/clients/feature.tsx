@@ -9,6 +9,52 @@ type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
 type Contact = { id: number; clientId: number; name: string; email: string; role: string };
 type ClientSummary = { projectCount: number; contactCount: number };
+type StatementInvoice = { id: number; projectId: number; amountDue: number };
+type ClientStatement = { invoices: StatementInvoice[]; outstandingTotal: number };
+
+// Money, the way every invoice figure is shown across the app: a dollar sign and two decimals.
+function money(amount: number): string {
+  return `$${Number(amount).toFixed(2)}`;
+}
+
+// A client's statement: all of their invoices in one place, each with what is still owed on it, and
+// the total still owed across them all. Kept behind an opener so the client detail stays compact.
+// Owns its own statement state, scoped to the one client it is showing; talks to that client's own
+// /api/clients/<id>/statement endpoint.
+function ClientStatement({ client }: { client: Client }) {
+  const [statement, setStatement] = useState<ClientStatement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const res = await fetch(`/api/clients/${client.id}/statement`);
+      setStatement(await res.json());
+    }
+    void load();
+  }, [client.id]);
+
+  return (
+    <section data-testid="client-statement">
+      <button data-testid="client-statement-open" onClick={() => setOpen(true)}>
+        Statement
+      </button>
+      {open && statement && (
+        <>
+          <table data-testid="client-statement-table">
+            <tbody>
+              {statement.invoices.map((inv) => (
+                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+                  <td data-testid="statement-invoice-due">{money(inv.amountDue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</p>
+        </>
+      )}
+    </section>
+  );
+}
 
 // A client's at-a-glance counts: how many projects and contacts are kept for them. Owns its own
 // summary state, scoped to the one client it is showing; talks to that client's own
@@ -256,6 +302,7 @@ function ClientsPage() {
       )}
 
       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
+      {open && <ClientStatement key={`statement-${open.id}`} client={open} />}
       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
       {open && <ClientProjects key={open.id} client={open} />}
     </section>
