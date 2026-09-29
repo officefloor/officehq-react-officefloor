@@ -1,0 +1,82 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index e60be51..fc11da5 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -20,9 +20,11 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
++  const [sort, setSort] = useState('');
+ 
+-  async function load() {
+-    const res = await fetch(`/api/invoices?projectId=${projectId}`);
++  async function load(sortBy = sort) {
++    const query = sortBy ? `&sort=${encodeURIComponent(sortBy)}` : '';
++    const res = await fetch(`/api/invoices?projectId=${projectId}${query}`);
+     if (res.ok) {
+       setInvoices(await res.json());
+     }
+@@ -32,6 +34,11 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     void load();
+   }, [projectId]);
+ 
++  function sortByDue() {
++    setSort('due');
++    void load('due');
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     const parsed = Number(amount);
+@@ -86,6 +93,12 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+         ) : null}
+       </form>
+ 
++      <div data-testid="invoice-controls">
++        <button type="button" data-testid="invoice-sort-due" onClick={sortByDue}>
++          Sort by due date
++        </button>
++      </div>
++
+       <table data-testid="project-invoices-table">
+         <thead>
+           <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index 1c62928..36017f6 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -29,6 +29,14 @@ public class InvoiceRepository {
+                 MAPPER, projectId);
+     }
+ 
++    /** A project's invoices ordered by due date, earliest first (nulls last, id as tiebreak). */
++    public List<Invoice> findByProjectOrderByDueDate(long projectId) {
++        return jdbc.query(
++                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
++                        + " WHERE project_id = ? ORDER BY due_date ASC NULLS LAST, id",
++                MAPPER, projectId);
++    }
++
+     public Invoice findById(long id) {
+         List<Invoice> found = jdbc.query(
+                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
+diff --git a/src/main/java/net/officefloor/hq/app/InvoicesGetLogic.java b/src/main/java/net/officefloor/hq/app/InvoicesGetLogic.java
+index bb61cd5..b3413a0 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoicesGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/InvoicesGetLogic.java
+@@ -8,8 +8,13 @@ import net.officefloor.web.ObjectResponse;
+ public class InvoicesGetLogic {
+ 
+     public void service(@HttpQueryParameter("projectId") String projectId,
+-            InvoiceRepository repository, ObjectResponse<List<Invoice>> response) {
++            @HttpQueryParameter("sort") String sort, InvoiceRepository repository,
++            ObjectResponse<List<Invoice>> response) {
+         long id = projectId == null || projectId.isBlank() ? 0 : Long.parseLong(projectId.trim());
+-        response.send(repository.findByProject(id));
++        if (sort != null && "due".equalsIgnoreCase(sort.trim())) {
++            response.send(repository.findByProjectOrderByDueDate(id));
++        } else {
++            response.send(repository.findByProject(id));
++        }
+     }
+ }
