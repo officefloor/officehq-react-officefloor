@@ -35,6 +35,19 @@ export function ClientsPage() {
     void load();
   }, []);
 
+  // Tuck a client away: it drops off the list and the search, but the row is kept server-side.
+  async function onArchive(id: number) {
+    const res = await fetch('/api/clients/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      setOpenClientId((prev) => (prev === id ? null : prev));
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!EMAIL_PATTERN.test(email.trim())) {
@@ -113,6 +126,13 @@ export function ClientsPage() {
                     onClick={() => setOpenClientId(c.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`client-archive-${c.id}`}
+                    onClick={() => onArchive(c.id)}
+                  >
+                    Archive
                   </button>
                 </td>
               </tr>

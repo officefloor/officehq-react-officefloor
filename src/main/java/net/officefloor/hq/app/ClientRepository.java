@@ -16,10 +16,28 @@ public class ClientRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * List clients. Archived clients are hidden — that is what keeps a tucked-away client off the
+     * main list (and the name search that filters it) while its row is retained.
+     */
     public List<Client> findAll() {
         return jdbc.query(
-                "SELECT id, name, email FROM clients ORDER BY id",
+                "SELECT id, name, email FROM clients WHERE archived = FALSE ORDER BY id",
                 (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+    }
+
+    /** Look up one client, or null when there is no such row. */
+    public Client findById(long id) {
+        List<Client> rows = jdbc.query(
+                "SELECT id, name, email FROM clients WHERE id = ?",
+                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
+                id);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Tuck a client away: flag it archived so it drops off the lists but its row is retained. */
+    public boolean archive(long id) {
+        return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
     }
 
     public Client create(String name, String email) {
