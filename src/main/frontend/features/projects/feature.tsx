@@ -312,11 +312,13 @@ function InvoiceActions({
   onOpen,
   onSend,
   onPay,
+  onCancel,
 }: {
   invoice: Invoice;
   onOpen: () => void;
   onSend: () => void;
   onPay: () => void;
+  onCancel: () => void;
 }) {
   return (
     <>
@@ -331,6 +333,11 @@ function InvoiceActions({
       {invoice.status === 'SENT' && (
         <button data-testid={`invoice-pay-${invoice.id}`} onClick={onPay}>
           Mark paid
+        </button>
+      )}
+      {invoice.status === 'SENT' && (
+        <button data-testid={`invoice-cancel-${invoice.id}`} onClick={onCancel}>
+          Cancel
         </button>
       )}
     </>
@@ -383,7 +390,7 @@ function ProjectInvoices({
 
   // A lifecycle move (send, mark paid, …) is a POST to the matching action route followed by a reload;
   // routing them through one place means a new action is one more call site, not new plumbing.
-  async function transition(id: number, action: 'send' | 'pay') {
+  async function transition(id: number, action: 'send' | 'pay' | 'cancel') {
     await fetch(`/api/invoices/${id}/${action}`, { method: 'POST' });
     await load();
   }
@@ -433,6 +440,7 @@ function ProjectInvoices({
                       onOpen={() => setOpenInvoiceId(inv.id)}
                       onSend={() => transition(inv.id, 'send')}
                       onPay={() => transition(inv.id, 'pay')}
+                      onCancel={() => transition(inv.id, 'cancel')}
                     />
                   </td>
                 </tr>

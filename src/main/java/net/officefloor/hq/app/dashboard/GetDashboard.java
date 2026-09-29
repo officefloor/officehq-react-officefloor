@@ -17,8 +17,12 @@ public class GetDashboard {
     public void service(JdbcTemplate jdbc, ObjectResponse<DashboardView> response) {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
+        // Money owed is the total of every SENT invoice, and an invoice's total is the sum of its
+        // line items (the source of truth everywhere else) — so a cancelled (VOID) invoice, no
+        // longer SENT, drops out of what is owed.
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM line_items li "
+                        + "JOIN invoices inv ON inv.id = li.invoice_id WHERE inv.status = 'SENT'",
                 BigDecimal.class);
         long overdue = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
