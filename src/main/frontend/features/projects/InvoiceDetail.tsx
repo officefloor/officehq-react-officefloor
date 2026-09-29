@@ -18,6 +18,14 @@ function money(n: number): string {
 
 type EditDraft = { description: string; qty: string; unitPrice: string };
 
+// A payment a client has made against this invoice: how much (amount) and when (date, yyyy-MM-dd).
+type Payment = {
+  id: number;
+  invoiceId: number;
+  amount: number;
+  date: string;
+};
+
 export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [description, setDescription] = useState('');
@@ -25,6 +33,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [unitPrice, setUnitPrice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<EditDraft>({ description: '', qty: '', unitPrice: '' });
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -33,9 +44,36 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
     }
   }
 
+  async function loadPayments() {
+    const res = await fetch(`/api/payments?invoiceId=${invoiceId}`);
+    if (res.ok) {
+      setPayments(await res.json());
+    }
+  }
+
   useEffect(() => {
     void load();
+    void loadPayments();
   }, [invoiceId]);
+
+  async function onRecordPayment(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        invoiceId,
+        amount: Number(paymentAmount),
+        date: paymentDate,
+      }),
+    });
+    if (res.ok) {
+      const created: Payment = await res.json();
+      setPayments((prev) => [...prev, created]);
+      setPaymentAmount('');
+      setPaymentDate('');
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -214,6 +252,42 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       <p>
         Total: <span data-testid="invoice-amount">{money(total)}</span>
       </p>
+
+      <h3>Payments</h3>
+      <form data-testid="payment-form" onSubmit={onRecordPayment}>
+        <input
+          data-testid="payment-form-amount"
+          placeholder="Amount"
+          value={paymentAmount}
+          onChange={(e) => setPaymentAmount(e.target.value)}
+        />
+        <input
+          data-testid="payment-form-date"
+          placeholder="Date"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+        />
+        <button type="submit" data-testid="payment-form-submit">
+          Record payment
+        </button>
+      </form>
+
+      <table data-testid="invoice-payments-table">
+        <thead>
+          <tr>
+            <th>Amount</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((p) => (
+            <tr key={p.id} data-testid={`payment-row-${p.id}`}>
+              <td data-testid="payment-amount">{money(p.amount)}</td>
+              <td data-testid="payment-date">{p.date}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </section>
   );
 }

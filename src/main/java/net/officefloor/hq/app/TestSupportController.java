@@ -32,7 +32,7 @@ public class TestSupportController {
      * when its schema arrives.
      */
     private static final List<String> DOMAIN_TABLES = List.of(
-            "notes", "project_tags", "tags", "tasks", "line_items",
+            "notes", "project_tags", "tags", "tasks", "payments", "line_items",
             "invoices", "contacts", "projects", "clients");
 
     private final Audit audit;
@@ -70,6 +70,7 @@ public class TestSupportController {
         seedProjectTags(fixture);
         seedNotes(fixture);
         seedInvoices(fixture);
+        seedPayments(fixture);
     }
 
     private void seedClients(Map<String, Object> fixture) {
@@ -161,6 +162,22 @@ public class TestSupportController {
                     id(li, "id"), invoiceId, li.get("description"),
                     ((Number) li.get("qty")).intValue(),
                     new BigDecimal(li.get("unitPrice").toString()));
+        }
+    }
+
+    private void seedPayments(Map<String, Object> fixture) {
+        List<Map<String, Object>> payments = rows(fixture, "payments");
+        for (Map<String, Object> p : payments) {
+            jdbc.update(
+                    "INSERT INTO payments (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    id(p, "id"), id(p, "invoiceId"),
+                    new BigDecimal(p.get("amount").toString()),
+                    Date.valueOf(p.get("date").toString()));
+        }
+        // payments are also inserted app-side (PaymentRepository) via the IDENTITY generator, so
+        // advance it past any seeded ids (see bumpIdentity).
+        if (!payments.isEmpty()) {
+            bumpIdentity("payments");
         }
     }
 
