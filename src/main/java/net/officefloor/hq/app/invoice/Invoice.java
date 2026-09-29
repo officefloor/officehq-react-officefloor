@@ -22,6 +22,8 @@ public class Invoice {
 
     private BigDecimal amount;
 
+    private String status;
+
     public Long getId() {
         return id;
     }
@@ -44,5 +46,13 @@ public class Invoice {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

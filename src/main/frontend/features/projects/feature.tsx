@@ -8,7 +8,7 @@ import type { Feature } from '../../router/routes';
 // data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
-type Invoice = { id: number; projectId: number; amount: number };
+type Invoice = { id: number; projectId: number; amount: number; status: string };
 
 function money(amount: number): string {
   return Number(amount).toFixed(2);
@@ -43,6 +43,11 @@ function ProjectDetail({ project }: { project: Project }) {
     await load();
   }
 
+  async function pay(id: number) {
+    await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
+    await load();
+  }
+
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
 
   return (
@@ -66,6 +71,14 @@ function ProjectDetail({ project }: { project: Project }) {
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
               <td data-testid="invoice-amount">{money(inv.amount)}</td>
+              <td data-testid="invoice-status">{inv.status}</td>
+              <td>
+                {inv.status !== 'PAID' && (
+                  <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
+                    Mark paid
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -21,6 +21,7 @@ public class CreateInvoice {
         Invoice invoice = new Invoice();
         invoice.setProjectId(body.getProjectId());
         invoice.setAmount(amount);
+        invoice.setStatus("UNPAID");
         response.send(repository.save(invoice));
     }
 }
