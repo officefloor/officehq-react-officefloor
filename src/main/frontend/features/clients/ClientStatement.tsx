@@ -47,7 +47,10 @@ export function ClientStatement({ clientId }: { clientId: number }) {
         Statement
       </button>
       {statement ? (
-        <>
+        <article data-testid="statement-print-view" className="statement-print-view">
+          <header>
+            <h3>Statement of account</h3>
+          </header>
           {statement.projects.map((project) => (
             <div
               key={project.projectId}
@@ -88,7 +91,11 @@ export function ClientStatement({ clientId }: { clientId: number }) {
             Total owed:{' '}
             <span data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</span>
           </p>
-        </>
+          <p className="statement-grand-total-line">
+            Grand total owed:{' '}
+            <strong data-testid="statement-grand-total">{money(statement.outstandingTotal)}</strong>
+          </p>
+        </article>
       ) : null}
     </section>
   );
