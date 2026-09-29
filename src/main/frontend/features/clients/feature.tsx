@@ -167,27 +167,36 @@ function ClientContacts({ client }: { client: Client }) {
 
 // A client's detail: the projects being done for them. Owns its own project state, scoped to the one
 // client it is showing. Reuses the project-row-<id>/project-name anchors in a client-scoped table.
+// Shows only the client's ACTIVE projects by default (scope=active); the show-all toggle asks the
+// server for everything (scope=all), so the finished and hidden (archived) ones appear too.
 function ClientProjects({ client }: { client: Client }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const res = await fetch(`/api/clients/${client.id}/projects`);
+      const scope = showAll ? 'all' : 'active';
+      const res = await fetch(`/api/clients/${client.id}/projects?scope=${scope}`);
       setProjects(await res.json());
     }
     void load();
-  }, [client.id]);
+  }, [client.id, showAll]);
 
   return (
-    <table data-testid="client-projects-table">
-      <tbody>
-        {projects.map((p) => (
-          <tr key={p.id} data-testid={`project-row-${p.id}`}>
-            <td data-testid="project-name">{p.name}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <section data-testid="client-projects">
+      <button data-testid="client-projects-show-all" onClick={() => setShowAll((v) => !v)}>
+        {showAll ? 'Show only active' : 'Show finished and hidden too'}
+      </button>
+      <table data-testid="client-projects-table">
+        <tbody>
+          {projects.map((p) => (
+            <tr key={p.id} data-testid={`project-row-${p.id}`}>
+              <td data-testid="project-name">{p.name}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

@@ -70,11 +70,15 @@ public class TestSupportController {
 
     private void seedProjects(Map<String, Object> fixture) {
         for (Map<String, Object> p : rows(fixture, "projects")) {
-            // status defaults to ACTIVE so a fixture that omits it gets an active project.
-            jdbc.update(
-                    "INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
-                    id(p, "id"), p.get("name"), id(p, "clientId"),
-                    p.get("status") == null ? "ACTIVE" : p.get("status").toString());
+            // status defaults to ACTIVE so a fixture that omits it gets an active project; archived
+            // defaults to FALSE (the table default) unless the fixture pins it.
+            new Insert("projects")
+                    .set("id", id(p, "id"))
+                    .set("name", p.get("name"))
+                    .set("client_id", id(p, "clientId"))
+                    .set("status", p.get("status") == null ? "ACTIVE" : p.get("status").toString())
+                    .setIfPresent("archived", p.get("archived"))
+                    .run();
         }
     }
 
