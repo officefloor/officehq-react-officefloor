@@ -9,9 +9,16 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [search, setSearch] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+
+  // The list can get long; filter by name, case-insensitively. Empty box shows every client.
+  const query = search.trim().toLowerCase();
+  const visibleClients = query
+    ? clients.filter((c) => c.name.toLowerCase().includes(query))
+    : clients;
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -72,6 +79,13 @@ export function ClientsPage() {
         </button>
       </form>
 
+      <input
+        data-testid="client-search"
+        placeholder="Search by name"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
@@ -83,7 +97,7 @@ export function ClientsPage() {
             </tr>
           </thead>
           <tbody>
-            {clients.map((c) => (
+            {visibleClients.map((c) => (
               <tr key={c.id} data-testid={`client-row-${c.id}`}>
                 <td data-testid="client-name">{c.name}</td>
                 <td data-testid="client-email">{c.email}</td>
