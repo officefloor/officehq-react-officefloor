@@ -3,6 +3,7 @@ import { ClientProjects } from './ClientProjects';
 import { ClientContacts } from './ClientContacts';
 import { ClientSummary } from './ClientSummary';
 import { ClientStatement } from './ClientStatement';
+import { ClientRecordPayment } from './ClientRecordPayment';
 
 // The panels shown for the currently opened client. ClientStatement is keyed by clientId so it
 // remounts (rather than merely re-fetches) when the open client changes.
@@ -11,6 +12,7 @@ export function ClientDetails({ clientId }: { clientId: number }) {
     <>
       <ClientSummary clientId={clientId} />
       <ClientStatement key={clientId} clientId={clientId} />
+      <ClientRecordPayment key={`payment-${clientId}`} clientId={clientId} />
       <ClientProjects clientId={clientId} />
       <ClientContacts clientId={clientId} />
     </>
