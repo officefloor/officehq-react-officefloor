@@ -1,0 +1,348 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+new file mode 100644
+index 0000000..67e33ab
+--- /dev/null
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -0,0 +1,90 @@
++import React, { useEffect, useState } from 'react';
++import type { Feature } from '../../router/routes';
++
++// Projects feature: add a project and pick which client it is for, then list every project showing
++// the client's NAME. Owns its own state; talks to its own /api/projects endpoints and reads
++// /api/clients to populate the client picker. data-testid anchors follow the spec's conventions.
++type Client = { id: number; name: string; email: string };
++type Project = { id: number; name: string; clientId: number; clientName: string };
++
++function ProjectsPage() {
++  const [projects, setProjects] = useState<Project[]>([]);
++  const [clients, setClients] = useState<Client[]>([]);
++  const [name, setName] = useState('');
++  const [clientId, setClientId] = useState('');
++
++  async function loadProjects() {
++    const res = await fetch('/api/projects');
++    setProjects(await res.json());
++  }
++
++  async function loadClients() {
++    const res = await fetch('/api/clients');
++    setClients(await res.json());
++  }
++
++  useEffect(() => {
++    void loadProjects();
++    void loadClients();
++  }, []);
++
++  async function submit(e: React.FormEvent) {
++    e.preventDefault();
++    if (!name.trim() || !clientId) {
++      return;
++    }
++    await fetch('/api/projects', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name, clientId: Number(clientId) }),
++    });
++    setName('');
++    setClientId('');
++    await loadProjects();
++  }
++
++  return (
++    <section data-testid="projects">
++      <form data-testid="project-form" onSubmit={submit}>
++        <input
++          data-testid="project-form-name"
++          placeholder="Project name"
++          value={name}
++          onChange={(e) => setName(e.target.value)}
++        />
++        <select
++          data-testid="project-form-client"
++          value={clientId}
++          onChange={(e) => setClientId(e.target.value)}
++        >
++          <option value="">Select a client</option>
++          {clients.map((c) => (
++            <option key={c.id} value={String(c.id)}>
++              {c.name}
++            </option>
++          ))}
++        </select>
++        <button data-testid="project-form-submit" type="submit">
++          Add project
++        </button>
++      </form>
++
++      {projects.length === 0 ? (
++        <p data-testid="projects-empty">No projects yet.</p>
++      ) : (
++        <table data-testid="projects-table">
++          <tbody>
++            {projects.map((p) => (
++              <tr key={p.id} data-testid={`project-row-${p.id}`}>
++                <td data-testid="project-name">{p.name}</td>
++                <td data-testid="project-client">{p.clientName}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
++
++export const feature: Feature = { id: 'projects', label: 'Projects', Page: ProjectsPage };
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4f79e7d..55f6c95 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,12 @@ public class TestSupportController {
+     @PostMapping("/reset")
+     public void reset() {
+         audit.clear();
++        // projects references clients; drop referential integrity so both tables can be truncated
++        // (and their identity counters restarted) regardless of FK order.
++        jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
++        jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+@@ -45,5 +50,12 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
+                     ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+         }
++        List<Map<String, Object>> projects =
++                (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
++        for (Map<String, Object> p : projects) {
++            jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
++                    ((Number) p.get("id")).longValue(), p.get("name"),
++                    ((Number) p.get("clientId")).longValue());
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/CreateProject.java b/src/main/java/net/officefloor/hq/app/project/CreateProject.java
+new file mode 100644
+index 0000000..2909675
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/CreateProject.java
+@@ -0,0 +1,25 @@
++package net.officefloor.hq.app.project;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/projects — add a project with a name for a chosen client. */
++public class CreateProject {
++
++    public void service(@RequestBody NewProject body, ProjectRepository repository,
++            ObjectResponse<Project> response) {
++        String name = body.getName() == null ? "" : body.getName().trim();
++        if (name.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a name");
++        }
++        if (body.getClientId() == null) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a client");
++        }
++        Project project = new Project();
++        project.setName(name);
++        project.setClientId(body.getClientId());
++        response.send(repository.save(project));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ListProjects.java b/src/main/java/net/officefloor/hq/app/project/ListProjects.java
+new file mode 100644
+index 0000000..0d097f2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ListProjects.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.project;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/projects — every project with its client's name (cross-entity join). */
++public class ListProjects {
++
++    public void service(JdbcTemplate jdbc, ObjectResponse<List<ProjectView>> response) {
++        List<ProjectView> projects = jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
++                        + "FROM projects p JOIN clients c ON c.id = p.client_id "
++                        + "ORDER BY p.id",
++                (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
++                        rs.getLong("client_id"), rs.getString("client_name")));
++        response.send(projects);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/NewProject.java b/src/main/java/net/officefloor/hq/app/project/NewProject.java
+new file mode 100644
+index 0000000..07db939
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/NewProject.java
+@@ -0,0 +1,25 @@
++package net.officefloor.hq.app.project;
++
++/** Request body for creating a project: a name and the client it is for. */
++public class NewProject {
++
++    private String name;
++
++    private Long clientId;
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+new file mode 100644
+index 0000000..6448076
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.project;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A project the user does for a client: name + the client it is for. */
++@Entity
++@Table(name = "projects")
++public class Project {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+new file mode 100644
+index 0000000..7d5a8f5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.project;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Project}. */
++public interface ProjectRepository extends JpaRepository<Project, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectView.java b/src/main/java/net/officefloor/hq/app/project/ProjectView.java
+new file mode 100644
+index 0000000..b61aa04
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectView.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.project;
++
++/** A project joined with its client's name — what the projects list surfaces. */
++public class ProjectView {
++
++    private final Long id;
++    private final String name;
++    private final Long clientId;
++    private final String clientName;
++
++    public ProjectView(Long id, String name, Long clientId, String clientName) {
++        this.id = id;
++        this.name = name;
++        this.clientId = clientId;
++        this.clientName = clientName;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public String getClientName() {
++        return clientName;
++    }
++}
+diff --git a/src/main/resources/db/migration/V3__projects.sql b/src/main/resources/db/migration/V3__projects.sql
+new file mode 100644
+index 0000000..3401576
+--- /dev/null
++++ b/src/main/resources/db/migration/V3__projects.sql
+@@ -0,0 +1,8 @@
++-- Projects feature: a project the user does for a client (name + client_id).
++-- BY DEFAULT identity so the test seed can insert explicit ids (fixture ids), while normal
++-- creates still auto-generate. client_id is a required foreign key onto clients.
++CREATE TABLE projects (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name      VARCHAR(255) NOT NULL,
++    client_id BIGINT NOT NULL REFERENCES clients(id)
++);
+diff --git a/src/main/resources/officefloor/rest/api/projects.GET.yml b/src/main/resources/officefloor/rest/api/projects.GET.yml
+new file mode 100644
+index 0000000..5a17a97
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.project.ListProjects
+diff --git a/src/main/resources/officefloor/rest/api/projects.POST.yml b/src/main/resources/officefloor/rest/api/projects.POST.yml
+new file mode 100644
+index 0000000..a0b5613
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.project.CreateProject
