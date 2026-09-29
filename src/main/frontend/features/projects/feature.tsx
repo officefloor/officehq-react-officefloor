@@ -444,9 +444,14 @@ function ProjectDetail({ project }: { project: Project }) {
   );
 }
 
+type ProjectTagLink = { projectId: number; tagId: number };
+
 function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagLinks, setTagLinks] = useState<ProjectTagLink[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -464,9 +469,19 @@ function ProjectsPage() {
     setClients(await res.json());
   }
 
+  async function loadTags() {
+    const [all, links] = await Promise.all([
+      fetch('/api/tags').then((r) => r.json()),
+      fetch('/api/project-tags').then((r) => r.json()),
+    ]);
+    setTags(all);
+    setTagLinks(links);
+  }
+
   useEffect(() => {
     void loadProjects();
     void loadClients();
+    void loadTags();
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -501,7 +516,14 @@ function ProjectsPage() {
   }
 
   const open = projects.find((p) => p.id === openId) ?? null;
-  const visible = showArchived ? projects : projects.filter((p) => !p.archived);
+  const byArchived = showArchived ? projects : projects.filter((p) => !p.archived);
+  const filterTagId = tagFilter ? Number(tagFilter) : null;
+  const visible =
+    filterTagId === null
+      ? byArchived
+      : byArchived.filter((p) =>
+          tagLinks.some((l) => l.projectId === p.id && l.tagId === filterTagId),
+        );
 
   return (
     <section data-testid="projects">
@@ -536,6 +558,19 @@ function ProjectsPage() {
       >
         {showArchived ? 'Hide archived' : 'Show archived'}
       </button>
+
+      <select
+        data-testid="project-tag-filter"
+        value={tagFilter}
+        onChange={(e) => setTagFilter(e.target.value)}
+      >
+        <option value="">All labels</option>
+        {tags.map((t) => (
+          <option key={t.id} value={String(t.id)}>
+            {t.name}
+          </option>
+        ))}
+      </select>
 
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
