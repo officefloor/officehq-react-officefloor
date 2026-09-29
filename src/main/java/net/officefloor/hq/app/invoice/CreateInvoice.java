@@ -22,7 +22,7 @@ public class CreateInvoice {
         Invoice invoice = new Invoice();
         invoice.setProjectId(body.getProjectId());
         invoice.setAmount(amount);
-        invoice.setStatus("UNPAID");
+        invoice.setStatus("DRAFT");
         LocalDate today = LocalDate.now();
         invoice.setIssuedDate(today);
         invoice.setDueDate(today.plusDays(30));

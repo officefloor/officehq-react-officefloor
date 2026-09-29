@@ -55,6 +55,11 @@ function ProjectDetail({ project }: { project: Project }) {
     await load();
   }
 
+  async function send(id: number) {
+    await fetch(`/api/invoices/${id}/send`, { method: 'POST' });
+    await load();
+  }
+
   async function pay(id: number) {
     await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
     await load();
@@ -99,7 +104,12 @@ function ProjectDetail({ project }: { project: Project }) {
               <td data-testid="invoice-due">{inv.dueDate}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td>
-                {inv.status !== 'PAID' && (
+                {inv.status === 'DRAFT' && (
+                  <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
+                    Send
+                  </button>
+                )}
+                {inv.status === 'SENT' && (
                   <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
                     Mark paid
                   </button>

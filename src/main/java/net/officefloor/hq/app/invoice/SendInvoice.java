@@ -9,24 +9,23 @@ import net.officefloor.web.HttpPathParameter;
 import net.officefloor.web.ObjectResponse;
 
 /**
- * POST /api/invoices/{id}/pay — mark an invoice paid: flip its status to PAID and record the fact
- * to the audit file so it can be checked back later.
+ * POST /api/invoices/{id}/send — send a draft invoice: flip its status from DRAFT to SENT and
+ * record the fact to the audit file so it can be checked back later. Only a draft can be sent.
  */
-public class PayInvoice {
+public class SendInvoice {
 
     public void service(@HttpPathParameter("id") String id, InvoiceRepository repository,
             Audit audit, ObjectResponse<InvoiceView> response) {
         Long invoiceId = Long.valueOf(id);
         Invoice invoice = repository.findById(invoiceId)
                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
-        if (!"SENT".equals(invoice.getStatus())) {
-            throw new HttpException(HttpStatus.CONFLICT,
-                    "An invoice can only be paid once it has been sent");
+        if (!"DRAFT".equals(invoice.getStatus())) {
+            throw new HttpException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
         }
-        invoice.setStatus("PAID");
+        invoice.setStatus("SENT");
         Invoice saved = repository.save(invoice);
         BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
-        audit.record("INVOICE_PAID id=" + saved.getId() + " amount=" + amount.toPlainString());
+        audit.record("INVOICE_SENT id=" + saved.getId() + " amount=" + amount.toPlainString());
         response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
                 saved.getStatus(),
                 saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),

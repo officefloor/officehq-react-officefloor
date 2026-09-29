@@ -64,15 +64,28 @@ public class TestSupportController {
             Object status = in.get("status");
             Object issuedDate = in.get("issuedDate");
             Object dueDate = in.get("dueDate");
-            jdbc.update(
-                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date)"
-                            + " VALUES (?, ?, ?, ?, ?, ?)",
+            // Insert only the columns the fixture supplies for the (optional) dates, so the
+            // table's own defaults apply when a fixture omits them (a plain null would trip the
+            // NOT NULL columns). status defaults to DRAFT — a new invoice starts as a draft.
+            StringBuilder cols = new StringBuilder("id, project_id, amount, status");
+            StringBuilder marks = new StringBuilder("?, ?, ?, ?");
+            List<Object> args = new java.util.ArrayList<>(List.of(
                     ((Number) in.get("id")).longValue(),
                     ((Number) in.get("projectId")).longValue(),
                     ((Number) in.get("amount")).doubleValue(),
-                    status == null ? "UNPAID" : status.toString(),
-                    issuedDate == null ? null : issuedDate.toString(),
-                    dueDate == null ? null : dueDate.toString());
+                    status == null ? "DRAFT" : status.toString()));
+            if (issuedDate != null) {
+                cols.append(", issued_date");
+                marks.append(", ?");
+                args.add(issuedDate.toString());
+            }
+            if (dueDate != null) {
+                cols.append(", due_date");
+                marks.append(", ?");
+                args.add(dueDate.toString());
+            }
+            jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
+                    args.toArray());
         }
     }
 }
