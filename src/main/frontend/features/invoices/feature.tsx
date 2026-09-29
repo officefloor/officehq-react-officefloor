@@ -16,20 +16,36 @@ function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
 
+// The stages an invoice can be at; 'ALL' leaves the list unfiltered.
+const STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
+
 function InvoicesPage() {
   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
+  const [status, setStatus] = useState<string>('ALL');
 
-  async function load() {
-    const res = await fetch('/api/all-invoices');
+  async function load(current: string) {
+    const res = await fetch(`/api/all-invoices?status=${encodeURIComponent(current)}`);
     setInvoices(await res.json());
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    void load(status);
+  }, [status]);
 
   return (
     <section data-testid="invoices">
+      <select
+        data-testid="invoice-status-filter"
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+      >
+        <option value="ALL">All stages</option>
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
       {invoices.length === 0 ? (
         <p data-testid="all-invoices-empty">No invoices yet.</p>
       ) : (
