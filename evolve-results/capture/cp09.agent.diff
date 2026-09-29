@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 3156c44..ae5b338 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -17,8 +17,8 @@ export function DashboardPage() {
+     void load();
+   }, []);
+ 
+-  // Money owed is always shown to 2 decimal places (e.g. 300 -> "300.00").
+-  const outstanding = Number(summary?.outstandingTotal ?? 0).toFixed(2);
++  // Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
++  const outstanding = `$${Number(summary?.outstandingTotal ?? 0).toFixed(2)}`;
+ 
+   return (
+     <section data-testid="dashboard-page">
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index a665328..c79f37b 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
+ type Invoice = { id: number; projectId: number; amount: number; status: string };
+ 
+ function money(n: number): string {
+-  return Number(n).toFixed(2);
++  return `$${Number(n).toFixed(2)}`;
+ }
+ 
+ export function ProjectInvoices({ projectId }: { projectId: number }) {
