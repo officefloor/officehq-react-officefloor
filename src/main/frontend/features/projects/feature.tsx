@@ -11,7 +11,7 @@ type Project = { id: number; name: string; clientId: number; clientName: string 
 type Invoice = { id: number; projectId: number; amount: number; status: string };
 
 function money(amount: number): string {
-  return Number(amount).toFixed(2);
+  return `$${Number(amount).toFixed(2)}`;
 }
 
 // A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its

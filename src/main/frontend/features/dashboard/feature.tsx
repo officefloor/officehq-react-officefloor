@@ -7,7 +7,7 @@ import type { Feature } from '../../router/routes';
 type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
 
 function money(amount: number): string {
-  return Number(amount).toFixed(2);
+  return `$${Number(amount).toFixed(2)}`;
 }
 
 function DashboardPage() {
