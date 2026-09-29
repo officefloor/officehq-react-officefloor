@@ -17,6 +17,7 @@ function ClientContacts({ client }: { client: Client }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch(`/api/clients/${client.id}/contacts`);
@@ -32,6 +33,12 @@ function ClientContacts({ client }: { client: Client }) {
     if (!name.trim() || !email.trim() || !role.trim()) {
       return;
     }
+    // A contact needs a proper email too; same shape the server enforces (see CreateContact).
+    if (!EMAIL_RE.test(email.trim())) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    setEmailError('');
     await fetch(`/api/clients/${client.id}/contacts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,6 +65,11 @@ function ClientContacts({ client }: { client: Client }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="contact-form-email-error" role="alert">
+            {emailError}
+          </p>
+        )}
         <input
           data-testid="contact-form-role"
           placeholder="Role"
