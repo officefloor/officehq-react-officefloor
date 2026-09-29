@@ -1,0 +1,308 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 3fd98a3..06c788d 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -12,6 +12,7 @@ type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
+ type Project = {
+   id: number;
+   name: string;
++  code: string;
+   clientId: number;
+   clientName: string;
+   archived: boolean;
+@@ -753,6 +754,7 @@ function ProjectsTable({
+         {projects.map((p) => (
+           <tr key={p.id} data-testid={`project-row-${p.id}`}>
+             <td data-testid="project-name">{p.name}</td>
++            <td data-testid="project-code">{p.code}</td>
+             <td data-testid="project-client">{p.clientName}</td>
+             <td data-testid="project-status">{p.status}</td>
+             <td>
+@@ -781,6 +783,8 @@ function ProjectsPage() {
+   const [tagFilter, setTagFilter] = useState('');
+   const [statusFilter, setStatusFilter] = useState('');
+   const [name, setName] = useState('');
++  const [code, setCode] = useState('');
++  const [codeError, setCodeError] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+   const [openId, setOpenId] = useState<number | null>(null);
+@@ -790,15 +794,23 @@ function ProjectsPage() {
+ 
+   async function submit(e: React.FormEvent) {
+     e.preventDefault();
+-    if (!name.trim() || !clientId) {
++    setCodeError('');
++    if (!name.trim() || !clientId || !code.trim()) {
+       return;
+     }
+-    await fetch('/api/projects', {
++    const res = await fetch('/api/projects', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
++      body: JSON.stringify({ name, code, clientId: Number(clientId), status }),
+     });
++    // A code must be unique across jobs; the server rejects a duplicate, which surfaces here as a
++    // field error rather than a new row.
++    if (!res.ok) {
++      setCodeError('That code is already in use');
++      return;
++    }
+     setName('');
++    setCode('');
+     setClientId('');
+     setStatus('ACTIVE');
+     await reloadProjects();
+@@ -836,6 +848,12 @@ function ProjectsPage() {
+           value={name}
+           onChange={(e) => setName(e.target.value)}
+         />
++        <input
++          data-testid="project-form-code"
++          placeholder="Reference code"
++          value={code}
++          onChange={(e) => setCode(e.target.value)}
++        />
+         <select
+           data-testid="project-form-client"
+           value={clientId}
+@@ -860,6 +878,11 @@ function ProjectsPage() {
+         <button data-testid="project-form-submit" type="submit">
+           Add job
+         </button>
++        {codeError && (
++          <p data-testid="project-form-code-error" role="alert">
++            {codeError}
++          </p>
++        )}
+       </form>
+ 
+       <button
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 934bdd3..a84392e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -84,6 +84,7 @@ public class TestSupportController {
+             new Insert("projects")
+                     .set("id", id(p, "id"))
+                     .set("name", p.get("name"))
++                    .setIfPresent("code", p.get("code"))
+                     .set("client_id", id(p, "clientId"))
+                     .set("status", p.get("status") == null ? "ACTIVE" : p.get("status").toString())
+                     .setIfPresent("archived", p.get("archived"))
+diff --git a/src/main/java/net/officefloor/hq/app/project/ArchiveProject.java b/src/main/java/net/officefloor/hq/app/project/ArchiveProject.java
+index b623da3..9506553 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ArchiveProject.java
++++ b/src/main/java/net/officefloor/hq/app/project/ArchiveProject.java
+@@ -21,7 +21,7 @@ public class ArchiveProject {
+         project.setArchived(true);
+         Project saved = repository.save(project);
+         audit.record("PROJECT_ARCHIVED id=" + saved.getId());
+-        response.send(new ProjectView(saved.getId(), saved.getName(), saved.getClientId(), null,
+-                saved.isArchived(), saved.getStatus()));
++        response.send(new ProjectView(saved.getId(), saved.getName(), saved.getCode(),
++                saved.getClientId(), null, saved.isArchived(), saved.getStatus()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/CreateProject.java b/src/main/java/net/officefloor/hq/app/project/CreateProject.java
+index 5664efb..f884051 100644
+--- a/src/main/java/net/officefloor/hq/app/project/CreateProject.java
++++ b/src/main/java/net/officefloor/hq/app/project/CreateProject.java
+@@ -20,6 +20,16 @@ public class CreateProject {
+         if (body.getClientId() == null) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a client");
+         }
++        String code = body.getCode() == null ? "" : body.getCode().trim();
++        if (code.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a code");
++        }
++        // Two projects cannot share a reference code; reject a duplicate before it reaches the
++        // unique constraint (see V28__projects_code.sql).
++        if (repository.existsByCode(code)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A project with this code already exists");
++        }
+         // Default to ACTIVE when the request omits a status; reject anything unrecognised.
+         String status = body.getStatus() == null ? "ACTIVE" : body.getStatus();
+         if (!STATUSES.contains(status)) {
+@@ -27,6 +37,7 @@ public class CreateProject {
+         }
+         Project project = new Project();
+         project.setName(name);
++        project.setCode(code);
+         project.setClientId(body.getClientId());
+         project.setStatus(status);
+         response.send(repository.save(project));
+diff --git a/src/main/java/net/officefloor/hq/app/project/DeleteProject.java b/src/main/java/net/officefloor/hq/app/project/DeleteProject.java
+index 92798a0..d44793a 100644
+--- a/src/main/java/net/officefloor/hq/app/project/DeleteProject.java
++++ b/src/main/java/net/officefloor/hq/app/project/DeleteProject.java
+@@ -19,7 +19,8 @@ public class DeleteProject {
+         Project project = repository.findById(projectId)
+                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such project"));
+         ProjectView removed = new ProjectView(project.getId(), project.getName(),
+-                project.getClientId(), null, project.isArchived(), project.getStatus());
++                project.getCode(), project.getClientId(), null, project.isArchived(),
++                project.getStatus());
+         repository.deleteById(projectId);
+         audit.record("PROJECT_DELETED id=" + projectId);
+         response.send(removed);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+index 628648c..04b1e47 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
++++ b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+@@ -17,7 +17,8 @@ public class ListClientProjects {
+             @HttpQueryParameter("scope") String scope, JdbcTemplate jdbc,
+             ObjectResponse<List<ProjectView>> response) {
+         boolean all = "all".equalsIgnoreCase(scope);
+-        String sql = "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name "
++        String sql = "SELECT p.id, p.name, p.code, p.client_id, p.archived, p.status, "
++                + "c.name AS client_name "
+                 + "FROM projects p JOIN clients c ON c.id = p.client_id WHERE p.client_id = ?";
+         if (!all) {
+             sql += " AND p.archived = FALSE AND p.status = 'ACTIVE'";
+@@ -25,7 +26,7 @@ public class ListClientProjects {
+         sql += " ORDER BY p.id";
+         List<ProjectView> projects = jdbc.query(sql,
+                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
+-                        rs.getLong("client_id"), rs.getString("client_name"),
++                        rs.getString("code"), rs.getLong("client_id"), rs.getString("client_name"),
+                         rs.getBoolean("archived"), rs.getString("status")),
+                 Long.valueOf(id));
+         response.send(projects);
+diff --git a/src/main/java/net/officefloor/hq/app/project/ListProjects.java b/src/main/java/net/officefloor/hq/app/project/ListProjects.java
+index 846c8c1..9452811 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ListProjects.java
++++ b/src/main/java/net/officefloor/hq/app/project/ListProjects.java
+@@ -9,11 +9,12 @@ public class ListProjects {
+ 
+     public void service(JdbcTemplate jdbc, ObjectResponse<List<ProjectView>> response) {
+         List<ProjectView> projects = jdbc.query(
+-                "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name "
++                "SELECT p.id, p.name, p.code, p.client_id, p.archived, p.status, "
++                        + "c.name AS client_name "
+                         + "FROM projects p JOIN clients c ON c.id = p.client_id "
+                         + "ORDER BY p.id",
+                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
+-                        rs.getLong("client_id"), rs.getString("client_name"),
++                        rs.getString("code"), rs.getLong("client_id"), rs.getString("client_name"),
+                         rs.getBoolean("archived"), rs.getString("status")));
+         response.send(projects);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/NewProject.java b/src/main/java/net/officefloor/hq/app/project/NewProject.java
+index d5bbf36..a79b1ab 100644
+--- a/src/main/java/net/officefloor/hq/app/project/NewProject.java
++++ b/src/main/java/net/officefloor/hq/app/project/NewProject.java
+@@ -5,6 +5,8 @@ public class NewProject {
+ 
+     private String name;
+ 
++    private String code;
++
+     private Long clientId;
+ 
+     private String status;
+@@ -17,6 +19,14 @@ public class NewProject {
+         this.name = name;
+     }
+ 
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
++
+     public Long getClientId() {
+         return clientId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/Project.java b/src/main/java/net/officefloor/hq/app/project/Project.java
+index 24fd15b..3d1c01e 100644
+--- a/src/main/java/net/officefloor/hq/app/project/Project.java
++++ b/src/main/java/net/officefloor/hq/app/project/Project.java
+@@ -19,6 +19,9 @@ public class Project {
+ 
+     private String name;
+ 
++    /** Short reference code, unique across projects; set when the project is created. */
++    private String code;
++
+     @Column(name = "client_id")
+     private Long clientId;
+ 
+@@ -45,6 +48,14 @@ public class Project {
+         this.name = name;
+     }
+ 
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
++
+     public Long getClientId() {
+         return clientId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+index 7d5a8f5..4a5e5aa 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectRepository.java
+@@ -4,4 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ /** Data access for {@link Project}. */
+ public interface ProjectRepository extends JpaRepository<Project, Long> {
++
++    /** Whether a project already uses this reference code — two projects cannot share one. */
++    boolean existsByCode(String code);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/project/ProjectView.java b/src/main/java/net/officefloor/hq/app/project/ProjectView.java
+index 31f50a2..2c1b18c 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ProjectView.java
++++ b/src/main/java/net/officefloor/hq/app/project/ProjectView.java
+@@ -5,15 +5,17 @@ public class ProjectView {
+ 
+     private final Long id;
+     private final String name;
++    private final String code;
+     private final Long clientId;
+     private final String clientName;
+     private final boolean archived;
+     private final String status;
+ 
+-    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
+-            String status) {
++    public ProjectView(Long id, String name, String code, Long clientId, String clientName,
++            boolean archived, String status) {
+         this.id = id;
+         this.name = name;
++        this.code = code;
+         this.clientId = clientId;
+         this.clientName = clientName;
+         this.archived = archived;
+@@ -28,6 +30,10 @@ public class ProjectView {
+         return name;
+     }
+ 
++    public String getCode() {
++        return code;
++    }
++
+     public Long getClientId() {
+         return clientId;
+     }
+diff --git a/src/main/resources/db/migration/V28__projects_code.sql b/src/main/resources/db/migration/V28__projects_code.sql
+new file mode 100644
+index 0000000..f61702f
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__projects_code.sql
+@@ -0,0 +1,6 @@
++-- Each project (job) carries a short reference code, set when the job is created. Two jobs must
++-- never share a code, so a UNIQUE constraint is the last line of defence behind the server's own
++-- duplicate check (CreateProject). Nullable so any row predating the column is left untouched
++-- (H2 permits multiple NULLs under a unique constraint).
++ALTER TABLE projects ADD COLUMN code VARCHAR(64);
++ALTER TABLE projects ADD CONSTRAINT projects_code_unique UNIQUE (code);
