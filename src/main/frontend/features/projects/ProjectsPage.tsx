@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ProjectInvoices } from './ProjectInvoices';
+import { ProjectTags } from './ProjectTags';
 import { ProjectTasks } from './ProjectTasks';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
@@ -157,6 +158,7 @@ export function ProjectsPage() {
 
       {openProjectId !== null ? (
         <>
+          <ProjectTags projectId={openProjectId} />
           <ProjectTasks projectId={openProjectId} />
           <ProjectInvoices projectId={openProjectId} />
         </>
