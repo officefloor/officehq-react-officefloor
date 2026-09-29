@@ -19,17 +19,20 @@ public class InvoiceRepository {
 
     private static final org.springframework.jdbc.core.RowMapper<Invoice> MAPPER =
             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
-                    rs.getBigDecimal("amount"), rs.getString("status"));
+                    rs.getBigDecimal("amount"), rs.getString("status"),
+                    rs.getString("issued_date"), rs.getString("due_date"));
 
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status FROM invoices WHERE project_id = ? ORDER BY id",
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
+                        + " WHERE project_id = ? ORDER BY id",
                 MAPPER, projectId);
     }
 
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
-                "SELECT id, project_id, amount, status FROM invoices WHERE id = ?", MAPPER, id);
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
+                        + " WHERE id = ?", MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
     }
 
@@ -42,7 +45,7 @@ public class InvoiceRepository {
             ps.setBigDecimal(2, amount);
             return ps;
         }, keys);
-        return new Invoice(keys.getKey().longValue(), projectId, amount, "UNPAID");
+        return new Invoice(keys.getKey().longValue(), projectId, amount, "UNPAID", null, null);
     }
 
     /** Flip an invoice to PAID and return the updated row (null if no such invoice). */

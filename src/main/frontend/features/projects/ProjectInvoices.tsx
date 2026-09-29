@@ -3,7 +3,14 @@ import React, { useEffect, useState } from 'react';
 // A project's invoices, shown when a project is opened from the projects list. Owns its own state
 // (CLAUDE.md — features own their state). Lists the project's invoices, a derived total, and a form
 // to add one. Amounts render with 2 decimals.
-type Invoice = { id: number; projectId: number; amount: number; status: string };
+type Invoice = {
+  id: number;
+  projectId: number;
+  amount: number;
+  status: string;
+  issuedDate: string | null;
+  dueDate: string | null;
+};
 
 function money(n: number): string {
   return `$${Number(n).toFixed(2)}`;
@@ -83,6 +90,8 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Issued</th>
+            <th>Due</th>
             <th>Status</th>
             <th />
           </tr>
@@ -91,6 +100,8 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
               <td data-testid="invoice-amount">{money(inv.amount)}</td>
+              <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
+              <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td>
                 {inv.status === 'PAID' ? null : (
