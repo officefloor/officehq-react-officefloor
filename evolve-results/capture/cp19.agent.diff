@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/features/clients/ClientSummary.tsx b/src/main/frontend/features/clients/ClientSummary.tsx
+new file mode 100644
+index 0000000..9905f1b
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientSummary.tsx
+@@ -0,0 +1,32 @@
++import React, { useEffect, useState } from 'react';
++
++// At-a-glance counts for an opened client: how many projects and contacts they have. Owns its own
++// state (CLAUDE.md — features own their state; no global store) and reads them from the dedicated
++// GET /api/clients/summary endpoint.
++type Summary = { projectsCount: number; contactsCount: number };
++
++export function ClientSummary({ clientId }: { clientId: number }) {
++  const [summary, setSummary] = useState<Summary>({ projectsCount: 0, contactsCount: 0 });
++
++  async function load() {
++    const res = await fetch(`/api/clients/summary?clientId=${clientId}`);
++    if (res.ok) {
++      setSummary(await res.json());
++    }
++  }
++
++  useEffect(() => {
++    void load();
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-summary">
++      <p>
++        Projects: <span data-testid="client-projects-count">{summary.projectsCount}</span>
++      </p>
++      <p>
++        Contacts: <span data-testid="client-contacts-count">{summary.contactsCount}</span>
++      </p>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 89cfc99..842adc3 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
++import { ClientSummary } from './ClientSummary';
+ 
+ // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
+ type Client = { id: number; name: string; email: string };
+@@ -120,6 +121,7 @@ export function ClientsPage() {
+         </table>
+       )}
+ 
++      {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientSummary.java b/src/main/java/net/officefloor/hq/app/ClientSummary.java
+new file mode 100644
+index 0000000..a4a1e0f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientSummary.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app;
++
++/**
++ * At-a-glance counts for a single client's detail view: how many projects and contacts belong to
++ * that client. Serialised as JSON by GET /api/clients/summary?clientId=&lt;id&gt;.
++ */
++public record ClientSummary(long projectsCount, long contactsCount) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientSummaryGetLogic.java b/src/main/java/net/officefloor/hq/app/ClientSummaryGetLogic.java
+new file mode 100644
+index 0000000..476ffc5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientSummaryGetLogic.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/clients/summary?clientId=&lt;id&gt; — the project and contact counts for one client,
++ * shown at a glance on that client's detail view.
++ */
++public class ClientSummaryGetLogic {
++
++    public void service(@HttpQueryParameter("clientId") String clientId,
++            ClientSummaryRepository repository, ObjectResponse<ClientSummary> response) {
++        response.send(repository.forClient(Long.parseLong(clientId.trim())));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientSummaryRepository.java b/src/main/java/net/officefloor/hq/app/ClientSummaryRepository.java
+new file mode 100644
+index 0000000..ede23fa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientSummaryRepository.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app;
++
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Repository;
++
++/** Read-only count queries backing a client's detail view (projects + contacts for one client). */
++@Repository
++public class ClientSummaryRepository {
++
++    private final JdbcTemplate jdbc;
++
++    public ClientSummaryRepository(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public ClientSummary forClient(long clientId) {
++        long projects = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM projects WHERE client_id = ?", Long.class, clientId);
++        long contacts = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM contacts WHERE client_id = ?", Long.class, clientId);
++        return new ClientSummary(projects, contacts);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/summary.GET.yml b/src/main/resources/officefloor/rest/api/clients/summary.GET.yml
+new file mode 100644
+index 0000000..5ec381f
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/summary.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientSummaryGetLogic
