@@ -185,6 +185,16 @@ function ClientsPage() {
     await load();
   }
 
+  // Tuck a client away: archived clients are retained server-side but drop off this list and out of
+  // the search. Reloading after archiving is enough — the /api/clients list excludes them.
+  async function archive(id: number) {
+    await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
+    if (openId === id) {
+      setOpenId(null);
+    }
+    await load();
+  }
+
   const visible = clients.filter((c) =>
     c.name.toLowerCase().includes(search.trim().toLowerCase()),
   );
@@ -234,6 +244,9 @@ function ClientsPage() {
                 <td>
                   <button data-testid={`client-open-${c.id}`} onClick={() => setOpenId(c.id)}>
                     Open
+                  </button>
+                  <button data-testid={`client-archive-${c.id}`} onClick={() => archive(c.id)}>
+                    Archive
                   </button>
                 </td>
               </tr>
