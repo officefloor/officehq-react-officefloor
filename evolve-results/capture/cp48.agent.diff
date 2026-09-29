@@ -1,0 +1,122 @@
+diff --git a/src/main/java/net/officefloor/hq/app/client/GetClientStatement.java b/src/main/java/net/officefloor/hq/app/client/GetClientStatement.java
+index 53692c6..1c82046 100644
+--- a/src/main/java/net/officefloor/hq/app/client/GetClientStatement.java
++++ b/src/main/java/net/officefloor/hq/app/client/GetClientStatement.java
+@@ -11,9 +11,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
+  * all of their projects) gathered in one place, each with what is still owed on it, plus the total
+  * still owed across them all.
+  *
+- * <p>An invoice's amount is the sum of its line items (qty * unit price); the amount still due is
+- * that amount less everything paid against it (the sum of its payments). The outstanding total is
+- * the sum of those dues, so a fully paid client shows nothing owed.
++ * <p>An invoice's amount is the sum of its line items (qty * unit price) less its discount; the
++ * amount still due is that amount less everything paid against it (the sum of its payments). The
++ * outstanding total is the sum of those dues, so a fully paid client shows nothing owed.
+  */
+ public class GetClientStatement {
+ 
+@@ -22,7 +22,7 @@ public class GetClientStatement {
+         List<StatementInvoiceView> invoices = jdbc.query(
+                 "SELECT i.id AS id, i.project_id AS project_id, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                        + "WHERE li.invoice_id = i.id), 0) "
++                        + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
+                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
+                         + "WHERE p.invoice_id = i.id), 0) AS amount_due "
+                         + "FROM invoices i JOIN projects pr ON pr.id = i.project_id "
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+index 8cf8afc..9c9fcfd 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+@@ -18,11 +18,16 @@ public class GetDashboard {
+         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
+         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
+         // Money owed is the total of every SENT invoice, and an invoice's total is the sum of its
+-        // line items (the source of truth everywhere else) — so a cancelled (VOID) invoice, no
+-        // longer SENT, drops out of what is owed.
++        // line items less its discount (the source of truth everywhere else) — so a cancelled
++        // (VOID) invoice, no longer SENT, drops out of what is owed, and a discount is reflected in
++        // what is owed. The discount is applied per invoice (its own percentage off its own
++        // subtotal) before the totals are summed.
+         BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM line_items li "
+-                        + "JOIN invoices inv ON inv.id = li.invoice_id WHERE inv.status = 'SENT'",
++                "SELECT COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100), 0) FROM ("
++                        + "SELECT i.discount_pct AS discount_pct, "
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = i.id), 0) AS subtotal "
++                        + "FROM invoices i WHERE i.status = 'SENT') inv",
+                 BigDecimal.class);
+         long overdue = jdbc.queryForObject(
+                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+index 90aca8d..b2799db 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+@@ -18,9 +18,10 @@ public class GetInvoice {
+         InvoiceView invoice = jdbc.query(
+                 "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                        + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
++                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
++                        + "AS amount, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                        + "WHERE li.invoice_id = invoices.id), 0) "
++                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
+                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
+                         + " WHERE id = ?",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+index ad2a4ca..d7dcdfb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+@@ -37,7 +37,7 @@ public class ListAllInvoices {
+ 
+         String select = "SELECT i.id, i.project_id, p.name AS project_name, i.status, "
+                 + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                + "WHERE li.invoice_id = i.id), 0) AS amount ";
++                + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 AS amount ";
+         Object[] pageArgs = append(filterArgs, PAGE_SIZE, offset);
+         List<AllInvoiceView> items = jdbc.query(
+                 select + from + "ORDER BY i.id LIMIT ? OFFSET ?", mapper, pageArgs);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+index 106cf57..cf8e476 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+@@ -10,15 +10,16 @@ public class ListInvoices {
+ 
+     public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
+             ObjectResponse<List<InvoiceView>> response) {
+-        // The invoice amount is the sum of its line items (qty * unit price); an invoice with no
+-        // lines totals zero. The amount due is that amount less everything paid against it (the sum
+-        // of its payments), so a fully paid invoice shows zero still to pay.
++        // The invoice amount is the sum of its line items (qty * unit price) less its discount; an
++        // invoice with no lines totals zero. The amount due is that amount less everything paid
++        // against it (the sum of its payments), so a fully paid invoice shows zero still to pay.
+         List<InvoiceView> invoices = jdbc.query(
+-                "SELECT id, project_id, status, issued_date, due_date, "
++                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                        + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
++                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
++                        + "AS amount, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+-                        + "WHERE li.invoice_id = invoices.id), 0) "
++                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
+                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
+                         + " WHERE project_id = ? ORDER BY id",
+@@ -29,9 +30,11 @@ public class ListInvoices {
+                     // that rather than read from the stored flag.
+                     String status = InvoiceStatus.derive(rs.getString("status"), amount,
+                             amount.subtract(amountDue));
+-                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
+-                            amountDue, status, rs.getString("issued_date"),
++                    InvoiceView view = new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
++                            amount, amountDue, status, rs.getString("issued_date"),
+                             rs.getString("due_date"));
++                    view.setDiscountPct(rs.getBigDecimal("discount_pct"));
++                    return view;
+                 },
+                 Long.valueOf(projectId));
+         response.send(invoices);
