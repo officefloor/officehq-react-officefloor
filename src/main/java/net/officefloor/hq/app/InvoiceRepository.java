@@ -21,7 +21,7 @@ public class InvoiceRepository {
             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
                     rs.getBigDecimal("amount"), rs.getString("status"),
                     rs.getString("issued_date"), rs.getString("due_date"),
-                    rs.getBigDecimal("due"));
+                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"));
 
     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
     // totals zero. Derived here so the amount always reflects the current line items.
@@ -52,7 +52,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
                         + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
@@ -61,7 +61,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
                         + " FROM invoices i WHERE i.project_id = ?"
                         + " ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
@@ -112,7 +112,7 @@ public class InvoiceRepository {
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
                         + " FROM invoices i WHERE i.id = ?",
                 MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
@@ -127,9 +127,10 @@ public class InvoiceRepository {
             ps.setBigDecimal(2, amount);
             return ps;
         }, keys);
-        // A freshly created invoice has no payments yet, so the whole amount is still due.
+        // A freshly created invoice has no payments yet, so the whole amount is still due, and no
+        // discount yet (discount_pct defaults to 0).
         return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
-                amount);
+                amount, BigDecimal.ZERO);
     }
 
     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */

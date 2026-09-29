@@ -44,6 +44,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [status, setStatus] = useState('');
+  const [discountPct, setDiscountPct] = useState(0);
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -60,12 +61,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   }
 
   // The invoice's status is worked out server-side from the payments recorded against it, so we
-  // re-read it whenever the payments change rather than tracking it by hand.
+  // re-read it whenever the payments change rather than tracking it by hand. The invoice also
+  // carries its discount percentage, which we read here to show the discount and final total.
   async function loadStatus() {
     const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
     if (res.ok) {
-      const inv: { status: string } = await res.json();
+      const inv: { status: string; discountPct: number } = await res.json();
       setStatus(inv.status);
+      setDiscountPct(Number(inv.discountPct));
     }
   }
 
@@ -161,7 +164,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
     }
   }
 
-  const total = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
+  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
+  // the final total is the subtotal minus the discount.
+  const subtotal = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
+  const discount = subtotal * (discountPct / 100);
+  const total = subtotal - discount;
 
   return (
     <section data-testid="invoice-detail">
@@ -291,6 +298,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
         </tbody>
       </table>
 
+      <p>
+        Subtotal: <span data-testid="invoice-subtotal">{money(subtotal)}</span>
+      </p>
+      <p>
+        Discount: <span data-testid="invoice-discount">{money(discount)}</span>
+      </p>
       <p>
         Total: <span data-testid="invoice-amount">{money(total)}</span>
       </p>

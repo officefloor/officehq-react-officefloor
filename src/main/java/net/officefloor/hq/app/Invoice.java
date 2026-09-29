@@ -7,7 +7,9 @@ import java.math.BigDecimal;
  * exactly one project (projectId). Carries a payment status (UNPAID by default, PAID once settled)
  * and two dates: issuedDate (when it went out) and dueDate (when it is due), as ISO yyyy-MM-dd.
  * {@code due} is how much is still owed: the invoice amount minus everything paid against it.
+ * {@code discountPct} is a percentage (0..100) taken off the subtotal; the front-end shows the
+ * subtotal, the discount and the final total (subtotal minus the discount).
  */
 public record Invoice(long id, long projectId, BigDecimal amount, String status, String issuedDate,
-        String dueDate, BigDecimal due) {
+        String dueDate, BigDecimal due, BigDecimal discountPct) {
 }
