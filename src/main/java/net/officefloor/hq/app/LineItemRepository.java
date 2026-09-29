@@ -19,47 +19,53 @@ public class LineItemRepository {
 
     private static final org.springframework.jdbc.core.RowMapper<LineItem> MAPPER =
             (rs, i) -> new LineItem(rs.getLong("id"), rs.getLong("invoice_id"),
-                    rs.getString("description"), rs.getInt("qty"), rs.getBigDecimal("unit_price"));
+                    rs.getString("description"), rs.getInt("qty"), rs.getString("unit"),
+                    rs.getBigDecimal("unit_price"));
 
     public List<LineItem> findByInvoice(long invoiceId) {
         return jdbc.query(
-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items"
+                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items"
                         + " WHERE invoice_id = ? ORDER BY id",
                 MAPPER, invoiceId);
     }
 
-    public LineItem create(long invoiceId, String description, int qty, BigDecimal unitPrice) {
+    public LineItem create(long invoiceId, String description, int qty, String unit,
+            BigDecimal unitPrice) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(con -> {
             var ps = con.prepareStatement(
-                    "INSERT INTO line_items (invoice_id, description, qty, unit_price)"
-                            + " VALUES (?, ?, ?, ?)",
+                    "INSERT INTO line_items (invoice_id, description, qty, unit, unit_price)"
+                            + " VALUES (?, ?, ?, ?, ?)",
                     new String[] {"id"});
             ps.setLong(1, invoiceId);
             ps.setString(2, description);
             ps.setInt(3, qty);
-            ps.setBigDecimal(4, unitPrice);
+            ps.setString(4, unit);
+            ps.setBigDecimal(5, unitPrice);
             return ps;
         }, keys);
-        return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unitPrice);
+        return new LineItem(keys.getKey().longValue(), invoiceId, description, qty, unit, unitPrice);
     }
 
     public LineItem findById(long id) {
         List<LineItem> found = jdbc.query(
-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE id = ?",
+                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items"
+                        + " WHERE id = ?",
                 MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
     }
 
-    public LineItem update(long id, String description, int qty, BigDecimal unitPrice) {
+    public LineItem update(long id, String description, int qty, String unit,
+            BigDecimal unitPrice) {
         LineItem existing = findById(id);
         if (existing == null) {
             return null;
         }
         jdbc.update(
-                "UPDATE line_items SET description = ?, qty = ?, unit_price = ? WHERE id = ?",
-                description, qty, unitPrice, id);
-        return new LineItem(id, existing.invoiceId(), description, qty, unitPrice);
+                "UPDATE line_items SET description = ?, qty = ?, unit = ?, unit_price = ?"
+                        + " WHERE id = ?",
+                description, qty, unit, unitPrice, id);
+        return new LineItem(id, existing.invoiceId(), description, qty, unit, unitPrice);
     }
 
     public boolean delete(long id) {

@@ -9,6 +9,7 @@ type LineItem = {
   invoiceId: number;
   description: string;
   qty: number;
+  unit: string;
   unitPrice: number;
 };
 
@@ -16,7 +17,7 @@ function money(n: number): string {
   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
-type EditDraft = { description: string; qty: string; unitPrice: string };
+type EditDraft = { description: string; qty: string; unit: string; unitPrice: string };
 
 // A payment a client has made against this invoice: how much (amount) and when (date, yyyy-MM-dd).
 type Payment = {
@@ -30,9 +31,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
+  const [unit, setUnit] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<EditDraft>({ description: '', qty: '', unitPrice: '' });
+  const [draft, setDraft] = useState<EditDraft>({
+    description: '',
+    qty: '',
+    unit: '',
+    unitPrice: '',
+  });
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
@@ -97,6 +104,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
         invoiceId,
         description,
         qty: Number(qty),
+        unit,
         unitPrice: Number(unitPrice),
       }),
     });
@@ -105,6 +113,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       setLineItems((prev) => [...prev, created]);
       setDescription('');
       setQty('');
+      setUnit('');
       setUnitPrice('');
     }
   }
@@ -128,6 +137,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
     setDraft({
       description: li.description,
       qty: String(li.qty),
+      unit: li.unit,
       unitPrice: String(li.unitPrice),
     });
   }
@@ -140,6 +150,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
         id,
         description: draft.description,
         qty: Number(draft.qty),
+        unit: draft.unit,
         unitPrice: Number(draft.unitPrice),
       }),
     });
@@ -172,6 +183,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
           onChange={(e) => setQty(e.target.value)}
         />
         <input
+          data-testid="lineitem-form-unit"
+          placeholder="Unit"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+        />
+        <input
           data-testid="lineitem-form-unitprice"
           placeholder="Unit price"
           value={unitPrice}
@@ -187,6 +204,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
           <tr>
             <th>Description</th>
             <th>Qty</th>
+            <th>Unit</th>
             <th>Unit price</th>
             <th>Amount</th>
             <th>Actions</th>
@@ -208,6 +226,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
                     data-testid={`lineitem-edit-qty-${li.id}`}
                     value={draft.qty}
                     onChange={(e) => setDraft((d) => ({ ...d, qty: e.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    data-testid={`lineitem-edit-unit-${li.id}`}
+                    value={draft.unit}
+                    onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value }))}
                   />
                 </td>
                 <td>
@@ -241,6 +266,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
               <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
                 <td data-testid="lineitem-description">{li.description}</td>
                 <td data-testid="lineitem-qty">{li.qty}</td>
+                <td data-testid="lineitem-unit">{li.unit}</td>
                 <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
                 <td data-testid="lineitem-amount">{money(li.qty * Number(li.unitPrice))}</td>
                 <td>

@@ -176,11 +176,13 @@ public class TestSupportController {
     private void seedLineItems(Map<String, Object> invoice) {
         long invoiceId = id(invoice, "id");
         for (Map<String, Object> li : rows(invoice, "lineItems")) {
+            Object unit = li.get("unit");
             jdbc.update(
-                    "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
-                            + " VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO line_items (id, invoice_id, description, qty, unit, unit_price)"
+                            + " VALUES (?, ?, ?, ?, ?, ?)",
                     id(li, "id"), invoiceId, li.get("description"),
                     ((Number) li.get("qty")).intValue(),
+                    unit == null ? "" : unit.toString(),
                     new BigDecimal(li.get("unitPrice").toString()));
         }
     }

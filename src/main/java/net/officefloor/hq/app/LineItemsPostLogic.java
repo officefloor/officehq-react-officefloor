@@ -26,7 +26,8 @@ public class LineItemsPostLogic {
         if (unitPrice == null || unitPrice.signum() < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price is required.");
         }
-        response.send(repository.create(body.getInvoiceId(), description, body.getQty(),
+        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
+        response.send(repository.create(body.getInvoiceId(), description, body.getQty(), unit,
                 unitPrice.setScale(2, RoundingMode.HALF_UP)));
     }
 }

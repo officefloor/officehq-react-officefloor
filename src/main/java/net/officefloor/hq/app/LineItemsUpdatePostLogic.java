@@ -26,7 +26,8 @@ public class LineItemsUpdatePostLogic {
         if (unitPrice == null || unitPrice.signum() < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price is required.");
         }
-        LineItem updated = repository.update(body.getId(), description, body.getQty(),
+        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
+        LineItem updated = repository.update(body.getId(), description, body.getQty(), unit,
                 unitPrice.setScale(2, RoundingMode.HALF_UP));
         if (updated == null) {
             throw new HttpException(HttpStatus.NOT_FOUND, "No such line item.");
