@@ -1,0 +1,332 @@
+diff --git a/src/main/frontend/features/clients/ClientEditForm.tsx b/src/main/frontend/features/clients/ClientEditForm.tsx
+new file mode 100644
+index 0000000..6f3e162
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientEditForm.tsx
+@@ -0,0 +1,65 @@
++import React, { useState } from 'react';
++import { Client, updateClient, validateEmail, DUPLICATE_EMAIL, INVALID_EMAIL } from './clientsApi';
++
++// The "correct a client" form. Pre-filled from the client being edited so a small fix (a renamed
++// company, a moved mailbox) is a quick edit. Owns its own draft; reports the saved row back through
++// onSaved. `takenEmails` are the OTHER clients' emails — the client keeps its own address freely.
++export function ClientEditForm({
++  client,
++  takenEmails,
++  onSaved,
++  onCancel,
++}: {
++  client: Client;
++  takenEmails: string[];
++  onSaved: (client: Client) => void;
++  onCancel: () => void;
++}) {
++  const [name, setName] = useState(client.name);
++  const [email, setEmail] = useState(client.email);
++  const [emailError, setEmailError] = useState('');
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    const localError = validateEmail(email, takenEmails);
++    if (localError) {
++      setEmailError(localError);
++      return;
++    }
++    setEmailError('');
++    const res = await updateClient({ id: client.id, name, email });
++    if (res.ok) {
++      onSaved(await res.json());
++    } else {
++      setEmailError(res.status === 409 ? DUPLICATE_EMAIL : INVALID_EMAIL);
++    }
++  }
++
++  return (
++    <form data-testid="client-edit-form" onSubmit={onSubmit}>
++      <input
++        data-testid="client-edit-form-name"
++        placeholder="Name"
++        value={name}
++        onChange={(e) => setName(e.target.value)}
++      />
++      <input
++        data-testid="client-edit-form-email"
++        placeholder="Email"
++        value={email}
++        onChange={(e) => setEmail(e.target.value)}
++      />
++      {emailError && (
++        <span data-testid="client-edit-form-email-error" role="alert">
++          {emailError}
++        </span>
++      )}
++      <button type="submit" data-testid="client-edit-form-submit">
++        Save changes
++      </button>
++      <button type="button" data-testid="client-edit-form-cancel" onClick={onCancel}>
++        Cancel
++      </button>
++    </form>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 1b8640d..56c6b73 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { Client, archiveClient, fetchClients } from './clientsApi';
+ import { ClientForm } from './ClientForm';
++import { ClientEditForm } from './ClientEditForm';
+ import { ClientsTable } from './ClientsTable';
+ import { ClientDetails } from './ClientDetails';
+ 
+@@ -10,6 +11,7 @@ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [search, setSearch] = useState('');
+   const [openClientId, setOpenClientId] = useState<number | null>(null);
++  const [editingClientId, setEditingClientId] = useState<number | null>(null);
+ 
+   async function load() {
+     const loaded = await fetchClients();
+@@ -32,6 +34,14 @@ export function ClientsPage() {
+     setClients((prev) => [...prev, created]);
+   }
+ 
++  // A saved edit replaces the row in place; the edit form then closes.
++  function onSaved(saved: Client) {
++    setClients((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
++    setEditingClientId(null);
++  }
++
++  const editingClient = clients.find((c) => c.id === editingClientId) ?? null;
++
+   // Tuck a client away: it drops off the list and the search, but the row is kept server-side.
+   async function onArchive(id: number) {
+     const res = await archiveClient(id);
+@@ -56,9 +66,24 @@ export function ClientsPage() {
+       {clients.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
+       ) : (
+-        <ClientsTable clients={visibleClients} onOpen={setOpenClientId} onArchive={onArchive} />
++        <ClientsTable
++          clients={visibleClients}
++          onOpen={setOpenClientId}
++          onEdit={setEditingClientId}
++          onArchive={onArchive}
++        />
+       )}
+ 
++      {editingClient ? (
++        <ClientEditForm
++          key={editingClient.id}
++          client={editingClient}
++          takenEmails={clients.filter((c) => c.id !== editingClient.id).map((c) => c.email)}
++          onSaved={onSaved}
++          onCancel={() => setEditingClientId(null)}
++        />
++      ) : null}
++
+       {openClientId !== null ? <ClientDetails clientId={openClientId} /> : null}
+     </section>
+   );
+diff --git a/src/main/frontend/features/clients/ClientsTable.tsx b/src/main/frontend/features/clients/ClientsTable.tsx
+index 66c7b28..871452b 100644
+--- a/src/main/frontend/features/clients/ClientsTable.tsx
++++ b/src/main/frontend/features/clients/ClientsTable.tsx
+@@ -6,10 +6,12 @@ import { Client } from './clientsApi';
+ function ClientRow({
+   client,
+   onOpen,
++  onEdit,
+   onArchive,
+ }: {
+   client: Client;
+   onOpen: (id: number) => void;
++  onEdit: (id: number) => void;
+   onArchive: (id: number) => void;
+ }) {
+   return (
+@@ -20,6 +22,9 @@ function ClientRow({
+         <button type="button" data-testid={`client-open-${client.id}`} onClick={() => onOpen(client.id)}>
+           Open
+         </button>
++        <button type="button" data-testid={`client-edit-${client.id}`} onClick={() => onEdit(client.id)}>
++          Edit
++        </button>
+         <button
+           type="button"
+           data-testid={`client-archive-${client.id}`}
+@@ -35,10 +40,12 @@ function ClientRow({
+ export function ClientsTable({
+   clients,
+   onOpen,
++  onEdit,
+   onArchive,
+ }: {
+   clients: Client[];
+   onOpen: (id: number) => void;
++  onEdit: (id: number) => void;
+   onArchive: (id: number) => void;
+ }) {
+   return (
+@@ -52,7 +59,7 @@ export function ClientsTable({
+       </thead>
+       <tbody>
+         {clients.map((c) => (
+-          <ClientRow key={c.id} client={c} onOpen={onOpen} onArchive={onArchive} />
++          <ClientRow key={c.id} client={c} onOpen={onOpen} onEdit={onEdit} onArchive={onArchive} />
+         ))}
+       </tbody>
+     </table>
+diff --git a/src/main/frontend/features/clients/clientsApi.ts b/src/main/frontend/features/clients/clientsApi.ts
+index 5a636cb..3629510 100644
+--- a/src/main/frontend/features/clients/clientsApi.ts
++++ b/src/main/frontend/features/clients/clientsApi.ts
+@@ -39,6 +39,18 @@ export async function createClient(input: { name: string; email: string }): Prom
+   });
+ }
+ 
++export async function updateClient(input: {
++  id: number;
++  name: string;
++  email: string;
++}): Promise<Response> {
++  return fetch('/api/clients/update', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify(input),
++  });
++}
++
+ export async function archiveClient(id: number): Promise<Response> {
+   return fetch('/api/clients/archive', {
+     method: 'POST',
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index e475fac..dbdef82 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -56,6 +56,12 @@ public class ClientRepository {
+         return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
+     }
+ 
++    /** Correct a client's name/email. Returns the updated row, or null when there is no such row. */
++    public Client update(long id, String name, String email) {
++        int rows = jdbc.update("UPDATE clients SET name = ?, email = ? WHERE id = ?", name, email, id);
++        return rows > 0 ? new Client(id, name, email) : null;
++    }
++
+     /**
+      * Whether a client already uses this email. Two clients cannot share an email, so a create must
+      * be rejected when one exists (defence alongside the {@code clients_email_unique} constraint in
+@@ -67,6 +73,17 @@ public class ClientRepository {
+         return count != null && count > 0;
+     }
+ 
++    /**
++     * Whether a client OTHER than {@code id} already uses this email. Lets a client keep its own
++     * address on an edit while still rejecting a collision with a different client (mirrors the
++     * {@code clients_email_unique} constraint in V27).
++     */
++    public boolean existsByEmailForOther(String email, long id) {
++        Integer count = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM clients WHERE email = ? AND id <> ?", Integer.class, email, id);
++        return count != null && count > 0;
++    }
++
+     public Client create(String name, String email) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+diff --git a/src/main/java/net/officefloor/hq/app/ClientsUpdatePostLogic.java b/src/main/java/net/officefloor/hq/app/ClientsUpdatePostLogic.java
+new file mode 100644
+index 0000000..a252abe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientsUpdatePostLogic.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app;
++
++import java.util.regex.Pattern;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/clients/update — correct a client's name or email from the list. Validates the email
++ * the same way a create does (format + no collision with another client), then updates the row and
++ * records one audit line (CLIENT_UPDATED id=&lt;id&gt;).
++ */
++public class ClientsUpdatePostLogic {
++
++    // Mirrors the check in ClientsPostLogic, the front-end validateEmail, and the V2 CHECK constraint.
++    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
++
++    public void service(@RequestBody UpdateClient body, ClientRepository repository, Audit audit,
++            ObjectResponse<Client> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A client id is required.");
++        }
++        Client existing = repository.findById(body.getId());
++        if (existing == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such client.");
++        }
++        String email = body.getEmail() == null ? "" : body.getEmail().trim();
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A valid email address is required.");
++        }
++        // A client keeps its own email; only a collision with a different client is a conflict.
++        if (repository.existsByEmailForOther(email, existing.id())) {
++            throw new HttpException(HttpStatus.CONFLICT, "A client with this email already exists.");
++        }
++        Client updated = repository.update(existing.id(), body.getName(), email);
++        audit.record("CLIENT_UPDATED id=" + existing.id());
++        response.send(updated);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/UpdateClient.java b/src/main/java/net/officefloor/hq/app/UpdateClient.java
+new file mode 100644
+index 0000000..f55e8cb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/UpdateClient.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app;
++
++/** Request body for correcting a client's name/email (POST /api/clients/update). */
++public class UpdateClient {
++
++    private long id;
++    private String name;
++    private String email;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/update.POST.yml b/src/main/resources/officefloor/rest/api/clients/update.POST.yml
+new file mode 100644
+index 0000000..b3fd092
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/update.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientsUpdatePostLogic
