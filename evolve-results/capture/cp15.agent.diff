@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/features/invoices/feature.tsx b/src/main/frontend/features/invoices/feature.tsx
+index 3a203bb..7f47bbb 100644
+--- a/src/main/frontend/features/invoices/feature.tsx
++++ b/src/main/frontend/features/invoices/feature.tsx
+@@ -16,20 +16,36 @@ function money(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+ }
+ 
++// The stages an invoice can be at; 'ALL' leaves the list unfiltered.
++const STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
++
+ function InvoicesPage() {
+   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
++  const [status, setStatus] = useState<string>('ALL');
+ 
+-  async function load() {
+-    const res = await fetch('/api/all-invoices');
++  async function load(current: string) {
++    const res = await fetch(`/api/all-invoices?status=${encodeURIComponent(current)}`);
+     setInvoices(await res.json());
+   }
+ 
+   useEffect(() => {
+-    void load();
+-  }, []);
++    void load(status);
++  }, [status]);
+ 
+   return (
+     <section data-testid="invoices">
++      <select
++        data-testid="invoice-status-filter"
++        value={status}
++        onChange={(e) => setStatus(e.target.value)}
++      >
++        <option value="ALL">All stages</option>
++        {STATUSES.map((s) => (
++          <option key={s} value={s}>
++            {s}
++          </option>
++        ))}
++      </select>
+       {invoices.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+index 44425d8..e5e2b86 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+@@ -1,20 +1,29 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.core.RowMapper;
+ 
+-/** GET /api/all-invoices — every invoice across all projects, each with its project name and stage. */
++/**
++ * GET /api/all-invoices — every invoice across all projects, each with its project name and stage.
++ * An optional {@code status} query parameter narrows the list to a single stage; {@code ALL} (or a
++ * blank value) leaves the list unfiltered.
++ */
+ public class ListAllInvoices {
+ 
+-    public void service(JdbcTemplate jdbc, ObjectResponse<List<AllInvoiceView>> response) {
+-        List<AllInvoiceView> invoices = jdbc.query(
+-                "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status "
+-                        + "FROM invoices i JOIN projects p ON p.id = i.project_id "
+-                        + "ORDER BY i.id",
+-                (rs, i) -> new AllInvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getString("project_name"), rs.getBigDecimal("amount"),
+-                        rs.getString("status")));
++    public void service(@HttpQueryParameter("status") String status, JdbcTemplate jdbc,
++            ObjectResponse<List<AllInvoiceView>> response) {
++        RowMapper<AllInvoiceView> mapper = (rs, i) -> new AllInvoiceView(rs.getLong("id"),
++                rs.getLong("project_id"), rs.getString("project_name"), rs.getBigDecimal("amount"),
++                rs.getString("status"));
++        boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
++        String base = "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status "
++                + "FROM invoices i JOIN projects p ON p.id = i.project_id ";
++        List<AllInvoiceView> invoices = all
++                ? jdbc.query(base + "ORDER BY i.id", mapper)
++                : jdbc.query(base + "WHERE i.status = ? ORDER BY i.id", mapper, status);
+         response.send(invoices);
+     }
+ }
