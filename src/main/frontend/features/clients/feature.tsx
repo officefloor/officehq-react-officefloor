@@ -5,7 +5,9 @@ import type { Feature } from '../../router/routes';
 // (client-open-<id>) reveals the projects being done for them — the client's own projects listing,
 // scoped via its /api/clients/<id>/projects endpoint. Owns its own state; talks to its own
 // /api/clients endpoints. data-testid anchors follow the spec's conventions.
-type Client = { id: number; name: string; email: string };
+type Client = { id: number; name: string; email: string; outstanding: number };
+// How the clients list is ordered: alphabetically by name, or by how much each client still owes.
+type SortKey = 'name' | 'outstanding';
 type Project = { id: number; name: string; clientId: number; clientName: string };
 type Contact = {
   id: number;
@@ -331,6 +333,7 @@ function ClientsTable({
           <tr key={c.id} data-testid={`client-row-${c.id}`}>
             <td data-testid="client-name">{c.name}</td>
             <td data-testid="client-email">{c.email}</td>
+            <td data-testid="client-outstanding">{money(c.outstanding)}</td>
             <td>
               <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
                 Open
@@ -354,6 +357,8 @@ function ClientsPage() {
   // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
   // substring match on the client name; an empty box shows everyone.
   const [search, setSearch] = useState('');
+  // How the list is ordered: by name (default) or by how much each client owes (most first).
+  const [sort, setSort] = useState<SortKey>('name');
   const [openId, setOpenId] = useState<number | null>(null);
   // Which client (if any) is being corrected: opening the edit form seeds it with that client's
   // current name and email so the user tweaks rather than retypes.
@@ -407,7 +412,13 @@ function ClientsPage() {
   }
 
   const term = search.trim().toLowerCase();
-  const visible = clients.filter((c) => c.name.toLowerCase().includes(term));
+  // Filter by the search box, then order: by name ascending, or by outstanding amount descending
+  // (the client who owes the most first).
+  const visible = clients
+    .filter((c) => c.name.toLowerCase().includes(term))
+    .sort((a, b) =>
+      sort === 'outstanding' ? b.outstanding - a.outstanding : a.name.localeCompare(b.name),
+    );
   const open = clients.find((c) => c.id === openId) ?? null;
   const editing = clients.find((c) => c.id === editingId) ?? null;
 
@@ -419,6 +430,14 @@ function ClientsPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+      <select
+        data-testid="client-sort"
+        value={sort}
+        onChange={(e) => setSort(e.target.value as SortKey)}
+      >
+        <option value="name">Name</option>
+        <option value="outstanding">Outstanding</option>
+      </select>
       <ClientForm testid="client-form" submitLabel="Add client" onSubmit={addClient} />
 
       {clients.length === 0 ? (
