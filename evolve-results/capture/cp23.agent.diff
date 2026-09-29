@@ -1,0 +1,109 @@
+diff --git a/src/main/frontend/features/projects/ProjectTasks.tsx b/src/main/frontend/features/projects/ProjectTasks.tsx
+index 81360f9..a8f4b33 100644
+--- a/src/main/frontend/features/projects/ProjectTasks.tsx
++++ b/src/main/frontend/features/projects/ProjectTasks.tsx
+@@ -3,12 +3,15 @@ import React, { useEffect, useState } from 'react';
+ // A project's task checklist, shown when a project is opened from the projects list. Owns its own
+ // state (CLAUDE.md — features own their state). Each task can be ticked off (OPEN <-> DONE).
+ type Task = { id: number; projectId: number; title: string; done: boolean };
++type Filter = 'ALL' | 'OPEN' | 'DONE';
+ 
+ export function ProjectTasks({ projectId }: { projectId: number }) {
+   const [tasks, setTasks] = useState<Task[]>([]);
++  const [filter, setFilter] = useState<Filter>('ALL');
+ 
+   async function load() {
+-    const res = await fetch(`/api/tasks?projectId=${projectId}`);
++    const query = filter === 'ALL' ? '' : `&status=${filter}`;
++    const res = await fetch(`/api/tasks?projectId=${projectId}${query}`);
+     if (res.ok) {
+       setTasks(await res.json());
+     }
+@@ -16,7 +19,7 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
+ 
+   useEffect(() => {
+     void load();
+-  }, [projectId]);
++  }, [projectId, filter]);
+ 
+   async function toggle(id: number) {
+     const res = await fetch('/api/tasks/toggle', {
+@@ -25,14 +28,26 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
+       body: JSON.stringify({ id }),
+     });
+     if (res.ok) {
+-      const updated: Task = await res.json();
+-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
++      // Reload so the ticked-off task drops out of (or into) the active filter.
++      await load();
+     }
+   }
+ 
+   return (
+     <section data-testid="project-tasks">
+       <h2>Tasks</h2>
++      <label>
++        Show
++        <select
++          data-testid="task-filter"
++          value={filter}
++          onChange={(e) => setFilter(e.target.value as Filter)}
++        >
++          <option value="ALL">All</option>
++          <option value="OPEN">Open</option>
++          <option value="DONE">Done</option>
++        </select>
++      </label>
+       <table data-testid="project-tasks-table">
+         <thead>
+           <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/TaskRepository.java b/src/main/java/net/officefloor/hq/app/TaskRepository.java
+index 43e7034..b685864 100644
+--- a/src/main/java/net/officefloor/hq/app/TaskRepository.java
++++ b/src/main/java/net/officefloor/hq/app/TaskRepository.java
+@@ -27,6 +27,14 @@ public class TaskRepository {
+                 MAPPER, projectId);
+     }
+ 
++    /** A project's tasks filtered to just the open ({@code done=false}) or done ones. */
++    public List<Task> findByProjectAndDone(long projectId, boolean done) {
++        return jdbc.query(
++                "SELECT id, project_id, title, done FROM tasks"
++                        + " WHERE project_id = ? AND done = ? ORDER BY id",
++                MAPPER, projectId, done);
++    }
++
+     public Task findById(long id) {
+         List<Task> found = jdbc.query(
+                 "SELECT id, project_id, title, done FROM tasks WHERE id = ?", MAPPER, id);
+diff --git a/src/main/java/net/officefloor/hq/app/TasksGetLogic.java b/src/main/java/net/officefloor/hq/app/TasksGetLogic.java
+index f87fa13..de9f01d 100644
+--- a/src/main/java/net/officefloor/hq/app/TasksGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/TasksGetLogic.java
+@@ -4,12 +4,24 @@ import java.util.List;
+ import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/tasks?projectId=&lt;id&gt; — list a project's tasks (checklist). */
++/**
++ * GET /api/tasks?projectId=&lt;id&gt;&amp;status=&lt;ALL|OPEN|DONE&gt; — list a project's tasks
++ * (checklist), optionally filtered to just the open or just the done ones. An absent or unknown
++ * {@code status} lists them all.
++ */
+ public class TasksGetLogic {
+ 
+     public void service(@HttpQueryParameter("projectId") String projectId,
++            @HttpQueryParameter("status") String status,
+             TaskRepository repository, ObjectResponse<List<Task>> response) {
+         long id = projectId == null || projectId.isBlank() ? 0 : Long.parseLong(projectId.trim());
+-        response.send(repository.findByProject(id));
++        String filter = status == null ? "" : status.trim().toUpperCase();
++        if ("OPEN".equals(filter)) {
++            response.send(repository.findByProjectAndDone(id, false));
++        } else if ("DONE".equals(filter)) {
++            response.send(repository.findByProjectAndDone(id, true));
++        } else {
++            response.send(repository.findByProject(id));
++        }
+     }
+ }
