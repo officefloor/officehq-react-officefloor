@@ -68,8 +68,28 @@ public class ProjectRepository {
 
     /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
     public List<Project> findByClient(long clientId) {
-        return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
-                MAPPER, clientId);
+        return findByClient(clientId, false, null);
+    }
+
+    /**
+     * Projects done for one client, optionally narrowed to a single lifecycle {@code status} (e.g.
+     * ACTIVE) — this backs the client page showing only active projects by default. Archived
+     * projects are hidden unless {@code includeArchived} is true (the "also show finished and
+     * hidden" toggle reveals every status, archived included).
+     */
+    public List<Project> findByClient(long clientId, boolean includeArchived, String status) {
+        StringBuilder sql = new StringBuilder(SELECT + " WHERE p.client_id = ?");
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(clientId);
+        if (!includeArchived) {
+            sql.append(" AND p.archived = FALSE");
+        }
+        if (status != null && !status.isBlank()) {
+            sql.append(" AND p.status = ?");
+            args.add(status.trim());
+        }
+        sql.append(" ORDER BY p.id");
+        return jdbc.query(sql.toString(), MAPPER, args.toArray());
     }
 
     public Project create(String name, long clientId, String status) {

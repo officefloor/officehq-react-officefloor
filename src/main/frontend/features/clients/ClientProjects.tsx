@@ -7,21 +7,35 @@ type Project = { id: number; name: string; clientId: number; clientName: string 
 
 export function ClientProjects({ clientId }: { clientId: number }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  // Show only ACTIVE (and non-archived) projects by default; the toggle reveals every status,
+  // archived (hidden) ones included — that is the "also see finished and hidden" ask.
+  const [showAll, setShowAll] = useState(false);
 
-  async function load() {
-    const res = await fetch(`/api/projects?clientId=${clientId}`);
+  async function load(all: boolean) {
+    const query = all
+      ? `clientId=${clientId}&includeArchived=true`
+      : `clientId=${clientId}&status=ACTIVE`;
+    const res = await fetch(`/api/projects?${query}`);
     if (res.ok) {
       setProjects(await res.json());
     }
   }
 
   useEffect(() => {
-    void load();
-  }, [clientId]);
+    void load(showAll);
+  }, [clientId, showAll]);
 
   return (
     <section data-testid="client-projects">
       <h2>Projects</h2>
+      <button
+        type="button"
+        data-testid="client-projects-show-all"
+        aria-pressed={showAll}
+        onClick={() => setShowAll((v) => !v)}
+      >
+        {showAll ? 'Show active only' : 'Show finished and hidden'}
+      </button>
       {projects.length === 0 ? (
         <p data-testid="client-projects-empty">No projects yet.</p>
       ) : (

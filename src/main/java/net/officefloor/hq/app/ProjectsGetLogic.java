@@ -23,7 +23,7 @@ public class ProjectsGetLogic {
         } else if (clientId == null || clientId.isBlank()) {
             response.send(repository.findAll(withArchived, status));
         } else {
-            response.send(repository.findByClient(Long.parseLong(clientId.trim())));
+            response.send(repository.findByClient(Long.parseLong(clientId.trim()), withArchived, status));
         }
     }
 }
