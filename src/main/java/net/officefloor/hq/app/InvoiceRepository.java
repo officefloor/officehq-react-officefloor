@@ -66,15 +66,46 @@ public class InvoiceRepository {
                 MAPPER, projectId);
     }
 
+    private static final org.springframework.jdbc.core.RowMapper<InvoiceListing> LISTING_MAPPER =
+            (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
+                    rs.getString("project_name"), rs.getBigDecimal("amount"),
+                    rs.getString("status"));
+
+    // Every invoice joined to its project name, ordered by id. The derived status is an expression,
+    // so filtering by stage wraps this as a subquery and filters on the aliased column.
+    private static final String LISTING_SELECT =
+            "SELECT i.id AS id, i.project_id AS project_id, p.name AS project_name, "
+                    + AMOUNT_SUM + " AS amount, " + DERIVED_STATUS + " AS status FROM invoices i"
+                    + " JOIN projects p ON p.id = i.project_id";
+
     /** Every invoice across all projects, joined to its project name, ordered by id. */
     public List<InvoiceListing> findAllWithProject() {
+        return jdbc.query(LISTING_SELECT + " ORDER BY id", LISTING_MAPPER);
+    }
+
+    /**
+     * One page of the cross-project invoice list, ordered by id. {@code status} narrows to a single
+     * stage (DRAFT/SENT/PARTIAL/PAID) when non-null/blank; otherwise every stage is included.
+     */
+    public List<InvoiceListing> findPage(String status, int limit, int offset) {
+        if (status == null || status.isBlank()) {
+            return jdbc.query(LISTING_SELECT + " ORDER BY id LIMIT ? OFFSET ?",
+                    LISTING_MAPPER, limit, offset);
+        }
         return jdbc.query(
-                "SELECT i.id, i.project_id, p.name AS project_name, " + AMOUNT_SUM + " AS amount,"
-                        + " " + DERIVED_STATUS + " AS status FROM invoices i"
-                        + " JOIN projects p ON p.id = i.project_id ORDER BY i.id",
-                (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getString("project_name"), rs.getBigDecimal("amount"),
-                        rs.getString("status")));
+                "SELECT id, project_id, project_name, amount, status FROM (" + LISTING_SELECT
+                        + ") t WHERE t.status = ? ORDER BY id LIMIT ? OFFSET ?",
+                LISTING_MAPPER, status, limit, offset);
+    }
+
+    /** How many invoices match the (optional) stage filter, across every page. */
+    public long countAll(String status) {
+        if (status == null || status.isBlank()) {
+            return jdbc.queryForObject("SELECT COUNT(*) FROM invoices", Long.class);
+        }
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM (" + LISTING_SELECT + ") t WHERE t.status = ?",
+                Long.class, status);
     }
 
     public Invoice findById(long id) {
