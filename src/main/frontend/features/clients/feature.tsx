@@ -5,10 +5,15 @@ import type { Feature } from '../../router/routes';
 // its own /api/clients endpoints. data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 
+// Every client needs a proper email. Same shape the server enforces (see CreateClient) so the UI
+// and the API agree on what "valid" means.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -21,6 +26,11 @@ function ClientsPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!EMAIL_RE.test(email.trim())) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    setEmailError('');
     await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,6 +56,11 @@ function ClientsPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="client-form-email-error" role="alert">
+            {emailError}
+          </p>
+        )}
         <button data-testid="client-form-submit" type="submit">
           Add client
         </button>
