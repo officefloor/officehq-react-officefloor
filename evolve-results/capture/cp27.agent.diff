@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 016a541..5d534c5 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -7,17 +7,28 @@ import { ProjectTasks } from './ProjectTasks';
+ // A project belongs to a client; the list shows the client's NAME (joined server-side).
+ type Project = { id: number; name: string; clientId: number; clientName: string; archived: boolean };
+ type Client = { id: number; name: string };
++type Tag = { id: number; name: string };
+ 
+ export function ProjectsPage() {
+   const [projects, setProjects] = useState<Project[]>([]);
+   const [clients, setClients] = useState<Client[]>([]);
++  const [tags, setTags] = useState<Tag[]>([]);
++  const [tagFilter, setTagFilter] = useState('');
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
+ 
+-  async function loadProjects(includeArchived = showArchived) {
+-    const res = await fetch(`/api/projects${includeArchived ? '?includeArchived=true' : ''}`);
++  async function loadProjects(includeArchived = showArchived, tagId = tagFilter) {
++    const params = new URLSearchParams();
++    if (includeArchived) {
++      params.set('includeArchived', 'true');
++    }
++    if (tagId) {
++      params.set('tagId', tagId);
++    }
++    const qs = params.toString();
++    const res = await fetch(`/api/projects${qs ? `?${qs}` : ''}`);
+     if (res.ok) {
+       setProjects(await res.json());
+     }
+@@ -32,11 +43,24 @@ export function ProjectsPage() {
+     }
+   }
+ 
++  async function loadTags() {
++    const res = await fetch('/api/tags');
++    if (res.ok) {
++      setTags(await res.json());
++    }
++  }
++
+   useEffect(() => {
+     void loadProjects();
+     void loadClients();
++    void loadTags();
+   }, []);
+ 
++  function onFilterByTag(tagId: string) {
++    setTagFilter(tagId);
++    void loadProjects(showArchived, tagId);
++  }
++
+   async function onDelete(id: number) {
+     const res = await fetch('/api/projects/delete', {
+       method: 'POST',
+@@ -111,6 +135,19 @@ export function ProjectsPage() {
+         {showArchived ? 'Hide archived' : 'Show archived'}
+       </button>
+ 
++      <select
++        data-testid="project-tag-filter"
++        value={tagFilter}
++        onChange={(e) => onFilterByTag(e.target.value)}
++      >
++        <option value="">All labels</option>
++        {tags.map((t) => (
++          <option key={t.id} value={t.id}>
++            {t.name}
++          </option>
++        ))}
++      </select>
++
+       {projects.length === 0 ? (
+         <p data-testid="projects-empty">No projects yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 985faca..8e48890 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -34,6 +34,18 @@ public class ProjectRepository {
+         return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
+     }
+ 
++    /**
++     * Projects carrying a given tag — backs the "filter my projects by label" dropdown. Archived
++     * projects are hidden unless {@code includeArchived} is true, matching the plain list.
++     */
++    public List<Project> findByTag(long tagId, boolean includeArchived) {
++        String archived = includeArchived ? "" : " AND p.archived = FALSE";
++        return jdbc.query(
++                SELECT + " JOIN project_tags pt ON pt.project_id = p.id"
++                        + " WHERE pt.tag_id = ?" + archived + " ORDER BY p.id",
++                MAPPER, tagId);
++    }
++
+     /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
+     public List<Project> findByClient(long clientId) {
+         return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+index 992a121..12f2e6d 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+@@ -6,16 +6,20 @@ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+  * GET /api/projects — list all projects (each with its client's name). With an optional
+- * {@code ?clientId=<id>} it lists only the projects done for that client. Archived projects are
++ * {@code ?clientId=<id>} it lists only the projects done for that client; with {@code ?tagId=<id>}
++ * only the projects carrying that tag (the "filter by label" dropdown). Archived projects are
+  * hidden unless {@code ?includeArchived=true} is passed (the "show archived" toggle).
+  */
+ public class ProjectsGetLogic {
+ 
+     public void service(@HttpQueryParameter("clientId") String clientId,
++            @HttpQueryParameter("tagId") String tagId,
+             @HttpQueryParameter("includeArchived") String includeArchived,
+             ProjectRepository repository, ObjectResponse<List<Project>> response) {
+-        if (clientId == null || clientId.isBlank()) {
+-            boolean withArchived = includeArchived != null && "true".equalsIgnoreCase(includeArchived.trim());
++        boolean withArchived = includeArchived != null && "true".equalsIgnoreCase(includeArchived.trim());
++        if (tagId != null && !tagId.isBlank()) {
++            response.send(repository.findByTag(Long.parseLong(tagId.trim()), withArchived));
++        } else if (clientId == null || clientId.isBlank()) {
+             response.send(repository.findAll(withArchived));
+         } else {
+             response.send(repository.findByClient(Long.parseLong(clientId.trim())));
