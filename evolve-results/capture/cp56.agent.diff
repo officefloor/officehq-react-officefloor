@@ -1,0 +1,343 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index f5221a1..75efa68 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -71,6 +71,96 @@ function ClientStatement({ client }: { client: Client }) {
+   );
+ }
+ 
++// Recording one lump sum a client paid, split across several of their open invoices. Opening the
++// form lists each open invoice with a box for the share of the lump sum applied to it
++// (payment-alloc-<invoiceId>); submitting records one payment per share, so every invoice's balance
++// then reflects what was put against it. Owns its own form state, scoped to the one client; reads the
++// client's statement for the open invoices and talks to that client's own /api/clients/<id>/payments
++// endpoint.
++function ClientPayment({ client }: { client: Client }) {
++  const [statement, reload] = useJsonResource<ClientStatement | null>(
++    `/api/clients/${client.id}/statement`,
++    null,
++  );
++  const [open, setOpen] = useState(false);
++  const [amount, setAmount] = useState('');
++  const [date, setDate] = useState('');
++  // The share typed against each invoice, held as raw strings keyed by invoice id so the inputs stay
++  // controlled.
++  const [allocations, setAllocations] = useState<Record<number, string>>({});
++
++  const openInvoices = (statement?.invoices ?? []).filter((inv) => inv.amountDue > 0);
++
++  async function submit(e: React.FormEvent) {
++    e.preventDefault();
++    if (date.trim() === '') {
++      return;
++    }
++    const shares = openInvoices
++      .map((inv) => ({ invoiceId: inv.id, amount: Number(allocations[inv.id]) }))
++      .filter((s) => Number.isFinite(s.amount) && s.amount > 0);
++    if (shares.length === 0) {
++      return;
++    }
++    await fetch(`/api/clients/${client.id}/payments`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ amount: Number(amount), date, allocations: shares }),
++    });
++    setOpen(false);
++    setAmount('');
++    setDate('');
++    setAllocations({});
++    await reload();
++  }
++
++  return (
++    <section data-testid="client-payment">
++      <button data-testid="client-record-payment" type="button" onClick={() => setOpen(true)}>
++        Record payment
++      </button>
++      {open && (
++        <form data-testid="payment-form" onSubmit={submit}>
++          <input
++            data-testid="payment-form-amount"
++            placeholder="Amount paid"
++            value={amount}
++            onChange={(e) => setAmount(e.target.value)}
++          />
++          <input
++            data-testid="payment-form-date"
++            type="date"
++            value={date}
++            onChange={(e) => setDate(e.target.value)}
++          />
++          <table data-testid="payment-alloc-table">
++            <tbody>
++              {openInvoices.map((inv) => (
++                <tr key={inv.id} data-testid={`payment-alloc-row-${inv.id}`}>
++                  <td data-testid="payment-alloc-due">{money(inv.amountDue)}</td>
++                  <td>
++                    <input
++                      data-testid={`payment-alloc-${inv.id}`}
++                      placeholder="Applied to this invoice"
++                      value={allocations[inv.id] ?? ''}
++                      onChange={(e) =>
++                        setAllocations((prev) => ({ ...prev, [inv.id]: e.target.value }))
++                      }
++                    />
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++          <button data-testid="payment-form-submit" type="submit">
++            Record payment
++          </button>
++        </form>
++      )}
++    </section>
++  );
++}
++
+ // A client's at-a-glance counts: how many projects and contacts are kept for them. Owns its own
+ // summary state, scoped to the one client it is showing; talks to that client's own
+ // /api/clients/<id>/summary endpoint.
+@@ -449,6 +539,7 @@ function ClientsPage() {
+ 
+       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
+       {open && <ClientStatement key={`statement-${open.id}`} client={open} />}
++      {open && <ClientPayment key={`payment-${open.id}`} client={open} />}
+       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
+       {open && <ClientProjects key={open.id} client={open} />}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/client/NewSplitPayment.java b/src/main/java/net/officefloor/hq/app/client/NewSplitPayment.java
+new file mode 100644
+index 0000000..a2dfd01
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/NewSplitPayment.java
+@@ -0,0 +1,66 @@
++package net.officefloor.hq.app.client;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * Request body for recording one lump-sum client payment split across several invoices: the lump
++ * total, the date it was paid, and how that lump is shared out — one {@link Allocation} per invoice
++ * the money is put against.
++ */
++public class NewSplitPayment {
++
++    private BigDecimal amount;
++
++    private String date;
++
++    private List<Allocation> allocations;
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public void setDate(String date) {
++        this.date = date;
++    }
++
++    public List<Allocation> getAllocations() {
++        return allocations;
++    }
++
++    public void setAllocations(List<Allocation> allocations) {
++        this.allocations = allocations;
++    }
++
++    /** One share of the lump sum: how much of it is applied to which invoice. */
++    public static class Allocation {
++
++        private Long invoiceId;
++
++        private BigDecimal amount;
++
++        public Long getInvoiceId() {
++            return invoiceId;
++        }
++
++        public void setInvoiceId(Long invoiceId) {
++            this.invoiceId = invoiceId;
++        }
++
++        public BigDecimal getAmount() {
++            return amount;
++        }
++
++        public void setAmount(BigDecimal amount) {
++            this.amount = amount;
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/SplitPayment.java b/src/main/java/net/officefloor/hq/app/client/SplitPayment.java
+new file mode 100644
+index 0000000..7d09b3d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/SplitPayment.java
+@@ -0,0 +1,71 @@
++package net.officefloor.hq.app.client;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.invoice.Payment;
++import net.officefloor.hq.app.invoice.PaymentRepository;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/clients/{id}/payments — record one lump-sum client payment split across several of the
++ * client's invoices. Each allocation becomes its own payment row against its invoice, so every
++ * invoice's balance comes out right (its due is that invoice's amount less the share applied to it).
++ * All the shares of the one lump sum carry a shared batch reference so they can be told apart from
++ * unrelated payments. Recording a payment against a single invoice still goes through
++ * /api/invoices/{id}/payments as before.
++ */
++public class SplitPayment {
++
++    public void service(@HttpPathParameter("id") String id, @RequestBody NewSplitPayment body,
++            PaymentRepository repository, JdbcTemplate jdbc, Audit audit,
++            ObjectResponse<SplitPaymentView> response) {
++        String date = body.getDate() == null ? "" : body.getDate().trim();
++        LocalDate paidDate;
++        try {
++            paidDate = LocalDate.parse(date);
++        } catch (DateTimeParseException ex) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A payment requires a valid date");
++        }
++        List<NewSplitPayment.Allocation> allocations =
++                body.getAllocations() == null ? List.of() : body.getAllocations();
++
++        // One batch reference ties this lump sum's shares together (one more than the highest so far).
++        Long batch = jdbc.queryForObject(
++                "SELECT COALESCE(MAX(batch_ref), 0) + 1 FROM payments", Long.class);
++
++        int count = 0;
++        BigDecimal total = BigDecimal.ZERO;
++        for (NewSplitPayment.Allocation a : allocations) {
++            // A blank or non-positive share is simply not part of this split.
++            if (a.getInvoiceId() == null || a.getAmount() == null || a.getAmount().signum() <= 0) {
++                continue;
++            }
++            Payment payment = new Payment();
++            payment.setInvoiceId(a.getInvoiceId());
++            payment.setAmount(a.getAmount());
++            payment.setPaidDate(paidDate);
++            payment.setBatchRef(batch);
++            Payment saved = repository.save(payment);
++            // One record per share, in the same shape as a single recorded payment, so the audited
++            // amount is the share applied to that invoice.
++            audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
++                    + saved.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString());
++            count++;
++            total = total.add(a.getAmount());
++        }
++        if (count == 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "A payment must be allocated to at least one invoice");
++        }
++        response.send(new SplitPaymentView(batch, count, total));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/SplitPaymentView.java b/src/main/java/net/officefloor/hq/app/client/SplitPaymentView.java
+new file mode 100644
+index 0000000..5aa7fc4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/SplitPaymentView.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.client;
++
++import java.math.BigDecimal;
++
++/**
++ * The result of recording a split lump-sum payment: the batch reference tying its shares together,
++ * how many invoices were paid into, and the total applied across them.
++ */
++public class SplitPaymentView {
++
++    private final Long batch;
++    private final int count;
++    private final BigDecimal total;
++
++    public SplitPaymentView(Long batch, int count, BigDecimal total) {
++        this.batch = batch;
++        this.count = count;
++        this.total = total;
++    }
++
++    public Long getBatch() {
++        return batch;
++    }
++
++    public int getCount() {
++        return count;
++    }
++
++    public BigDecimal getTotal() {
++        return total;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Payment.java b/src/main/java/net/officefloor/hq/app/invoice/Payment.java
+index 5942599..cee431f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/Payment.java
+@@ -26,6 +26,11 @@ public class Payment {
+     @Column(name = "paid_date")
+     private LocalDate paidDate;
+ 
++    // When this payment is one share of a lump sum split across several invoices, the batch reference
++    // shared by every share of that one lump sum; null for a plain single payment.
++    @Column(name = "batch_ref")
++    private Long batchRef;
++
+     public Long getId() {
+         return id;
+     }
+@@ -57,4 +62,12 @@ public class Payment {
+     public void setPaidDate(LocalDate paidDate) {
+         this.paidDate = paidDate;
+     }
++
++    public Long getBatchRef() {
++        return batchRef;
++    }
++
++    public void setBatchRef(Long batchRef) {
++        this.batchRef = batchRef;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V29__payments_batch.sql b/src/main/resources/db/migration/V29__payments_batch.sql
+new file mode 100644
+index 0000000..271f309
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__payments_batch.sql
+@@ -0,0 +1,4 @@
++-- Splitting one lump-sum client payment across several invoices records one payment row per invoice,
++-- all sharing a batch reference so the allocations of a single lump sum can be told apart from other
++-- payments. Additive: a nullable column on payments; a plain single payment simply leaves it null.
++ALTER TABLE payments ADD COLUMN batch_ref BIGINT;
+diff --git a/src/main/resources/officefloor/rest/api/clients/{id}/payments.POST.yml b/src/main/resources/officefloor/rest/api/clients/{id}/payments.POST.yml
+new file mode 100644
+index 0000000..e477e8d
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{id}/payments.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.client.SplitPayment
