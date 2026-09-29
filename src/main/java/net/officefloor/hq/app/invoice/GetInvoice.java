@@ -16,7 +16,7 @@ public class GetInvoice {
     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
             ObjectResponse<InvoiceView> response) {
         InvoiceView invoice = jdbc.query(
-                "SELECT id, project_id, status, issued_date, due_date, "
+                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
@@ -29,9 +29,11 @@ public class GetInvoice {
                     BigDecimal amountDue = rs.getBigDecimal("amount_due");
                     String status = InvoiceStatus.derive(rs.getString("status"), amount,
                             amount.subtract(amountDue));
-                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
-                            amountDue, status, rs.getString("issued_date"),
+                    InvoiceView view = new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+                            amount, amountDue, status, rs.getString("issued_date"),
                             rs.getString("due_date"));
+                    view.setDiscountPct(rs.getBigDecimal("discount_pct"));
+                    return view;
                 },
                 Long.valueOf(id)).stream().findFirst()
                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));

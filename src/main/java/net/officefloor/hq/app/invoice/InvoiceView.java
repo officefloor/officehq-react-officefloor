@@ -12,6 +12,9 @@ public class InvoiceView {
     private final String status;
     private final String issuedDate;
     private final String dueDate;
+    // The percentage discount taken off the subtotal; 0 unless the invoice carries one. Set after
+    // construction so the existing callers that don't surface a discount stay untouched.
+    private BigDecimal discountPct = BigDecimal.ZERO;
 
     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal amountDue,
             String status, String issuedDate, String dueDate) {
@@ -50,5 +53,13 @@ public class InvoiceView {
 
     public String getDueDate() {
         return dueDate;
+    }
+
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    public void setDiscountPct(BigDecimal discountPct) {
+        this.discountPct = discountPct;
     }
 }

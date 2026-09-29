@@ -113,6 +113,7 @@ public class TestSupportController {
                     .set("project_id", id(in, "projectId"))
                     .set("status", in.get("status") == null ? "DRAFT" : in.get("status").toString())
                     .setIfPresent("amount", asDouble(in.get("amount")))
+                    .setIfPresent("discount_pct", asDouble(in.get("discountPct")))
                     .setIfPresent("issued_date", asText(in.get("issuedDate")))
                     .setIfPresent("due_date", asText(in.get("dueDate")))
                     .run();

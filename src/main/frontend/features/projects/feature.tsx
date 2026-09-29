@@ -24,6 +24,7 @@ type Invoice = {
   status: string;
   issuedDate: string;
   dueDate: string;
+  discountPct: number;
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
 type Tag = { id: number; name: string };
@@ -84,13 +85,17 @@ function InvoiceDetail({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [status, setStatus] = useState('');
+  // The percentage discount taken off this invoice's subtotal (0 unless one is set).
+  const [discountPct, setDiscountPct] = useState(0);
 
   // The status is worked out from the payments recorded against the invoice, so re-read it whenever
-  // a payment is added rather than flipping it by hand.
+  // a payment is added rather than flipping it by hand. The discount percentage comes back on the
+  // same read.
   async function loadStatus() {
     const res = await fetch(`/api/invoices/${invoiceId}`);
     const inv: Invoice = await res.json();
     setStatus(inv.status);
+    setDiscountPct(Number(inv.discountPct) || 0);
   }
 
   async function load() {
@@ -199,7 +204,11 @@ function InvoiceDetail({
     onChange();
   }
 
-  const total = items.reduce((sum, li) => sum + amountOf(li), 0);
+  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
+  // the final total is the subtotal less the discount.
+  const subtotal = items.reduce((sum, li) => sum + amountOf(li), 0);
+  const discount = (subtotal * discountPct) / 100;
+  const total = subtotal - discount;
 
   return (
     <section data-testid="invoice-detail">
@@ -251,6 +260,8 @@ function InvoiceDetail({
         </tbody>
       </table>
 
+      <p data-testid="invoice-subtotal">{money(subtotal)}</p>
+      <p data-testid="invoice-discount">{money(discount)}</p>
       <p data-testid="invoice-amount">{money(total)}</p>
 
       <form data-testid="lineitem-form" onSubmit={submit}>
