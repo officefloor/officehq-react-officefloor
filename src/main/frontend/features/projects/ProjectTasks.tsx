@@ -3,12 +3,15 @@ import React, { useEffect, useState } from 'react';
 // A project's task checklist, shown when a project is opened from the projects list. Owns its own
 // state (CLAUDE.md — features own their state). Each task can be ticked off (OPEN <-> DONE).
 type Task = { id: number; projectId: number; title: string; done: boolean };
+type Filter = 'ALL' | 'OPEN' | 'DONE';
 
 export function ProjectTasks({ projectId }: { projectId: number }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [filter, setFilter] = useState<Filter>('ALL');
 
   async function load() {
-    const res = await fetch(`/api/tasks?projectId=${projectId}`);
+    const query = filter === 'ALL' ? '' : `&status=${filter}`;
+    const res = await fetch(`/api/tasks?projectId=${projectId}${query}`);
     if (res.ok) {
       setTasks(await res.json());
     }
@@ -16,7 +19,7 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     void load();
-  }, [projectId]);
+  }, [projectId, filter]);
 
   async function toggle(id: number) {
     const res = await fetch('/api/tasks/toggle', {
@@ -25,14 +28,26 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
       body: JSON.stringify({ id }),
     });
     if (res.ok) {
-      const updated: Task = await res.json();
-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Reload so the ticked-off task drops out of (or into) the active filter.
+      await load();
     }
   }
 
   return (
     <section data-testid="project-tasks">
       <h2>Tasks</h2>
+      <label>
+        Show
+        <select
+          data-testid="task-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as Filter)}
+        >
+          <option value="ALL">All</option>
+          <option value="OPEN">Open</option>
+          <option value="DONE">Done</option>
+        </select>
+      </label>
       <table data-testid="project-tasks-table">
         <thead>
           <tr>

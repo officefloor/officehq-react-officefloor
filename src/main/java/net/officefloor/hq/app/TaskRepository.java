@@ -27,6 +27,14 @@ public class TaskRepository {
                 MAPPER, projectId);
     }
 
+    /** A project's tasks filtered to just the open ({@code done=false}) or done ones. */
+    public List<Task> findByProjectAndDone(long projectId, boolean done) {
+        return jdbc.query(
+                "SELECT id, project_id, title, done FROM tasks"
+                        + " WHERE project_id = ? AND done = ? ORDER BY id",
+                MAPPER, projectId, done);
+    }
+
     public Task findById(long id) {
         List<Task> found = jdbc.query(
                 "SELECT id, project_id, title, done FROM tasks WHERE id = ?", MAPPER, id);
