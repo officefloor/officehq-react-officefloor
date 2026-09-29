@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 01b2994..8eb9fa7 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -5,10 +5,15 @@ import type { Feature } from '../../router/routes';
+ // its own /api/clients endpoints. data-testid anchors follow the spec's conventions.
+ type Client = { id: number; name: string; email: string };
+ 
++// Every client needs a proper email. Same shape the server enforces (see CreateClient) so the UI
++// and the API agree on what "valid" means.
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++
+ function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
++  const [emailError, setEmailError] = useState('');
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -21,6 +26,11 @@ function ClientsPage() {
+ 
+   async function submit(e: React.FormEvent) {
+     e.preventDefault();
++    if (!EMAIL_RE.test(email.trim())) {
++      setEmailError('Enter a valid email address.');
++      return;
++    }
++    setEmailError('');
+     await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -46,6 +56,11 @@ function ClientsPage() {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <p data-testid="client-form-email-error" role="alert">
++            {emailError}
++          </p>
++        )}
+         <button data-testid="client-form-submit" type="submit">
+           Add client
+         </button>
+diff --git a/src/main/java/net/officefloor/hq/app/client/CreateClient.java b/src/main/java/net/officefloor/hq/app/client/CreateClient.java
+index 9a89117..63e64f4 100644
+--- a/src/main/java/net/officefloor/hq/app/client/CreateClient.java
++++ b/src/main/java/net/officefloor/hq/app/client/CreateClient.java
+@@ -1,16 +1,27 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.util.regex.Pattern;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.web.bind.annotation.RequestBody;
+ 
+-/** POST /api/clients — add a client with a name and email. */
++/** POST /api/clients — add a client with a name and a proper email. */
+ public class CreateClient {
+ 
++    /** A client needs a proper email; same shape the UI enforces (see feature.tsx). */
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
+     public void service(@RequestBody NewClient body, ClientRepository repository,
+             ObjectResponse<Client> response) {
++        String email = body.getEmail() == null ? "" : body.getEmail().trim();
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "A client requires a valid email address");
++        }
+         Client client = new Client();
+         client.setName(body.getName());
+-        client.setEmail(body.getEmail());
++        client.setEmail(email);
+         response.send(repository.save(client));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V2__clients_email_valid.sql b/src/main/resources/db/migration/V2__clients_email_valid.sql
+new file mode 100644
+index 0000000..40e85f6
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__clients_email_valid.sql
+@@ -0,0 +1,5 @@
++-- Every client needs a proper email. Enforce a minimal shape at the database as the last line of
++-- defence, matching the UI/server rule (something@something.tld, no spaces).
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_valid
++    CHECK (email LIKE '%_@_%._%' AND email NOT LIKE '% %');
