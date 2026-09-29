@@ -1,0 +1,537 @@
+{
+  "checkpoint": 16,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp16_client_contacts",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "For each client let me keep their contacts. Store a name, an email and their role. Show them\non the client's page.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nFor each client let me keep their contacts. Store a name, an email and their role. Show them\non the client's page.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "1072c0b5424e42c56b5bc62305c60444070ba490",
+  "reset_sha": "",
+  "preagent_sha": "f25c1679408de0e79692be70e2b3a4c203b010a3",
+  "prev_sha": "f25c1679408de0e79692be70e2b3a4c203b010a3",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9226899999999998,
+    "input_tokens": 62,
+    "output_tokens": 8734,
+    "cache_read_tokens": 860722,
+    "cache_creation_tokens": 27249,
+    "num_turns": 31,
+    "duration_ms": 158159,
+    "duration_api_ms": 140478,
+    "model": "claude-opus-4-8",
+    "session_id": "ef51e5e5-2bce-4b24-8848-9dccfc0a358f",
+    "stop_reason": "success",
+    "result_text": "Both tests pass. The change is complete and verified end-to-end.\n\n## Summary\n\nI implemented client contacts as a full-stack, additive change following the project's conventions:\n\n**Database** (`V9__contacts.sql`) \u2014 new `contacts` table (`id`, `client_id` FK \u2192 clients, `name`, `email`, `role`).\n\n**Server** (OfficeFloor REST + Spring beans):\n- `Contact` record + `ContactRepository` (`findByClient`, `create` via `JdbcTemplate`).\n- `ContactsGetLogic` \u2192 `GET /api/contacts?clientId=<id>` and `contacts.GET.yml`.\n- `NewContact` + `ContactsPostLogic` \u2192 `POST /api/contacts` and `contacts.POST.yml`.\n- Extended `TestSupportController` to seed `contacts` (using the fixture's explicit ids) and `TRUNCATE ... RESTART IDENTITY` them on reset \u2014 ordered before `clients` under the lifted referential integrity.\n\n**Front-end** \u2014 new `ClientContacts.tsx` feature component (owns its state, composes shared UI, doesn't touch a central router), rendered on the client's page alongside `ClientProjects` when a client is opened. It renders the `client-contacts-table`, `contact-row-<id>` rows with `contact-name`/`contact-email`/`contact-role`, and an add form (`contact-form-name`/`-email`/`-role`/`-submit`).\n\nNo audit records were needed (the spec asserts none). All `data-testid` anchors match the spec exactly, and both `@core` tests pass.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.9226899999999998,
+        "num_turns": 31,
+        "duration_ms": 158159,
+        "duration_api_ms": 140478,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp16.agent.jsonl",
+  "agent_diff_file": "cp16.agent.diff",
+  "build_log_file": "cp16.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 25,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true,
+      "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage": true,
+      "cp16_client_contacts.spec.ts::lists a client's contacts": true,
+      "cp16_client_contacts.spec.ts::adds a contact to a client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 351,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 219,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 218,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 254,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 317,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 212,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 248,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 341,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 151,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 125,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 203,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 266,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 246,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 234,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 350,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 424,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 287,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_invoice_status_filter.spec.ts::shows only invoices at the chosen stage",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 263,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::lists a client's contacts",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 187,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_client_contacts.spec.ts::adds a contact to a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 367,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 4.09,
+            "impact": 376,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "lang": "typescript",
+                "cost": 134,
+                "mutation": 0,
+                "godclass": 134,
+                "mut_fns": 0,
+                "new_fns": 6
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "lang": "typescript",
+                "cost": 54,
+                "mutation": 54,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "ClientContacts",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 81,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "ClientsPage",
+                "container": "",
+                "cc": 6,
+                "wmc_other": 9,
+                "cost": 54,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "onSubmit",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 30,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 7,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientContacts.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 1,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 9,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 50.87,
+            "impact": 2232,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactsPostLogic.java",
+                "lang": "java",
+                "cost": 152,
+                "mutation": 0,
+                "godclass": 152,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 152,
+                "mutation": 152,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewContact.java",
+                "lang": "java",
+                "cost": 24,
+                "mutation": 0,
+                "godclass": 24,
+                "mut_fns": 0,
+                "new_fns": 8
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactRepository.java",
+                "lang": "java",
+                "cost": 23,
+                "mutation": 0,
+                "godclass": 23,
+                "mut_fns": 0,
+                "new_fns": 3
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactsGetLogic.java",
+                "lang": "java",
+                "cost": 21,
+                "mutation": 0,
+                "godclass": 21,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactsPostLogic.java",
+                "name": "ContactsPostLogic::service",
+                "container": "ContactsPostLogic",
+                "cc": 8,
+                "wmc_other": 0,
+                "cost": 152,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 8,
+                "wmc_other": 2,
+                "cost": 144,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactsGetLogic.java",
+                "name": "ContactsGetLogic::service",
+                "container": "ContactsGetLogic",
+                "cc": 3,
+                "wmc_other": 0,
+                "cost": 21,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactRepository.java",
+                "name": "ContactRepository::create",
+                "container": "ContactRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 14,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::reset",
+                "container": "TestSupportController",
+                "cc": 1,
+                "wmc_other": 8,
+                "cost": 8,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactRepository.java",
+                "name": "ContactRepository::findByClient",
+                "container": "ContactRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 6,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/ContactRepository.java",
+                "name": "ContactRepository::ContactRepository",
+                "container": "ContactRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewContact.java",
+                "name": "NewContact::getClientId",
+                "container": "NewContact",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewContact.java",
+                "name": "NewContact::setClientId",
+                "container": "NewContact",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/NewContact.java",
+                "name": "NewContact::getName",
+                "container": "NewContact",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 10,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
