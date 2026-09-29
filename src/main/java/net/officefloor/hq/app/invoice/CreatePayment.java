@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.server.http.HttpException;
 import net.officefloor.server.http.HttpStatus;
 import net.officefloor.web.HttpPathParameter;
@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class CreatePayment {
 
     public void service(@HttpPathParameter("id") String id, @RequestBody NewPayment body,
-            PaymentRepository repository, ObjectResponse<Payment> response) {
+            PaymentRepository repository, Audit audit, ObjectResponse<Payment> response) {
         BigDecimal amount = body.getAmount();
         if (amount == null || amount.signum() <= 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A payment amount must be more than zero");
@@ -32,6 +34,11 @@ public class CreatePayment {
         payment.setInvoiceId(Long.valueOf(id));
         payment.setAmount(amount);
         payment.setPaidDate(paidDate);
-        response.send(repository.save(payment));
+        Payment saved = repository.save(payment);
+        // Recording the payment is what drives the invoice's status now, so the fact is audited here
+        // (the amount to two decimal places) instead of on a manual mark-paid.
+        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
+                + saved.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString());
+        response.send(saved);
     }
 }

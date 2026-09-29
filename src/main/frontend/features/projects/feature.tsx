@@ -65,6 +65,15 @@ function InvoiceDetail({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
+  const [status, setStatus] = useState('');
+
+  // The status is worked out from the payments recorded against the invoice, so re-read it whenever
+  // a payment is added rather than flipping it by hand.
+  async function loadStatus() {
+    const res = await fetch(`/api/invoices/${invoiceId}`);
+    const inv: Invoice = await res.json();
+    setStatus(inv.status);
+  }
 
   async function load() {
     const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
@@ -101,11 +110,14 @@ function InvoiceDetail({
     setPaymentAmount('');
     setPaymentDate('');
     await loadPayments();
+    await loadStatus();
+    onChange();
   }
 
   useEffect(() => {
     void load();
     void loadPayments();
+    void loadStatus();
   }, [invoiceId]);
 
   function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
@@ -168,6 +180,8 @@ function InvoiceDetail({
       <button data-testid="invoice-detail-close" type="button" onClick={onClose}>
         Back to invoices
       </button>
+
+      <p data-testid="invoice-status">{status}</p>
 
       <table data-testid="invoice-lineitems-table">
         <tbody>

@@ -1,19 +1,21 @@
 package net.officefloor.hq.app.invoice;
 
-import java.util.List;
-import net.officefloor.web.HttpQueryParameter;
+import java.math.BigDecimal;
+import net.officefloor.server.http.HttpException;
+import net.officefloor.server.http.HttpStatus;
+import net.officefloor.web.HttpPathParameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** GET /api/invoices?projectId=<id> — every invoice for one project, oldest first. */
-public class ListInvoices {
+/**
+ * GET /api/invoices/{id} — one invoice, with its amount (sum of line items), the amount still due
+ * (that less everything paid), and its status worked out from the payments recorded against it.
+ */
+public class GetInvoice {
 
-    public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
-            ObjectResponse<List<InvoiceView>> response) {
-        // The invoice amount is the sum of its line items (qty * unit price); an invoice with no
-        // lines totals zero. The amount due is that amount less everything paid against it (the sum
-        // of its payments), so a fully paid invoice shows zero still to pay.
-        List<InvoiceView> invoices = jdbc.query(
+    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
+            ObjectResponse<InvoiceView> response) {
+        InvoiceView invoice = jdbc.query(
                 "SELECT id, project_id, status, issued_date, due_date, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
@@ -21,19 +23,18 @@ public class ListInvoices {
                         + "WHERE li.invoice_id = invoices.id), 0) "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
-                        + " WHERE project_id = ? ORDER BY id",
+                        + " WHERE id = ?",
                 (rs, i) -> {
-                    java.math.BigDecimal amount = rs.getBigDecimal("amount");
-                    java.math.BigDecimal amountDue = rs.getBigDecimal("amount_due");
-                    // Paid = the whole amount less what is still due; the status is worked out from
-                    // that rather than read from the stored flag.
+                    BigDecimal amount = rs.getBigDecimal("amount");
+                    BigDecimal amountDue = rs.getBigDecimal("amount_due");
                     String status = InvoiceStatus.derive(rs.getString("status"), amount,
                             amount.subtract(amountDue));
                     return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
                             amountDue, status, rs.getString("issued_date"),
                             rs.getString("due_date"));
                 },
-                Long.valueOf(projectId));
-        response.send(invoices);
+                Long.valueOf(id)).stream().findFirst()
+                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
+        response.send(invoice);
     }
 }
