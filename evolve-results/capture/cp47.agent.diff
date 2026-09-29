@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/features/projects/InvoiceDetail.tsx b/src/main/frontend/features/projects/InvoiceDetail.tsx
+index 7c7711f..5093a58 100644
+--- a/src/main/frontend/features/projects/InvoiceDetail.tsx
++++ b/src/main/frontend/features/projects/InvoiceDetail.tsx
+@@ -44,6 +44,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+   const [paymentAmount, setPaymentAmount] = useState('');
+   const [paymentDate, setPaymentDate] = useState('');
+   const [status, setStatus] = useState('');
++  const [discountPct, setDiscountPct] = useState(0);
+ 
+   async function load() {
+     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
+@@ -60,12 +61,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+   }
+ 
+   // The invoice's status is worked out server-side from the payments recorded against it, so we
+-  // re-read it whenever the payments change rather than tracking it by hand.
++  // re-read it whenever the payments change rather than tracking it by hand. The invoice also
++  // carries its discount percentage, which we read here to show the discount and final total.
+   async function loadStatus() {
+     const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
+     if (res.ok) {
+-      const inv: { status: string } = await res.json();
++      const inv: { status: string; discountPct: number } = await res.json();
+       setStatus(inv.status);
++      setDiscountPct(Number(inv.discountPct));
+     }
+   }
+ 
+@@ -161,7 +164,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+     }
+   }
+ 
+-  const total = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
++  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
++  // the final total is the subtotal minus the discount.
++  const subtotal = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
++  const discount = subtotal * (discountPct / 100);
++  const total = subtotal - discount;
+ 
+   return (
+     <section data-testid="invoice-detail">
+@@ -291,6 +298,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
+         </tbody>
+       </table>
+ 
++      <p>
++        Subtotal: <span data-testid="invoice-subtotal">{money(subtotal)}</span>
++      </p>
++      <p>
++        Discount: <span data-testid="invoice-discount">{money(discount)}</span>
++      </p>
+       <p>
+         Total: <span data-testid="invoice-amount">{money(total)}</span>
+       </p>
+diff --git a/src/main/java/net/officefloor/hq/app/Invoice.java b/src/main/java/net/officefloor/hq/app/Invoice.java
+index ddbb91d..8a8225d 100644
+--- a/src/main/java/net/officefloor/hq/app/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/Invoice.java
+@@ -7,7 +7,9 @@ import java.math.BigDecimal;
+  * exactly one project (projectId). Carries a payment status (UNPAID by default, PAID once settled)
+  * and two dates: issuedDate (when it went out) and dueDate (when it is due), as ISO yyyy-MM-dd.
+  * {@code due} is how much is still owed: the invoice amount minus everything paid against it.
++ * {@code discountPct} is a percentage (0..100) taken off the subtotal; the front-end shows the
++ * subtotal, the discount and the final total (subtotal minus the discount).
+  */
+ public record Invoice(long id, long projectId, BigDecimal amount, String status, String issuedDate,
+-        String dueDate, BigDecimal due) {
++        String dueDate, BigDecimal due, BigDecimal discountPct) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index abc509d..19483b2 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -21,7 +21,7 @@ public class InvoiceRepository {
+             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
+                     rs.getBigDecimal("amount"), rs.getString("status"),
+                     rs.getString("issued_date"), rs.getString("due_date"),
+-                    rs.getBigDecimal("due"));
++                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"));
+ 
+     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
+     // totals zero. Derived here so the amount always reflects the current line items.
+@@ -52,7 +52,7 @@ public class InvoiceRepository {
+     public List<Invoice> findByProject(long projectId) {
+         return jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                         + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
+                 MAPPER, projectId);
+     }
+@@ -61,7 +61,7 @@ public class InvoiceRepository {
+     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
+         return jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                         + " FROM invoices i WHERE i.project_id = ?"
+                         + " ORDER BY i.due_date ASC NULLS LAST, i.id",
+                 MAPPER, projectId);
+@@ -112,7 +112,7 @@ public class InvoiceRepository {
+     public Invoice findById(long id) {
+         List<Invoice> found = jdbc.query(
+                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
+-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
++                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                         + " FROM invoices i WHERE i.id = ?",
+                 MAPPER, id);
+         return found.isEmpty() ? null : found.get(0);
+@@ -127,9 +127,10 @@ public class InvoiceRepository {
+             ps.setBigDecimal(2, amount);
+             return ps;
+         }, keys);
+-        // A freshly created invoice has no payments yet, so the whole amount is still due.
++        // A freshly created invoice has no payments yet, so the whole amount is still due, and no
++        // discount yet (discount_pct defaults to 0).
+         return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
+-                amount);
++                amount, BigDecimal.ZERO);
+     }
+ 
+     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index af22e05..1849619 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -160,15 +160,17 @@ public class TestSupportController {
+             Object status = inv.get("status");
+             Object issuedDate = inv.get("issuedDate");
+             Object dueDate = inv.get("dueDate");
++            Object discountPct = inv.get("discountPct");
+             // Amount is derived from the invoice's line items (V13), so it is not seeded directly;
+-            // the column defaults to 0.
++            // the column defaults to 0. discount_pct (V29) defaults to 0 when the fixture omits it.
+             jdbc.update(
+-                    "INSERT INTO invoices (id, project_id, status, issued_date, due_date)"
+-                            + " VALUES (?, ?, ?, ?, ?)",
++                    "INSERT INTO invoices (id, project_id, status, issued_date, due_date,"
++                            + " discount_pct) VALUES (?, ?, ?, ?, ?, ?)",
+                     id(inv, "id"), id(inv, "projectId"),
+                     status == null ? "DRAFT" : status.toString(),
+                     issuedDate == null ? null : Date.valueOf(issuedDate.toString()),
+-                    dueDate == null ? null : Date.valueOf(dueDate.toString()));
++                    dueDate == null ? null : Date.valueOf(dueDate.toString()),
++                    discountPct == null ? BigDecimal.ZERO : new BigDecimal(discountPct.toString()));
+             seedLineItems(inv);
+         }
+     }
+diff --git a/src/main/resources/db/migration/V29__invoices_discount_pct.sql b/src/main/resources/db/migration/V29__invoices_discount_pct.sql
+new file mode 100644
+index 0000000..be69efe
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__invoices_discount_pct.sql
+@@ -0,0 +1,6 @@
++-- An invoice can carry a percentage discount taken off its subtotal (the sum of its line items).
++-- discount_pct is that percentage (0..100); the final total is subtotal minus subtotal * pct/100.
++-- Additive: a new versioned migration alongside the existing invoices table. Existing rows get 0
++-- (no discount); the column is NOT NULL so every invoice carries a (possibly zero) discount.
++ALTER TABLE invoices ADD COLUMN discount_pct NUMERIC(5, 2) NOT NULL DEFAULT 0
++    CHECK (discount_pct >= 0 AND discount_pct <= 100);
