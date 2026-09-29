@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/features/dashboard/feature.tsx b/src/main/frontend/features/dashboard/feature.tsx
+new file mode 100644
+index 0000000..e2405b9
+--- /dev/null
++++ b/src/main/frontend/features/dashboard/feature.tsx
+@@ -0,0 +1,46 @@
++import React, { useEffect, useState } from 'react';
++import type { Feature } from '../../router/routes';
++
++// Dashboard feature: a home screen summarising the whole account — how many clients and projects
++// there are, and how much money is still owed (the total of every UNPAID invoice across all
++// projects). Read-only; owns its own state and reads its own /api/dashboard endpoint.
++type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
++
++function money(amount: number): string {
++  return Number(amount).toFixed(2);
++}
++
++function DashboardPage() {
++  const [summary, setSummary] = useState<Summary | null>(null);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch('/api/dashboard');
++      setSummary(await res.json());
++    }
++    void load();
++  }, []);
++
++  if (!summary) {
++    return <section data-testid="dashboard" />;
++  }
++
++  return (
++    <section data-testid="dashboard">
++      <div data-testid="dashboard-clients">
++        <span>Clients</span>
++        <span data-testid="dashboard-clients-count">{summary.clientsCount}</span>
++      </div>
++      <div data-testid="dashboard-projects">
++        <span>Projects</span>
++        <span data-testid="dashboard-projects-count">{summary.projectsCount}</span>
++      </div>
++      <div data-testid="dashboard-outstanding">
++        <span>Outstanding</span>
++        <span data-testid="dashboard-outstanding-total">{money(summary.outstandingTotal)}</span>
++      </div>
++    </section>
++  );
++}
++
++export const feature: Feature = { id: 'dashboard', label: 'Dashboard', Page: DashboardPage };
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+new file mode 100644
+index 0000000..dc9f960
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++
++/** The home dashboard summary: how many clients and projects, and money still owed. */
++public class DashboardView {
++
++    private final long clientsCount;
++    private final long projectsCount;
++    private final BigDecimal outstandingTotal;
++
++    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
++        this.clientsCount = clientsCount;
++        this.projectsCount = projectsCount;
++        this.outstandingTotal = outstandingTotal;
++    }
++
++    public long getClientsCount() {
++        return clientsCount;
++    }
++
++    public long getProjectsCount() {
++        return projectsCount;
++    }
++
++    public BigDecimal getOutstandingTotal() {
++        return outstandingTotal;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+new file mode 100644
+index 0000000..d5025be
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/dashboard — the home screen summary: how many clients and projects exist, and how much
++ * money is still owed (the sum of every UNPAID invoice's amount across all projects).
++ */
++public class GetDashboard {
++
++    public void service(JdbcTemplate jdbc, ObjectResponse<DashboardView> response) {
++        long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
++        long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
++        BigDecimal outstanding = jdbc.queryForObject(
++                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'UNPAID'",
++                BigDecimal.class);
++        response.send(new DashboardView(clients, projects, outstanding));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/dashboard.GET.yml b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+new file mode 100644
+index 0000000..bacc54f
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.dashboard.GetDashboard
