@@ -1,0 +1,119 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 997f0e5..042a842 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -312,11 +312,13 @@ function InvoiceActions({
+   onOpen,
+   onSend,
+   onPay,
++  onCancel,
+ }: {
+   invoice: Invoice;
+   onOpen: () => void;
+   onSend: () => void;
+   onPay: () => void;
++  onCancel: () => void;
+ }) {
+   return (
+     <>
+@@ -333,6 +335,11 @@ function InvoiceActions({
+           Mark paid
+         </button>
+       )}
++      {invoice.status === 'SENT' && (
++        <button data-testid={`invoice-cancel-${invoice.id}`} onClick={onCancel}>
++          Cancel
++        </button>
++      )}
+     </>
+   );
+ }
+@@ -383,7 +390,7 @@ function ProjectInvoices({
+ 
+   // A lifecycle move (send, mark paid, …) is a POST to the matching action route followed by a reload;
+   // routing them through one place means a new action is one more call site, not new plumbing.
+-  async function transition(id: number, action: 'send' | 'pay') {
++  async function transition(id: number, action: 'send' | 'pay' | 'cancel') {
+     await fetch(`/api/invoices/${id}/${action}`, { method: 'POST' });
+     await load();
+   }
+@@ -433,6 +440,7 @@ function ProjectInvoices({
+                       onOpen={() => setOpenInvoiceId(inv.id)}
+                       onSend={() => transition(inv.id, 'send')}
+                       onPay={() => transition(inv.id, 'pay')}
++                      onCancel={() => transition(inv.id, 'cancel')}
+                     />
+                   </td>
+                 </tr>
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+index 060e427..8cf8afc 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+@@ -17,8 +17,12 @@ public class GetDashboard {
+     public void service(JdbcTemplate jdbc, ObjectResponse<DashboardView> response) {
+         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
+         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
++        // Money owed is the total of every SENT invoice, and an invoice's total is the sum of its
++        // line items (the source of truth everywhere else) — so a cancelled (VOID) invoice, no
++        // longer SENT, drops out of what is owed.
+         BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
++                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM line_items li "
++                        + "JOIN invoices inv ON inv.id = li.invoice_id WHERE inv.status = 'SENT'",
+                 BigDecimal.class);
+         long overdue = jdbc.queryForObject(
+                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CancelInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/CancelInvoice.java
+new file mode 100644
+index 0000000..dc8dae3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/CancelInvoice.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * POST /api/invoices/{id}/cancel — cancel (void) an invoice that was sent by mistake: flip its
++ * status from SENT to VOID and record the fact to the audit file. A voided invoice no longer counts
++ * toward what is owed (the dashboard's outstanding total counts only SENT invoices). Only a sent
++ * invoice can be cancelled. The audited amount is the invoice total (the sum of its line items),
++ * matching how the amount is derived everywhere else.
++ */
++public class CancelInvoice {
++
++    public void service(@HttpPathParameter("id") String id, InvoiceRepository repository,
++            JdbcTemplate jdbc, Audit audit, ObjectResponse<InvoiceView> response) {
++        Long invoiceId = Long.valueOf(id);
++        Invoice invoice = repository.findById(invoiceId)
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
++        if (!"SENT".equals(invoice.getStatus())) {
++            throw new HttpException(HttpStatus.CONFLICT, "Only a sent invoice can be cancelled");
++        }
++        invoice.setStatus("VOID");
++        Invoice saved = repository.save(invoice);
++        BigDecimal amount = jdbc.queryForObject(
++                "SELECT COALESCE(SUM(qty * unit_price), 0) FROM line_items WHERE invoice_id = ?",
++                BigDecimal.class, saved.getId()).setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_VOIDED id=" + saved.getId() + " amount=" + amount.toPlainString());
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), amount, amount,
++                saved.getStatus(),
++                saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),
++                saved.getDueDate() == null ? null : saved.getDueDate().toString()));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/cancel.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/cancel.POST.yml
+new file mode 100644
+index 0000000..abe19c8
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/cancel.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.CancelInvoice
