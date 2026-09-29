@@ -1,0 +1,251 @@
+{
+  "checkpoint": 6,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp06_client_search",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "My client list is getting long. Give me a box to search for a client by name.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nMy client list is getting long. Give me a box to search for a client by name.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "2a52c862d1e51c984307ee54dc19dd315193b6bd",
+  "reset_sha": "",
+  "preagent_sha": "a44695bcb91d6735e49194ccfd9e0a8fea9bbb2c",
+  "prev_sha": "a44695bcb91d6735e49194ccfd9e0a8fea9bbb2c",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2716545,
+    "input_tokens": 18,
+    "output_tokens": 2080,
+    "cache_read_tokens": 170049,
+    "cache_creation_tokens": 13338,
+    "num_turns": 9,
+    "duration_ms": 48712,
+    "duration_api_ms": 33232,
+    "model": "claude-opus-4-8",
+    "session_id": "a6d4fa22-0801-405f-bccc-dafe2a1008ed",
+    "stop_reason": "success",
+    "result_text": "The test passes. \n\nI implemented the client search as a small, additive frontend change to `ClientsPage.tsx`:\n\n- Added a `client-search` input box (the `data-testid` the spec anchors on).\n- Filtering is case-insensitive on the client name (`includes` on lowercased values), and an empty box shows all clients.\n- The existing `client-row-*`, `client-name`, and other testids are untouched.\n\nNo server or schema change was needed \u2014 the app already loads clients via `/api/clients` and filtering happens over that loaded list, matching the spec's expectation (\"a search box grows the existing clients list\").",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.2716545,
+        "num_turns": 9,
+        "duration_ms": 48712,
+        "duration_api_ms": 33232,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp06.agent.jsonl",
+  "agent_diff_file": "cp06.agent.diff",
+  "build_log_file": "cp06.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 12,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 233,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 350,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 332,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 190,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 353,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 336,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 374,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 183,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 6.01,
+            "impact": 552,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "lang": "typescript",
+                "cost": 552,
+                "mutation": 552,
+                "godclass": 0,
+                "mut_fns": 3,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "ClientsPage",
+                "container": "",
+                "cc": 4,
+                "wmc_other": 8,
+                "cost": 512,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 10,
+                "cost": 20,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/clients/ClientsPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 10,
+                "cost": 20,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 7,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 0.0,
+            "impact": 0,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [],
+            "drivers": [],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
