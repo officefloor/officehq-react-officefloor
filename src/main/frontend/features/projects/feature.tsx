@@ -574,6 +574,7 @@ function ProjectsPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagLinks, setTagLinks] = useState<ProjectTagLink[]>([]);
   const [tagFilter, setTagFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
@@ -642,12 +643,13 @@ function ProjectsPage() {
   const open = projects.find((p) => p.id === openId) ?? null;
   const byArchived = showArchived ? projects : projects.filter((p) => !p.archived);
   const filterTagId = tagFilter ? Number(tagFilter) : null;
-  const visible =
+  const byTag =
     filterTagId === null
       ? byArchived
       : byArchived.filter((p) =>
           tagLinks.some((l) => l.projectId === p.id && l.tagId === filterTagId),
         );
+  const visible = statusFilter ? byTag.filter((p) => p.status === statusFilter) : byTag;
 
   return (
     <section data-testid="projects">
@@ -703,6 +705,17 @@ function ProjectsPage() {
             {t.name}
           </option>
         ))}
+      </select>
+
+      <select
+        data-testid="project-status-filter"
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+      >
+        <option value="">All statuses</option>
+        <option value="ACTIVE">Active</option>
+        <option value="ON_HOLD">On hold</option>
+        <option value="FINISHED">Finished</option>
       </select>
 
       {projects.length === 0 ? (
