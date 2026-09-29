@@ -1,0 +1,81 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index a161b67..10341ae 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -51,10 +51,17 @@ export function ClientsPage() {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+-    if (!EMAIL_PATTERN.test(email.trim())) {
++    const trimmedEmail = email.trim();
++    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+       setEmailError('Enter a valid email address.');
+       return;
+     }
++    // Two clients cannot share an email. Catch it here before hitting the server (the server and the
++    // clients_email_unique constraint are the authoritative guards).
++    if (clients.some((c) => c.email === trimmedEmail)) {
++      setEmailError('A client with this email already exists.');
++      return;
++    }
+     setEmailError('');
+     const res = await fetch('/api/clients', {
+       method: 'POST',
+@@ -66,6 +73,8 @@ export function ClientsPage() {
+       setClients((prev) => [...prev, created]);
+       setName('');
+       setEmail('');
++    } else if (res.status === 409) {
++      setEmailError('A client with this email already exists.');
+     } else {
+       setEmailError('Enter a valid email address.');
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index 825453d..e475fac 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -56,6 +56,17 @@ public class ClientRepository {
+         return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
+     }
+ 
++    /**
++     * Whether a client already uses this email. Two clients cannot share an email, so a create must
++     * be rejected when one exists (defence alongside the {@code clients_email_unique} constraint in
++     * V27). Considers every row, including archived ones — the email is still taken.
++     */
++    public boolean existsByEmail(String email) {
++        Integer count = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM clients WHERE email = ?", Integer.class, email);
++        return count != null && count > 0;
++    }
++
+     public Client create(String name, String email) {
+         KeyHolder keys = new GeneratedKeyHolder();
+         jdbc.update(con -> {
+diff --git a/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java b/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
+index 3eea3a6..8dfc4aa 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
+@@ -19,6 +19,11 @@ public class ClientsPostLogic {
+         if (!EMAIL.matcher(email).matches()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A valid email address is required.");
+         }
++        // Two clients cannot share an email — reject the create when the address is already in use
++        // (mirrors the front-end check in ClientsPage.tsx and the clients_email_unique constraint).
++        if (repository.existsByEmail(email)) {
++            throw new HttpException(HttpStatus.CONFLICT, "A client with this email already exists.");
++        }
+         response.send(repository.create(body.getName(), email));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V27__clients_email_unique.sql b/src/main/resources/db/migration/V27__clients_email_unique.sql
+new file mode 100644
+index 0000000..2a952de
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__clients_email_unique.sql
+@@ -0,0 +1,5 @@
++-- Two clients cannot share an email address: enforce uniqueness at the schema level (defence in
++-- depth alongside the front-end and server checks, mirroring the V2 email-format constraint).
++-- Additive: a new versioned migration adding a UNIQUE constraint on the existing email column.
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_unique UNIQUE (email);
