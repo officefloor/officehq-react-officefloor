@@ -1,0 +1,427 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp04_project_invoices",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "When I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nWhen I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "7ff33675b0621e0004ce6051d7b1954fee049b04",
+  "reset_sha": "",
+  "preagent_sha": "54ba6e722c17eb65386b3b26631452c5ad1b4ea7",
+  "prev_sha": "54ba6e722c17eb65386b3b26631452c5ad1b4ea7",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9881535,
+    "input_tokens": 36,
+    "output_tokens": 13881,
+    "cache_read_tokens": 556041,
+    "cache_creation_tokens": 36174,
+    "num_turns": 43,
+    "duration_ms": 202392,
+    "duration_api_ms": 184720,
+    "model": "claude-opus-4-8",
+    "session_id": "ddcee7df-5f02-484f-afec-f34074197155",
+    "stop_reason": "success",
+    "result_text": "Both tests pass. Let me verify I haven't left anything inconsistent by confirming the full build succeeded (it did \u2014 tests ran against a fresh build).\n\nThe change is complete and verified. Here's what I implemented as a full-stack, additive change:\n\n**Database** \u2014 `V4__invoices.sql`: new `invoices` table (`id` identity, `project_id` FK \u2192 `projects`, `amount DECIMAL(12,2)`).\n\n**Server (OfficeFloor REST)** \u2014 a new `invoice` package with `Invoice`/`InvoiceRepository`/`NewInvoice`/`InvoiceView`, plus two logic classes and their YAML routes:\n- `GET /api/invoices?projectId=<id>` (`ListInvoices`) \u2014 returns a project's invoices, oldest first.\n- `POST /api/invoices` (`CreateInvoice`) \u2014 validates project + amount, saves via the repository.\n\n**Test seed support** \u2014 extended `TestSupportController` to seed `invoices` (using explicit fixture ids) and to `TRUNCATE ... RESTART IDENTITY` the table on reset (before projects/clients, with referential integrity disabled).\n\n**Front-end** \u2014 extended the Projects feature (kept local, no cross-feature imports): each project row gets a `project-open-<id>` button, and opening one renders a `ProjectDetail` with `project-invoices-table` (`invoice-row-<id>` \u2192 `invoice-amount`, 2-decimal formatting), a `project-invoices-total`, and an add-invoice form (`invoice-form-amount` / `invoice-form-submit`) that posts and reloads.\n\nNo audit records were needed (the spec asserts none), and I didn't touch any pinned scaffolding.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.9881535,
+        "num_turns": 43,
+        "duration_ms": 202392,
+        "duration_api_ms": 184720,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": "cp04.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 9,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 657,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 346,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 217,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 211,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 319,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 260,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 220,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 9.0,
+            "impact": 827,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "lang": "typescript",
+                "cost": 827,
+                "mutation": 717,
+                "godclass": 110,
+                "mut_fns": 7,
+                "new_fns": 2
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "ProjectsPage",
+                "container": "",
+                "cc": 5,
+                "wmc_other": 8,
+                "cost": 400,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "submit",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 7,
+                "cost": 182,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "money",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 10,
+                "cost": 70,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 45,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 45,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 10,
+                "cost": 40,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 27,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 9,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 9,
+                "cost": 9,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 4,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 40.33,
+            "impact": 1239,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 68,
+                "mutation": 68,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java",
+                "lang": "java",
+                "cost": 56,
+                "mutation": 0,
+                "godclass": 56,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "lang": "java",
+                "cost": 18,
+                "mutation": 0,
+                "godclass": 18,
+                "mut_fns": 0,
+                "new_fns": 6
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java",
+                "lang": "java",
+                "cost": 14,
+                "mutation": 0,
+                "godclass": 14,
+                "mut_fns": 0,
+                "new_fns": 4
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/NewInvoice.java",
+                "lang": "java",
+                "cost": 12,
+                "mutation": 0,
+                "godclass": 12,
+                "mut_fns": 0,
+                "new_fns": 4
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java",
+                "lang": "java",
+                "cost": 9,
+                "mutation": 0,
+                "godclass": 9,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 4,
+                "wmc_other": 2,
+                "cost": 64,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java",
+                "name": "CreateInvoice::service",
+                "container": "CreateInvoice",
+                "cc": 4,
+                "wmc_other": 0,
+                "cost": 56,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java",
+                "name": "ListInvoices::service",
+                "container": "ListInvoices",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 9,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java",
+                "name": "InvoiceView::InvoiceView",
+                "container": "InvoiceView",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 5,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::reset",
+                "container": "TestSupportController",
+                "cc": 1,
+                "wmc_other": 4,
+                "cost": 4,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::getId",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::setId",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::getProjectId",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::setProjectId",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::getAmount",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 3,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

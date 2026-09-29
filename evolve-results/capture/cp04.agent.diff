@@ -1,0 +1,370 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 67e33ab..e9bab1c 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -2,16 +2,86 @@ import React, { useEffect, useState } from 'react';
+ import type { Feature } from '../../router/routes';
+ 
+ // Projects feature: add a project and pick which client it is for, then list every project showing
+-// the client's NAME. Owns its own state; talks to its own /api/projects endpoints and reads
+-// /api/clients to populate the client picker. data-testid anchors follow the spec's conventions.
++// the client's NAME. Opening a project (project-open-<id>) reveals its detail: the invoices raised
++// against it, their running total, and a form to add another. Owns its own state; talks to its own
++// /api/projects and /api/invoices endpoints and reads /api/clients to populate the client picker.
++// data-testid anchors follow the spec's conventions.
+ type Client = { id: number; name: string; email: string };
+ type Project = { id: number; name: string; clientId: number; clientName: string };
++type Invoice = { id: number; projectId: number; amount: number };
++
++function money(amount: number): string {
++  return Number(amount).toFixed(2);
++}
++
++// A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its
++// own invoice state, scoped to the one project it is showing.
++function ProjectDetail({ project }: { project: Project }) {
++  const [invoices, setInvoices] = useState<Invoice[]>([]);
++  const [amount, setAmount] = useState('');
++
++  async function load() {
++    const res = await fetch(`/api/invoices?projectId=${project.id}`);
++    setInvoices(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, [project.id]);
++
++  async function submit(e: React.FormEvent) {
++    e.preventDefault();
++    if (amount.trim() === '') {
++      return;
++    }
++    await fetch('/api/invoices', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ projectId: project.id, amount: Number(amount) }),
++    });
++    setAmount('');
++    await load();
++  }
++
++  const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
++
++  return (
++    <section data-testid="project-detail">
++      <h2 data-testid="project-detail-name">{project.name}</h2>
++
++      <form data-testid="invoice-form" onSubmit={submit}>
++        <input
++          data-testid="invoice-form-amount"
++          placeholder="Amount"
++          value={amount}
++          onChange={(e) => setAmount(e.target.value)}
++        />
++        <button data-testid="invoice-form-submit" type="submit">
++          Add invoice
++        </button>
++      </form>
++
++      <table data-testid="project-invoices-table">
++        <tbody>
++          {invoices.map((inv) => (
++            <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
++              <td data-testid="invoice-amount">{money(inv.amount)}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
++      <p data-testid="project-invoices-total">{money(total)}</p>
++    </section>
++  );
++}
+ 
+ function ProjectsPage() {
+   const [projects, setProjects] = useState<Project[]>([]);
+   const [clients, setClients] = useState<Client[]>([]);
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
++  const [openId, setOpenId] = useState<number | null>(null);
+ 
+   async function loadProjects() {
+     const res = await fetch('/api/projects');
+@@ -43,6 +113,8 @@ function ProjectsPage() {
+     await loadProjects();
+   }
+ 
++  const open = projects.find((p) => p.id === openId) ?? null;
++
+   return (
+     <section data-testid="projects">
+       <form data-testid="project-form" onSubmit={submit}>
+@@ -78,11 +150,18 @@ function ProjectsPage() {
+               <tr key={p.id} data-testid={`project-row-${p.id}`}>
+                 <td data-testid="project-name">{p.name}</td>
+                 <td data-testid="project-client">{p.clientName}</td>
++                <td>
++                  <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
++                    Open
++                  </button>
++                </td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       )}
++
++      {open && <ProjectDetail key={open.id} project={open} />}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 55f6c95..32c22c1 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,6 +35,7 @@ public class TestSupportController {
+         // projects references clients; drop referential integrity so both tables can be truncated
+         // (and their identity counters restarted) regardless of FK order.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+@@ -57,5 +58,13 @@ public class TestSupportController {
+                     ((Number) p.get("id")).longValue(), p.get("name"),
+                     ((Number) p.get("clientId")).longValue());
+         }
++        List<Map<String, Object>> invoices =
++                (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
++        for (Map<String, Object> in : invoices) {
++            jdbc.update("INSERT INTO invoices (id, project_id, amount) VALUES (?, ?, ?)",
++                    ((Number) in.get("id")).longValue(),
++                    ((Number) in.get("projectId")).longValue(),
++                    ((Number) in.get("amount")).doubleValue());
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+new file mode 100644
+index 0000000..89878b3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/invoices — add an invoice with an amount to a project. */
++public class CreateInvoice {
++
++    public void service(@RequestBody NewInvoice body, InvoiceRepository repository,
++            ObjectResponse<Invoice> response) {
++        if (body.getProjectId() == null) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires a project");
++        }
++        BigDecimal amount = body.getAmount();
++        if (amount == null || amount.signum() < 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires an amount");
++        }
++        Invoice invoice = new Invoice();
++        invoice.setProjectId(body.getProjectId());
++        invoice.setAmount(amount);
++        response.send(repository.save(invoice));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Invoice.java b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+new file mode 100644
+index 0000000..3a17848
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/Invoice.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** An invoice raised against a project: the project it belongs to + a money amount. */
++@Entity
++@Table(name = "invoices")
++public class Invoice {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "project_id")
++    private Long projectId;
++
++    private BigDecimal amount;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public void setProjectId(Long projectId) {
++        this.projectId = projectId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+new file mode 100644
+index 0000000..fbab91f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.invoice;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Invoice}. */
++public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java
+new file mode 100644
+index 0000000..eef9d2e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** An invoice as the project detail surfaces it: id, its project, and the amount. */
++public class InvoiceView {
++
++    private final Long id;
++    private final Long projectId;
++    private final BigDecimal amount;
++
++    public InvoiceView(Long id, Long projectId, BigDecimal amount) {
++        this.id = id;
++        this.projectId = projectId;
++        this.amount = amount;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+new file mode 100644
+index 0000000..29e5869
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/invoices?projectId=<id> — every invoice for one project, oldest first. */
++public class ListInvoices {
++
++    public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
++            ObjectResponse<List<InvoiceView>> response) {
++        List<InvoiceView> invoices = jdbc.query(
++                "SELECT id, project_id, amount FROM invoices WHERE project_id = ? ORDER BY id",
++                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
++                        rs.getBigDecimal("amount")),
++                Long.valueOf(projectId));
++        response.send(invoices);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/NewInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/NewInvoice.java
+new file mode 100644
+index 0000000..e597b6e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/NewInvoice.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** Request body for creating an invoice: the project it is for and its amount. */
++public class NewInvoice {
++
++    private Long projectId;
++
++    private BigDecimal amount;
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public void setProjectId(Long projectId) {
++        this.projectId = projectId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++}
+diff --git a/src/main/resources/db/migration/V4__invoices.sql b/src/main/resources/db/migration/V4__invoices.sql
+new file mode 100644
+index 0000000..70ccc93
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__invoices.sql
+@@ -0,0 +1,8 @@
++-- Invoices feature: an invoice belongs to a project and records a money amount.
++-- BY DEFAULT identity so the test seed can insert explicit ids (fixture ids), while normal
++-- creates still auto-generate. project_id is a required foreign key onto projects.
++CREATE TABLE invoices (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    project_id BIGINT NOT NULL REFERENCES projects(id),
++    amount     DECIMAL(12, 2) NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/invoices.GET.yml b/src/main/resources/officefloor/rest/api/invoices.GET.yml
+new file mode 100644
+index 0000000..7fb94b0
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.ListInvoices
+diff --git a/src/main/resources/officefloor/rest/api/invoices.POST.yml b/src/main/resources/officefloor/rest/api/invoices.POST.yml
+new file mode 100644
+index 0000000..f4d5223
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.CreateInvoice
