@@ -22,26 +22,33 @@ public class InvoiceRepository {
                     rs.getBigDecimal("amount"), rs.getString("status"),
                     rs.getString("issued_date"), rs.getString("due_date"));
 
+    // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
+    // totals zero. Derived here so the amount always reflects the current line items.
+    private static final String AMOUNT_SUM =
+            "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
+                    + " WHERE li.invoice_id = i.id), 0)";
+
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
-                        + " WHERE project_id = ? ORDER BY id",
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
+                        + " i.due_date FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
 
     /** A project's invoices ordered by due date, earliest first (nulls last, id as tiebreak). */
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
-                        + " WHERE project_id = ? ORDER BY due_date ASC NULLS LAST, id",
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
+                        + " i.due_date FROM invoices i WHERE i.project_id = ?"
+                        + " ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
     }
 
     /** Every invoice across all projects, joined to its project name, ordered by id. */
     public List<InvoiceListing> findAllWithProject() {
         return jdbc.query(
-                "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status"
-                        + " FROM invoices i JOIN projects p ON p.id = i.project_id"
+                "SELECT i.id, i.project_id, p.name AS project_name, " + AMOUNT_SUM + " AS amount,"
+                        + " i.status FROM invoices i JOIN projects p ON p.id = i.project_id"
                         + " ORDER BY i.id",
                 (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
                         rs.getString("project_name"), rs.getBigDecimal("amount"),
@@ -50,8 +57,8 @@ public class InvoiceRepository {
 
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
-                        + " WHERE id = ?", MAPPER, id);
+                "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, i.status, i.issued_date,"
+                        + " i.due_date FROM invoices i WHERE i.id = ?", MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
     }
 

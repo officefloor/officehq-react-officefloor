@@ -37,6 +37,7 @@ public class TestSupportController {
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
             jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+            jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
@@ -88,15 +89,28 @@ public class TestSupportController {
             Object status = inv.get("status");
             Object issuedDate = inv.get("issuedDate");
             Object dueDate = inv.get("dueDate");
+            // Amount is derived from the invoice's line items (V13), so it is not seeded directly;
+            // the column defaults to 0.
             jdbc.update(
-                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date)"
-                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO invoices (id, project_id, status, issued_date, due_date)"
+                            + " VALUES (?, ?, ?, ?, ?)",
                     ((Number) inv.get("id")).longValue(),
                     ((Number) inv.get("projectId")).longValue(),
-                    new java.math.BigDecimal(inv.get("amount").toString()),
-                    status == null ? "UNPAID" : status.toString(),
+                    status == null ? "DRAFT" : status.toString(),
                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
                     dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
+            List<Map<String, Object>> lineItems =
+                    (List<Map<String, Object>>) inv.getOrDefault("lineItems", List.of());
+            for (Map<String, Object> li : lineItems) {
+                jdbc.update(
+                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
+                                + " VALUES (?, ?, ?, ?, ?)",
+                        ((Number) li.get("id")).longValue(),
+                        ((Number) inv.get("id")).longValue(),
+                        li.get("description"),
+                        ((Number) li.get("qty")).intValue(),
+                        new java.math.BigDecimal(li.get("unitPrice").toString()));
+            }
         }
     }
 }

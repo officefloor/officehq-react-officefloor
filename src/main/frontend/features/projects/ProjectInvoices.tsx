@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { InvoiceDetail } from './InvoiceDetail';
 
 // A project's invoices, shown when a project is opened from the projects list. Owns its own state
 // (CLAUDE.md — features own their state). Lists the project's invoices, a derived total, and a form
@@ -21,6 +22,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
   const [sort, setSort] = useState('');
+  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
 
   async function load(sortBy = sort) {
     const query = sortBy ? `&sort=${encodeURIComponent(sortBy)}` : '';
@@ -105,6 +107,10 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         ) : null}
       </form>
 
+      {openInvoiceId !== null ? (
+        <InvoiceDetail invoiceId={openInvoiceId} />
+      ) : (
+        <>
       <div data-testid="invoice-controls">
         <button type="button" data-testid="invoice-sort-due" onClick={sortByDue}>
           Sort by due date
@@ -129,6 +135,13 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td>
+                <button
+                  type="button"
+                  data-testid={`invoice-open-${inv.id}`}
+                  onClick={() => setOpenInvoiceId(inv.id)}
+                >
+                  Open
+                </button>
                 {inv.status === 'DRAFT' ? (
                   <button
                     type="button"
@@ -157,6 +170,8 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
           </tr>
         </tfoot>
       </table>
+        </>
+      )}
     </section>
   );
 }
