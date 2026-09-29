@@ -15,8 +15,8 @@ public class CreateInvoice {
             throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires a project");
         }
         BigDecimal amount = body.getAmount();
-        if (amount == null || amount.signum() < 0) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires an amount");
+        if (amount == null || amount.signum() <= 0) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice amount must be more than zero");
         }
         Invoice invoice = new Invoice();
         invoice.setProjectId(body.getProjectId());
