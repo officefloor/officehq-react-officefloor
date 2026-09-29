@@ -30,9 +30,14 @@ function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
 
+// One charge line while it is being edited on screen: the fields are held as raw strings so the
+// inputs stay controlled and the total can recompute live as they change.
+type EditItem = { id: number; description: string; qty: string; unitPrice: string };
+
 // An opened invoice's detail: the things it is charging for, listed as line items (description, how
-// many, price each), the total worked out for you, and a form to add another line. Owns its own
-// line-item state, scoped to the one invoice it is showing.
+// many, price each), the total worked out for you, and a form to add another line. Each line can be
+// changed in place (save) or removed, and the total re-derives from whatever lines remain. Owns its
+// own line-item state, scoped to the one invoice it is showing.
 function InvoiceDetail({
   invoiceId,
   onChange,
@@ -42,19 +47,59 @@ function InvoiceDetail({
   onChange: () => void;
   onClose: () => void;
 }) {
-  const [items, setItems] = useState<LineItem[]>([]);
+  const [items, setItems] = useState<EditItem[]>([]);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
 
   async function load() {
     const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
-    setItems(await res.json());
+    const rows: LineItem[] = await res.json();
+    setItems(
+      rows.map((li) => ({
+        id: li.id,
+        description: li.description,
+        qty: String(li.qty),
+        unitPrice: String(li.unitPrice),
+      })),
+    );
   }
 
   useEffect(() => {
     void load();
   }, [invoiceId]);
+
+  function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
+    setItems((prev) => prev.map((li) => (li.id === id ? { ...li, [field]: value } : li)));
+  }
+
+  function amountOf(li: EditItem): number {
+    const line = Number(li.qty) * Number(li.unitPrice);
+    return Number.isFinite(line) ? line : 0;
+  }
+
+  async function save(li: EditItem) {
+    if (!li.description.trim() || li.qty.trim() === '' || li.unitPrice.trim() === '') {
+      return;
+    }
+    await fetch(`/api/invoices/${invoiceId}/line-items/${li.id}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: li.description,
+        qty: Number(li.qty),
+        unitPrice: Number(li.unitPrice),
+      }),
+    });
+    await load();
+    onChange();
+  }
+
+  async function remove(id: number) {
+    await fetch(`/api/invoices/${invoiceId}/line-items/${id}/remove`, { method: 'POST' });
+    await load();
+    onChange();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,7 +122,7 @@ function InvoiceDetail({
     onChange();
   }
 
-  const total = items.reduce((sum, li) => sum + Number(li.qty) * Number(li.unitPrice), 0);
+  const total = items.reduce((sum, li) => sum + amountOf(li), 0);
 
   return (
     <section data-testid="invoice-detail">
@@ -89,10 +134,44 @@ function InvoiceDetail({
         <tbody>
           {items.map((li) => (
             <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
-              <td data-testid="lineitem-description">{li.description}</td>
-              <td data-testid="lineitem-qty">{li.qty}</td>
-              <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
-              <td data-testid="lineitem-amount">{money(Number(li.qty) * Number(li.unitPrice))}</td>
+              <td>
+                <input
+                  data-testid="lineitem-description"
+                  value={li.description}
+                  onChange={(e) => editField(li.id, 'description', e.target.value)}
+                />
+              </td>
+              <td>
+                <input
+                  data-testid="lineitem-qty"
+                  value={li.qty}
+                  onChange={(e) => editField(li.id, 'qty', e.target.value)}
+                />
+              </td>
+              <td>
+                <input
+                  data-testid="lineitem-unitprice"
+                  value={li.unitPrice}
+                  onChange={(e) => editField(li.id, 'unitPrice', e.target.value)}
+                />
+              </td>
+              <td data-testid="lineitem-amount">{money(amountOf(li))}</td>
+              <td>
+                <button
+                  data-testid={`lineitem-save-${li.id}`}
+                  type="button"
+                  onClick={() => save(li)}
+                >
+                  Save
+                </button>
+                <button
+                  data-testid={`lineitem-remove-${li.id}`}
+                  type="button"
+                  onClick={() => remove(li.id)}
+                >
+                  Remove
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
