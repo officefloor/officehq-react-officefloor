@@ -34,6 +34,8 @@ type LineItem = {
   unitPrice: number;
 };
 
+type Payment = { id: number; invoiceId: number; amount: number; date: string };
+
 function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
@@ -59,6 +61,9 @@ function InvoiceDetail({
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
 
   async function load() {
     const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
@@ -73,8 +78,33 @@ function InvoiceDetail({
     );
   }
 
+  async function loadPayments() {
+    const res = await fetch(`/api/invoices/${invoiceId}/payments`);
+    setPayments(await res.json());
+  }
+
+  async function submitPayment(e: React.FormEvent) {
+    e.preventDefault();
+    const value = Number(paymentAmount);
+    if (paymentAmount.trim() === '' || !Number.isFinite(value) || value <= 0) {
+      return;
+    }
+    if (paymentDate.trim() === '') {
+      return;
+    }
+    await fetch(`/api/invoices/${invoiceId}/payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: value, date: paymentDate }),
+    });
+    setPaymentAmount('');
+    setPaymentDate('');
+    await loadPayments();
+  }
+
   useEffect(() => {
     void load();
+    void loadPayments();
   }, [invoiceId]);
 
   function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
@@ -208,6 +238,35 @@ function InvoiceDetail({
         />
         <button data-testid="lineitem-form-submit" type="submit">
           Add line item
+        </button>
+      </form>
+
+      <table data-testid="invoice-payments-table">
+        <tbody>
+          {payments.map((p) => (
+            <tr key={p.id} data-testid={`payment-row-${p.id}`}>
+              <td data-testid="payment-amount">{money(p.amount)}</td>
+              <td data-testid="payment-date">{p.date}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <form data-testid="payment-form" onSubmit={submitPayment}>
+        <input
+          data-testid="payment-form-amount"
+          placeholder="Amount paid"
+          value={paymentAmount}
+          onChange={(e) => setPaymentAmount(e.target.value)}
+        />
+        <input
+          data-testid="payment-form-date"
+          type="date"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+        />
+        <button data-testid="payment-form-submit" type="submit">
+          Record payment
         </button>
       </form>
     </section>

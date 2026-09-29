@@ -40,8 +40,8 @@ public class TestSupportController {
         // Referential integrity is dropped for the duration so the tables can be truncated (and
         // their identity counters restarted) regardless of FK order (e.g. projects -> clients).
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
-        for (String table : List.of("notes", "project_tags", "tags", "tasks", "line_items",
-                "invoices", "contacts", "projects", "clients")) {
+        for (String table : List.of("notes", "project_tags", "tags", "tasks", "payments",
+                "line_items", "invoices", "contacts", "projects", "clients")) {
             jdbc.execute("TRUNCATE TABLE " + table + " RESTART IDENTITY");
         }
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
@@ -54,6 +54,7 @@ public class TestSupportController {
         seedProjects(fixture);
         seedContacts(fixture);
         seedInvoices(fixture);
+        seedPayments(fixture);
         seedTasks(fixture);
         seedTags(fixture);
         seedNotes(fixture);
@@ -110,6 +111,22 @@ public class TestSupportController {
                     id(li, "id"), invoiceId, li.get("description"),
                     ((Number) li.get("qty")).intValue(),
                     ((Number) li.get("unitPrice")).doubleValue());
+        }
+    }
+
+    private void seedPayments(Map<String, Object> fixture) {
+        List<Map<String, Object>> payments = rows(fixture, "payments");
+        for (Map<String, Object> p : payments) {
+            jdbc.update(
+                    "INSERT INTO payments (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    id(p, "id"), id(p, "invoiceId"), asDouble(p.get("amount")),
+                    asText(p.get("date")));
+        }
+        if (!payments.isEmpty()) {
+            // Seeding explicit ids does not advance H2's identity counter, so bump it past the
+            // seeded rows or the app's next generated payment id would collide with a fixture id.
+            Long next = jdbc.queryForObject("SELECT MAX(id) + 1 FROM payments", Long.class);
+            jdbc.execute("ALTER TABLE payments ALTER COLUMN id RESTART WITH " + next);
         }
     }
 
