@@ -1,0 +1,118 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 06c788d..a82d482 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -331,6 +331,8 @@ function InvoiceDetail({
+           Record payment
+         </button>
+       </form>
++
++      <NotesPanel targetType="invoice" targetId={invoiceId} wrapperTestId="invoice-notes" />
+     </section>
+   );
+ }
+@@ -382,15 +384,18 @@ function InvoiceActions({
+ function ProjectInvoices({
+   projectId,
+   onInvoicesChanged,
++  openInvoiceId,
++  setOpenInvoiceId,
+ }: {
+   projectId: number;
+   onInvoicesChanged: () => void;
++  openInvoiceId: number | null;
++  setOpenInvoiceId: (id: number | null) => void;
+ }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
+   const [sortByDue, setSortByDue] = useState(false);
+-  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${projectId}`);
+@@ -663,11 +668,21 @@ function TasksPanel({ projectId }: { projectId: number }) {
+   );
+ }
+ 
+-// A project's notes: a running list of what has been jotted against it and a form to add another.
+-// Owns its own note state, scoped to the one project.
+-function NotesPanel({ projectId }: { projectId: number }) {
++// The notes jotted against one target (a job or an invoice): a running list, newest first, and a
++// form to add another. Polymorphic by targetType + targetId so the same panel serves any entity;
++// the wrapper's data-testid names which surface it is (e.g. project-notes, invoice-notes). Owns its
++// own note state, scoped to the one target it is showing.
++function NotesPanel({
++  targetType,
++  targetId,
++  wrapperTestId,
++}: {
++  targetType: string;
++  targetId: number;
++  wrapperTestId: string;
++}) {
+   const [notes, reload] = useJsonResource<Note[]>(
+-    `/api/notes?targetType=project&targetId=${projectId}`,
++    `/api/notes?targetType=${targetType}&targetId=${targetId}`,
+     [],
+   );
+   const [noteText, setNoteText] = useState('');
+@@ -680,14 +695,14 @@ function NotesPanel({ projectId }: { projectId: number }) {
+     await fetch('/api/notes', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ targetType: 'project', targetId: projectId, text: noteText }),
++      body: JSON.stringify({ targetType, targetId, text: noteText }),
+     });
+     setNoteText('');
+     await reload();
+   }
+ 
+   return (
+-    <section data-testid="project-notes">
++    <section data-testid={wrapperTestId}>
+       <form data-testid="note-form" onSubmit={submitNote}>
+         <input
+           data-testid="note-form-text"
+@@ -700,7 +715,7 @@ function NotesPanel({ projectId }: { projectId: number }) {
+         </button>
+       </form>
+ 
+-      <ul data-testid="project-notes-list">
++      <ul data-testid={`${wrapperTestId}-list`}>
+         {notes.map((n) => (
+           <li key={n.id} data-testid={`note-row-${n.id}`}>
+             <span data-testid="note-text">{n.text}</span>
+@@ -717,17 +732,28 @@ function NotesPanel({ projectId }: { projectId: number }) {
+ // item bumps `invoicesVersion`, which re-reads the budget.
+ function ProjectDetail({ project }: { project: Project }) {
+   const [invoicesVersion, setInvoicesVersion] = useState(0);
++  // Which invoice (if any) is drilled into. Held here rather than inside ProjectInvoices so the
++  // project-level panels can step aside while an invoice's own detail — including its notes — is on
++  // screen; that also keeps the shared note-form anchors unambiguous (only the open target's form is
++  // present at a time).
++  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+ 
+   return (
+     <section data-testid="project-detail">
+       <h2 data-testid="project-detail-name">{project.name}</h2>
+-      <BudgetPanel projectId={project.id} reloadKey={invoicesVersion} />
+-      <TagsPanel projectId={project.id} />
+-      <TasksPanel projectId={project.id} />
+-      <NotesPanel projectId={project.id} />
++      {openInvoiceId === null && (
++        <>
++          <BudgetPanel projectId={project.id} reloadKey={invoicesVersion} />
++          <TagsPanel projectId={project.id} />
++          <TasksPanel projectId={project.id} />
++          <NotesPanel targetType="project" targetId={project.id} wrapperTestId="project-notes" />
++        </>
++      )}
+       <ProjectInvoices
+         projectId={project.id}
+         onInvoicesChanged={() => setInvoicesVersion((v) => v + 1)}
++        openInvoiceId={openInvoiceId}
++        setOpenInvoiceId={setOpenInvoiceId}
+       />
+     </section>
+   );
