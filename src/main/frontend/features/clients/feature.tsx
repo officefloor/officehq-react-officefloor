@@ -7,6 +7,82 @@ import type { Feature } from '../../router/routes';
 // /api/clients endpoints. data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
+type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+
+// A client's contacts: the people the user keeps for them (name, email, role), with a form to add
+// another. Owns its own contact state, scoped to the one client it is showing; talks to that
+// client's own /api/clients/<id>/contacts endpoints.
+function ClientContacts({ client }: { client: Client }) {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('');
+
+  async function load() {
+    const res = await fetch(`/api/clients/${client.id}/contacts`);
+    setContacts(await res.json());
+  }
+
+  useEffect(() => {
+    void load();
+  }, [client.id]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !role.trim()) {
+      return;
+    }
+    await fetch(`/api/clients/${client.id}/contacts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, role }),
+    });
+    setName('');
+    setEmail('');
+    setRole('');
+    await load();
+  }
+
+  return (
+    <section data-testid="client-contacts">
+      <form data-testid="contact-form" onSubmit={submit}>
+        <input
+          data-testid="contact-form-name"
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          data-testid="contact-form-email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          data-testid="contact-form-role"
+          placeholder="Role"
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+        />
+        <button data-testid="contact-form-submit" type="submit">
+          Add contact
+        </button>
+      </form>
+
+      <table data-testid="client-contacts-table">
+        <tbody>
+          {contacts.map((ct) => (
+            <tr key={ct.id} data-testid={`contact-row-${ct.id}`}>
+              <td data-testid="contact-name">{ct.name}</td>
+              <td data-testid="contact-email">{ct.email}</td>
+              <td data-testid="contact-role">{ct.role}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
 // A client's detail: the projects being done for them. Owns its own project state, scoped to the one
 // client it is showing. Reuses the project-row-<id>/project-name anchors in a client-scoped table.
@@ -131,6 +207,7 @@ function ClientsPage() {
         </table>
       )}
 
+      {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
       {open && <ClientProjects key={open.id} client={open} />}
     </section>
   );
