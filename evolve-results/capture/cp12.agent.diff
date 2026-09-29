@@ -1,0 +1,37 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 053e16f..29533ad 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -27,6 +27,7 @@ function ProjectDetail({ project }: { project: Project }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
++  const [sortByDue, setSortByDue] = useState(false);
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${project.id}`);
+@@ -60,6 +61,9 @@ function ProjectDetail({ project }: { project: Project }) {
+   }
+ 
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
++  const shownInvoices = sortByDue
++    ? [...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
++    : invoices;
+ 
+   return (
+     <section data-testid="project-detail">
+@@ -82,9 +86,13 @@ function ProjectDetail({ project }: { project: Project }) {
+         )}
+       </form>
+ 
++      <button data-testid="invoice-sort-due" type="button" onClick={() => setSortByDue(true)}>
++        Sort by due date
++      </button>
++
+       <table data-testid="project-invoices-table">
+         <tbody>
+-          {invoices.map((inv) => (
++          {shownInvoices.map((inv) => (
+             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+               <td data-testid="invoice-amount">{money(inv.amount)}</td>
+               <td data-testid="invoice-issued">{inv.issuedDate}</td>
