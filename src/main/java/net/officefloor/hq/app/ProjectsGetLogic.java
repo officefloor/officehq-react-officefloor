@@ -19,7 +19,7 @@ public class ProjectsGetLogic {
             ProjectRepository repository, ObjectResponse<List<Project>> response) {
         boolean withArchived = includeArchived != null && "true".equalsIgnoreCase(includeArchived.trim());
         if (tagId != null && !tagId.isBlank()) {
-            response.send(repository.findByTag(Long.parseLong(tagId.trim()), withArchived));
+            response.send(repository.findByTag(Long.parseLong(tagId.trim()), withArchived, status));
         } else if (clientId == null || clientId.isBlank()) {
             response.send(repository.findAll(withArchived, status));
         } else {

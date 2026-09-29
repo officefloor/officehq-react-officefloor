@@ -59,11 +59,29 @@ public class ProjectRepository {
      * projects are hidden unless {@code includeArchived} is true, matching the plain list.
      */
     public List<Project> findByTag(long tagId, boolean includeArchived) {
-        String archived = includeArchived ? "" : " AND p.archived = FALSE";
-        return jdbc.query(
-                SELECT + " JOIN project_tags pt ON pt.project_id = p.id"
-                        + " WHERE pt.tag_id = ?" + archived + " ORDER BY p.id",
-                MAPPER, tagId);
+        return findByTag(tagId, includeArchived, null);
+    }
+
+    /**
+     * Projects carrying a given tag, optionally narrowed to a single lifecycle {@code status}
+     * (ACTIVE, ON_HOLD or FINISHED) — this lets the label filter and the status filter apply at the
+     * same time (e.g. "active projects with the 'urgent' label"). A null/blank status lists every
+     * status. Archived projects are hidden unless {@code includeArchived} is true.
+     */
+    public List<Project> findByTag(long tagId, boolean includeArchived, String status) {
+        StringBuilder sql = new StringBuilder(SELECT
+                + " JOIN project_tags pt ON pt.project_id = p.id WHERE pt.tag_id = ?");
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(tagId);
+        if (!includeArchived) {
+            sql.append(" AND p.archived = FALSE");
+        }
+        if (status != null && !status.isBlank()) {
+            sql.append(" AND p.status = ?");
+            args.add(status.trim());
+        }
+        sql.append(" ORDER BY p.id");
+        return jdbc.query(sql.toString(), MAPPER, args.toArray());
     }
 
     /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
