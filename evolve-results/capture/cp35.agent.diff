@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index ccd7247..afb5b9e 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -30,8 +30,13 @@ export function ProjectsPage() {
+   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
++  const [statusFilter, setStatusFilter] = useState('');
+ 
+-  async function loadProjects(includeArchived = showArchived, tagId = tagFilter) {
++  async function loadProjects(
++    includeArchived = showArchived,
++    tagId = tagFilter,
++    status = statusFilter,
++  ) {
+     const params = new URLSearchParams();
+     if (includeArchived) {
+       params.set('includeArchived', 'true');
+@@ -39,6 +44,9 @@ export function ProjectsPage() {
+     if (tagId) {
+       params.set('tagId', tagId);
+     }
++    if (status) {
++      params.set('status', status);
++    }
+     const qs = params.toString();
+     const res = await fetch(`/api/projects${qs ? `?${qs}` : ''}`);
+     if (res.ok) {
+@@ -73,6 +81,11 @@ export function ProjectsPage() {
+     void loadProjects(showArchived, tagId);
+   }
+ 
++  function onFilterByStatus(status: string) {
++    setStatusFilter(status);
++    void loadProjects(showArchived, tagFilter, status);
++  }
++
+   async function onDelete(id: number) {
+     const res = await fetch('/api/projects/delete', {
+       method: 'POST',
+@@ -171,6 +184,19 @@ export function ProjectsPage() {
+         ))}
+       </select>
+ 
++      <select
++        data-testid="project-status-filter"
++        value={statusFilter}
++        onChange={(e) => onFilterByStatus(e.target.value)}
++      >
++        <option value="">All statuses</option>
++        {STATUSES.map((s) => (
++          <option key={s} value={s}>
++            {s}
++          </option>
++        ))}
++      </select>
++
+       {projects.length === 0 ? (
+         <p data-testid="projects-empty">No projects yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 6af21b3..8e2bf67 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -30,8 +30,28 @@ public class ProjectRepository {
+      * what keeps a tucked-away project off the main list until the toggle reveals it.
+      */
+     public List<Project> findAll(boolean includeArchived) {
+-        String where = includeArchived ? "" : " WHERE p.archived = FALSE";
+-        return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
++        return findAll(includeArchived, null);
++    }
++
++    /**
++     * List projects, optionally narrowed to a single lifecycle {@code status} (ACTIVE, ON_HOLD or
++     * FINISHED) — this backs the "filter projects by status" dropdown. A null/blank status lists
++     * every status. Archived projects are hidden unless {@code includeArchived} is true.
++     */
++    public List<Project> findAll(boolean includeArchived, String status) {
++        StringBuilder sql = new StringBuilder(SELECT);
++        List<Object> args = new java.util.ArrayList<>();
++        String joiner = " WHERE";
++        if (!includeArchived) {
++            sql.append(joiner).append(" p.archived = FALSE");
++            joiner = " AND";
++        }
++        if (status != null && !status.isBlank()) {
++            sql.append(joiner).append(" p.status = ?");
++            args.add(status.trim());
++        }
++        sql.append(" ORDER BY p.id");
++        return jdbc.query(sql.toString(), MAPPER, args.toArray());
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+index 12f2e6d..3717cd3 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+@@ -15,12 +15,13 @@ public class ProjectsGetLogic {
+     public void service(@HttpQueryParameter("clientId") String clientId,
+             @HttpQueryParameter("tagId") String tagId,
+             @HttpQueryParameter("includeArchived") String includeArchived,
++            @HttpQueryParameter("status") String status,
+             ProjectRepository repository, ObjectResponse<List<Project>> response) {
+         boolean withArchived = includeArchived != null && "true".equalsIgnoreCase(includeArchived.trim());
+         if (tagId != null && !tagId.isBlank()) {
+             response.send(repository.findByTag(Long.parseLong(tagId.trim()), withArchived));
+         } else if (clientId == null || clientId.isBlank()) {
+-            response.send(repository.findAll(withArchived));
++            response.send(repository.findAll(withArchived, status));
+         } else {
+             response.send(repository.findByClient(Long.parseLong(clientId.trim())));
+         }
