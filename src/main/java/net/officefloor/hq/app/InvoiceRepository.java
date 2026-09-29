@@ -37,11 +37,22 @@ public class InvoiceRepository {
 
     private static final String DUE = "(" + AMOUNT_SUM + " - " + PAID_SUM + ")";
 
+    // An invoice's status is worked out from its recorded payments, not flipped by hand: it stays
+    // DRAFT until issued, reads SENT once issued but unpaid, PARTIAL once some (but not all) of the
+    // amount is paid, and PAID once the payments cover the amount. Derived here so the status always
+    // reflects the payments on file.
+    private static final String DERIVED_STATUS =
+            "CASE WHEN i.status = 'DRAFT' THEN 'DRAFT'"
+                    + " WHEN " + AMOUNT_SUM + " > 0 AND " + PAID_SUM + " >= " + AMOUNT_SUM
+                    + " THEN 'PAID'"
+                    + " WHEN " + PAID_SUM + " > 0 THEN 'PARTIAL'"
+                    + " ELSE 'SENT' END";
+
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " i.status, i.issued_date, i.due_date FROM invoices i"
-                        + " WHERE i.project_id = ? ORDER BY i.id",
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
 
@@ -49,8 +60,9 @@ public class InvoiceRepository {
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " i.status, i.issued_date, i.due_date FROM invoices i"
-                        + " WHERE i.project_id = ? ORDER BY i.due_date ASC NULLS LAST, i.id",
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " FROM invoices i WHERE i.project_id = ?"
+                        + " ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
     }
 
@@ -58,8 +70,8 @@ public class InvoiceRepository {
     public List<InvoiceListing> findAllWithProject() {
         return jdbc.query(
                 "SELECT i.id, i.project_id, p.name AS project_name, " + AMOUNT_SUM + " AS amount,"
-                        + " i.status FROM invoices i JOIN projects p ON p.id = i.project_id"
-                        + " ORDER BY i.id",
+                        + " " + DERIVED_STATUS + " AS status FROM invoices i"
+                        + " JOIN projects p ON p.id = i.project_id ORDER BY i.id",
                 (rs, i) -> new InvoiceListing(rs.getLong("id"), rs.getLong("project_id"),
                         rs.getString("project_name"), rs.getBigDecimal("amount"),
                         rs.getString("status")));
@@ -68,7 +80,8 @@ public class InvoiceRepository {
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " i.status, i.issued_date, i.due_date FROM invoices i WHERE i.id = ?",
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date"
+                        + " FROM invoices i WHERE i.id = ?",
                 MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
     }

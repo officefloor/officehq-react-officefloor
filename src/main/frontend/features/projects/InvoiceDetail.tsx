@@ -36,6 +36,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
+  const [status, setStatus] = useState('');
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -51,9 +52,20 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
     }
   }
 
+  // The invoice's status is worked out server-side from the payments recorded against it, so we
+  // re-read it whenever the payments change rather than tracking it by hand.
+  async function loadStatus() {
+    const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
+    if (res.ok) {
+      const inv: { status: string } = await res.json();
+      setStatus(inv.status);
+    }
+  }
+
   useEffect(() => {
     void load();
     void loadPayments();
+    void loadStatus();
   }, [invoiceId]);
 
   async function onRecordPayment(e: React.FormEvent) {
@@ -72,6 +84,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       setPayments((prev) => [...prev, created]);
       setPaymentAmount('');
       setPaymentDate('');
+      void loadStatus();
     }
   }
 
@@ -141,6 +154,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
 
   return (
     <section data-testid="invoice-detail">
+      <p>
+        Status: <span data-testid="invoice-status">{status}</span>
+      </p>
       <h3>Line items</h3>
       <form data-testid="lineitem-form" onSubmit={onSubmit}>
         <input
