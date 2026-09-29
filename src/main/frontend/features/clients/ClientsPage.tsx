@@ -3,10 +3,15 @@ import React, { useEffect, useState } from 'react';
 // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
 type Client = { id: number; name: string; email: string };
 
+// Every client needs a proper email address. Kept in sync with the server-side check in
+// ClientsPostLogic and the DB CHECK constraint (V2__clients_email_check.sql).
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -21,6 +26,11 @@ export function ClientsPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    setEmailError('');
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -31,6 +41,8 @@ export function ClientsPage() {
       setClients((prev) => [...prev, created]);
       setName('');
       setEmail('');
+    } else {
+      setEmailError('Enter a valid email address.');
     }
   }
 
@@ -50,6 +62,11 @@ export function ClientsPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <span data-testid="client-form-email-error" role="alert">
+            {emailError}
+          </span>
+        )}
         <button type="submit" data-testid="client-form-submit">
           Add client
         </button>
