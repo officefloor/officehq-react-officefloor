@@ -1,0 +1,166 @@
+diff --git a/src/main/frontend/features/dashboard/feature.tsx b/src/main/frontend/features/dashboard/feature.tsx
+index 968b018..d279224 100644
+--- a/src/main/frontend/features/dashboard/feature.tsx
++++ b/src/main/frontend/features/dashboard/feature.tsx
+@@ -12,6 +12,14 @@ type Summary = {
+   overdueCount: number;
+ };
+ 
++// The home screen's top clients: the handful that owe the most, each with the amount owed to rank
++// and display by. Read from its own /api/dashboard/top-clients endpoint.
++type TopClient = {
++  id: number;
++  name: string;
++  outstanding: number;
++};
++
+ function money(amount: number): string {
+   return `$${Number(amount).toLocaleString('en-US', {
+     minimumFractionDigits: 2,
+@@ -21,6 +29,7 @@ function money(amount: number): string {
+ 
+ function DashboardPage() {
+   const [summary, setSummary] = useState<Summary | null>(null);
++  const [topClients, setTopClients] = useState<TopClient[]>([]);
+ 
+   useEffect(() => {
+     async function load() {
+@@ -30,18 +39,24 @@ function DashboardPage() {
+     void load();
+   }, []);
+ 
+-  if (!summary) {
+-    return <section data-testid="dashboard" />;
+-  }
++  useEffect(() => {
++    async function load() {
++      const res = await fetch('/api/dashboard/top-clients');
++      setTopClients(await res.json());
++    }
++    void load();
++  }, []);
+ 
+   // One tile per headline figure. Listing them as data keeps the markup to a single repeated block
+   // and puts every tile's label and value in one place to read (and relabel) at a glance.
+-  const tiles = [
+-    { testid: 'dashboard-clients', label: 'Clients', valueTestid: 'dashboard-clients-count', value: summary.clientsCount },
+-    { testid: 'dashboard-projects', label: 'Jobs', valueTestid: 'dashboard-projects-count', value: summary.projectsCount },
+-    { testid: 'dashboard-outstanding', label: 'Outstanding', valueTestid: 'dashboard-outstanding-total', value: money(summary.outstandingTotal) },
+-    { testid: 'dashboard-overdue', label: 'Overdue invoices', valueTestid: 'dashboard-overdue-count', value: summary.overdueCount },
+-  ];
++  const tiles = summary
++    ? [
++        { testid: 'dashboard-clients', label: 'Clients', valueTestid: 'dashboard-clients-count', value: summary.clientsCount },
++        { testid: 'dashboard-projects', label: 'Jobs', valueTestid: 'dashboard-projects-count', value: summary.projectsCount },
++        { testid: 'dashboard-outstanding', label: 'Outstanding', valueTestid: 'dashboard-outstanding-total', value: money(summary.outstandingTotal) },
++        { testid: 'dashboard-overdue', label: 'Overdue invoices', valueTestid: 'dashboard-overdue-count', value: summary.overdueCount },
++      ]
++    : [];
+ 
+   return (
+     <section data-testid="dashboard">
+@@ -51,6 +66,14 @@ function DashboardPage() {
+           <span data-testid={tile.valueTestid}>{tile.value}</span>
+         </div>
+       ))}
++      <ol data-testid="dashboard-top-clients">
++        {topClients.map((client) => (
++          <li key={client.id} data-testid={`top-client-row-${client.id}`}>
++            <span data-testid="top-client-name">{client.name}</span>
++            <span data-testid="top-client-amount">{money(client.outstanding)}</span>
++          </li>
++        ))}
++      </ol>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/GetTopClients.java b/src/main/java/net/officefloor/hq/app/dashboard/GetTopClients.java
+new file mode 100644
+index 0000000..d5f85c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/GetTopClients.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/dashboard/top-clients — the home screen's top five clients ranked by how much they still
++ * owe, most owed first.
++ *
++ * <p>A client's owed amount is the same "outstanding" figure the clients list and statement use: the
++ * sum, across every invoice raised for them (via their projects), of that invoice's total — line
++ * items (qty * unit price) less its discount, plus sales tax — less everything paid against it.
++ * Archived clients are tucked away, and only clients that actually owe something appear.
++ */
++public class GetTopClients {
++
++    public void service(JdbcTemplate jdbc, ObjectResponse<List<TopClientView>> response) {
++        List<TopClientView> top = jdbc.query(
++                "SELECT id, name, outstanding FROM ("
++                        + "SELECT c.id AS id, c.name AS name, "
++                        + "COALESCE((SELECT SUM("
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
++                        + "* (100 + i.tax_pct) / 100 "
++                        + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
++                        + "WHERE p.invoice_id = i.id), 0)) "
++                        + "FROM invoices i JOIN projects pr ON pr.id = i.project_id "
++                        + "WHERE pr.client_id = c.id), 0) AS outstanding "
++                        + "FROM clients c WHERE c.archived = FALSE) t "
++                        + "WHERE outstanding > 0 "
++                        + "ORDER BY outstanding DESC, name ASC LIMIT 5",
++                (rs, i) -> new TopClientView(rs.getLong("id"), rs.getString("name"),
++                        rs.getBigDecimal("outstanding")));
++        response.send(top);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java b/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java
+new file mode 100644
+index 0000000..90dd302
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++
++/**
++ * One row of the home screen's "top clients" list: a client and how much they still owe. The list
++ * is the handful of clients that owe the most, so it carries just the name to show and the
++ * outstanding amount to rank and display by.
++ */
++public class TopClientView {
++
++    private final long id;
++    private final String name;
++    private final BigDecimal outstanding;
++
++    public TopClientView(long id, String name, BigDecimal outstanding) {
++        this.id = id;
++        this.name = name;
++        this.outstanding = outstanding;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public BigDecimal getOutstanding() {
++        return outstanding;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml b/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml
+new file mode 100644
+index 0000000..8fe845b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/dashboard/top-clients.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.dashboard.GetTopClients
