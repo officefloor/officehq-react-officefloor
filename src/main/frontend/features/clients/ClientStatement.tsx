@@ -39,7 +39,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
           <table data-testid="client-statement-table">
             <thead>
               <tr>
-                <th>Project</th>
+                <th>Job</th>
                 <th>Amount</th>
                 <th>Due</th>
                 <th>Stage</th>

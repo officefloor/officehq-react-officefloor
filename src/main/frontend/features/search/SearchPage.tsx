@@ -36,7 +36,7 @@ export function SearchPage() {
       <h1>Search</h1>
       <input
         data-testid="global-search"
-        placeholder="Search clients and projects"
+        placeholder="Search clients and jobs"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -52,7 +52,7 @@ export function SearchPage() {
       </div>
 
       <div data-testid="search-projects">
-        <h2>Projects</h2>
+        <h2>Jobs</h2>
         {results.projects.map((p) => (
           <div key={p.id} data-testid={`project-row-${p.id}`}>
             <span data-testid="project-name">{p.name}</span>

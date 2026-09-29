@@ -34,7 +34,7 @@ export function DashboardPage() {
       <dl>
         <dt>Clients</dt>
         <dd data-testid="dashboard-clients-count">{summary?.clientsCount ?? 0}</dd>
-        <dt>Projects</dt>
+        <dt>Jobs</dt>
         <dd data-testid="dashboard-projects-count">{summary?.projectsCount ?? 0}</dd>
         <dt>Outstanding</dt>
         <dd data-testid="dashboard-outstanding-total">{outstanding}</dd>

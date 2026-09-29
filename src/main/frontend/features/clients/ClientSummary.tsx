@@ -22,7 +22,7 @@ export function ClientSummary({ clientId }: { clientId: number }) {
   return (
     <section data-testid="client-summary">
       <p>
-        Projects: <span data-testid="client-projects-count">{summary.projectsCount}</span>
+        Jobs: <span data-testid="client-projects-count">{summary.projectsCount}</span>
       </p>
       <p>
         Contacts: <span data-testid="client-contacts-count">{summary.contactsCount}</span>

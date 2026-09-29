@@ -27,7 +27,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
 
   return (
     <section data-testid="client-projects">
-      <h2>Projects</h2>
+      <h2>Jobs</h2>
       <button
         type="button"
         data-testid="client-projects-show-all"
@@ -37,7 +37,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
         {showAll ? 'Show active only' : 'Show finished and hidden'}
       </button>
       {projects.length === 0 ? (
-        <p data-testid="client-projects-empty">No projects yet.</p>
+        <p data-testid="client-projects-empty">No jobs yet.</p>
       ) : (
         <table data-testid="client-projects-table">
           <thead>
