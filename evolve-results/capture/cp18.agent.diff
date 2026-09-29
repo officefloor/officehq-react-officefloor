@@ -1,0 +1,80 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 04f489d..70eabc2 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -17,6 +17,7 @@ function ClientContacts({ client }: { client: Client }) {
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [role, setRole] = useState('');
++  const [emailError, setEmailError] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/clients/${client.id}/contacts`);
+@@ -32,6 +33,12 @@ function ClientContacts({ client }: { client: Client }) {
+     if (!name.trim() || !email.trim() || !role.trim()) {
+       return;
+     }
++    // A contact needs a proper email too; same shape the server enforces (see CreateContact).
++    if (!EMAIL_RE.test(email.trim())) {
++      setEmailError('Enter a valid email address.');
++      return;
++    }
++    setEmailError('');
+     await fetch(`/api/clients/${client.id}/contacts`, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -58,6 +65,11 @@ function ClientContacts({ client }: { client: Client }) {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <p data-testid="contact-form-email-error" role="alert">
++            {emailError}
++          </p>
++        )}
+         <input
+           data-testid="contact-form-role"
+           placeholder="Role"
+diff --git a/src/main/java/net/officefloor/hq/app/contact/CreateContact.java b/src/main/java/net/officefloor/hq/app/contact/CreateContact.java
+index 1fc4328..48dde1d 100644
+--- a/src/main/java/net/officefloor/hq/app/contact/CreateContact.java
++++ b/src/main/java/net/officefloor/hq/app/contact/CreateContact.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.contact;
+ 
++import java.util.regex.Pattern;
+ import net.officefloor.server.http.HttpException;
+ import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.HttpPathParameter;
+@@ -9,6 +10,9 @@ import org.springframework.web.bind.annotation.RequestBody;
+ /** POST /api/clients/{id}/contacts — add a contact (name + email + role) to a client. */
+ public class CreateContact {
+ 
++    /** A contact needs a proper email; same shape the UI enforces (see feature.tsx). */
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
+     public void service(@HttpPathParameter("id") String id, @RequestBody NewContact body,
+             ContactRepository repository, ObjectResponse<Contact> response) {
+         String name = body.getName() == null ? "" : body.getName().trim();
+@@ -20,6 +24,10 @@ public class CreateContact {
+         if (email.isEmpty()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A contact requires an email");
+         }
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "A contact requires a valid email address");
++        }
+         if (role.isEmpty()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A contact requires a role");
+         }
+diff --git a/src/main/resources/db/migration/V10__contacts_email_valid.sql b/src/main/resources/db/migration/V10__contacts_email_valid.sql
+new file mode 100644
+index 0000000..db0a597
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__contacts_email_valid.sql
+@@ -0,0 +1,5 @@
++-- Every contact needs a proper email too. Enforce a minimal shape at the database as the last line
++-- of defence, matching the UI/server rule (something@something.tld, no spaces) — same as clients.
++ALTER TABLE contacts
++    ADD CONSTRAINT contacts_email_valid
++    CHECK (email LIKE '%_@_%._%' AND email NOT LIKE '% %');
