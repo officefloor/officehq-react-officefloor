@@ -15,8 +15,8 @@ public class InvoicesPostLogic {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A project is required.");
         }
         BigDecimal amount = body.getAmount();
-        if (amount == null || amount.signum() < 0) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "A non-negative amount is required.");
+        if (amount == null || amount.signum() <= 0) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "A positive amount is required.");
         }
         response.send(repository.create(body.getProjectId(), amount.setScale(2,
                 java.math.RoundingMode.HALF_UP)));
