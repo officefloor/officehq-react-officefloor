@@ -34,6 +34,18 @@ public class ProjectRepository {
         return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
     }
 
+    /**
+     * Projects carrying a given tag — backs the "filter my projects by label" dropdown. Archived
+     * projects are hidden unless {@code includeArchived} is true, matching the plain list.
+     */
+    public List<Project> findByTag(long tagId, boolean includeArchived) {
+        String archived = includeArchived ? "" : " AND p.archived = FALSE";
+        return jdbc.query(
+                SELECT + " JOIN project_tags pt ON pt.project_id = p.id"
+                        + " WHERE pt.tag_id = ?" + archived + " ORDER BY p.id",
+                MAPPER, tagId);
+    }
+
     /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
     public List<Project> findByClient(long clientId) {
         return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",

@@ -7,17 +7,28 @@ import { ProjectTasks } from './ProjectTasks';
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
 type Project = { id: number; name: string; clientId: number; clientName: string; archived: boolean };
 type Client = { id: number; name: string };
+type Tag = { id: number; name: string };
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  async function loadProjects(includeArchived = showArchived) {
-    const res = await fetch(`/api/projects${includeArchived ? '?includeArchived=true' : ''}`);
+  async function loadProjects(includeArchived = showArchived, tagId = tagFilter) {
+    const params = new URLSearchParams();
+    if (includeArchived) {
+      params.set('includeArchived', 'true');
+    }
+    if (tagId) {
+      params.set('tagId', tagId);
+    }
+    const qs = params.toString();
+    const res = await fetch(`/api/projects${qs ? `?${qs}` : ''}`);
     if (res.ok) {
       setProjects(await res.json());
     }
@@ -32,10 +43,23 @@ export function ProjectsPage() {
     }
   }
 
+  async function loadTags() {
+    const res = await fetch('/api/tags');
+    if (res.ok) {
+      setTags(await res.json());
+    }
+  }
+
   useEffect(() => {
     void loadProjects();
     void loadClients();
+    void loadTags();
   }, []);
+
+  function onFilterByTag(tagId: string) {
+    setTagFilter(tagId);
+    void loadProjects(showArchived, tagId);
+  }
 
   async function onDelete(id: number) {
     const res = await fetch('/api/projects/delete', {
@@ -110,6 +134,19 @@ export function ProjectsPage() {
       <button type="button" data-testid="projects-show-archived" onClick={onToggleArchived}>
         {showArchived ? 'Hide archived' : 'Show archived'}
       </button>
+
+      <select
+        data-testid="project-tag-filter"
+        value={tagFilter}
+        onChange={(e) => onFilterByTag(e.target.value)}
+      >
+        <option value="">All labels</option>
+        {tags.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
 
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
