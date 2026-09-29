@@ -1,0 +1,585 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 51dad45..2a23d29 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -18,10 +18,115 @@ type Invoice = {
+ };
+ type Task = { id: number; projectId: number; title: string; done: boolean };
+ 
++type LineItem = {
++  id: number;
++  invoiceId: number;
++  description: string;
++  qty: number;
++  unitPrice: number;
++};
++
+ function money(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+ }
+ 
++// An opened invoice's detail: the things it is charging for, listed as line items (description, how
++// many, price each), the total worked out for you, and a form to add another line. Owns its own
++// line-item state, scoped to the one invoice it is showing.
++function InvoiceDetail({
++  invoiceId,
++  onChange,
++  onClose,
++}: {
++  invoiceId: number;
++  onChange: () => void;
++  onClose: () => void;
++}) {
++  const [items, setItems] = useState<LineItem[]>([]);
++  const [description, setDescription] = useState('');
++  const [qty, setQty] = useState('');
++  const [unitPrice, setUnitPrice] = useState('');
++
++  async function load() {
++    const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
++    setItems(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, [invoiceId]);
++
++  async function submit(e: React.FormEvent) {
++    e.preventDefault();
++    if (!description.trim() || qty.trim() === '' || unitPrice.trim() === '') {
++      return;
++    }
++    await fetch(`/api/invoices/${invoiceId}/line-items`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({
++        description,
++        qty: Number(qty),
++        unitPrice: Number(unitPrice),
++      }),
++    });
++    setDescription('');
++    setQty('');
++    setUnitPrice('');
++    await load();
++    onChange();
++  }
++
++  const total = items.reduce((sum, li) => sum + Number(li.qty) * Number(li.unitPrice), 0);
++
++  return (
++    <section data-testid="invoice-detail">
++      <button data-testid="invoice-detail-close" type="button" onClick={onClose}>
++        Back to invoices
++      </button>
++
++      <table data-testid="invoice-lineitems-table">
++        <tbody>
++          {items.map((li) => (
++            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
++              <td data-testid="lineitem-description">{li.description}</td>
++              <td data-testid="lineitem-qty">{li.qty}</td>
++              <td data-testid="lineitem-unitprice">{money(li.unitPrice)}</td>
++              <td data-testid="lineitem-amount">{money(Number(li.qty) * Number(li.unitPrice))}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
++      <p data-testid="invoice-amount">{money(total)}</p>
++
++      <form data-testid="lineitem-form" onSubmit={submit}>
++        <input
++          data-testid="lineitem-form-description"
++          placeholder="Description"
++          value={description}
++          onChange={(e) => setDescription(e.target.value)}
++        />
++        <input
++          data-testid="lineitem-form-qty"
++          placeholder="How many"
++          value={qty}
++          onChange={(e) => setQty(e.target.value)}
++        />
++        <input
++          data-testid="lineitem-form-unitprice"
++          placeholder="Price each"
++          value={unitPrice}
++          onChange={(e) => setUnitPrice(e.target.value)}
++        />
++        <button data-testid="lineitem-form-submit" type="submit">
++          Add line item
++        </button>
++      </form>
++    </section>
++  );
++}
++
+ // A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its
+ // own invoice state, scoped to the one project it is showing.
+ function ProjectDetail({ project }: { project: Project }) {
+@@ -30,6 +135,7 @@ function ProjectDetail({ project }: { project: Project }) {
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
+   const [sortByDue, setSortByDue] = useState(false);
++  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${project.id}`);
+@@ -124,32 +230,48 @@ function ProjectDetail({ project }: { project: Project }) {
+         Sort by due date
+       </button>
+ 
+-      <table data-testid="project-invoices-table">
+-        <tbody>
+-          {shownInvoices.map((inv) => (
+-            <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+-              <td data-testid="invoice-amount">{money(inv.amount)}</td>
+-              <td data-testid="invoice-issued">{inv.issuedDate}</td>
+-              <td data-testid="invoice-due">{inv.dueDate}</td>
+-              <td data-testid="invoice-status">{inv.status}</td>
+-              <td>
+-                {inv.status === 'DRAFT' && (
+-                  <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
+-                    Send
+-                  </button>
+-                )}
+-                {inv.status === 'SENT' && (
+-                  <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
+-                    Mark paid
+-                  </button>
+-                )}
+-              </td>
+-            </tr>
+-          ))}
+-        </tbody>
+-      </table>
++      {openInvoiceId === null ? (
++        <>
++          <table data-testid="project-invoices-table">
++            <tbody>
++              {shownInvoices.map((inv) => (
++                <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
++                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
++                  <td data-testid="invoice-issued">{inv.issuedDate}</td>
++                  <td data-testid="invoice-due">{inv.dueDate}</td>
++                  <td data-testid="invoice-status">{inv.status}</td>
++                  <td>
++                    <button
++                      data-testid={`invoice-open-${inv.id}`}
++                      onClick={() => setOpenInvoiceId(inv.id)}
++                    >
++                      Open
++                    </button>
++                    {inv.status === 'DRAFT' && (
++                      <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
++                        Send
++                      </button>
++                    )}
++                    {inv.status === 'SENT' && (
++                      <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
++                        Mark paid
++                      </button>
++                    )}
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
+ 
+-      <p data-testid="project-invoices-total">{money(total)}</p>
++          <p data-testid="project-invoices-total">{money(total)}</p>
++        </>
++      ) : (
++        <InvoiceDetail
++          invoiceId={openInvoiceId}
++          onChange={load}
++          onClose={() => setOpenInvoiceId(null)}
++        />
++      )}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b0fae39..1e90baa 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,6 +36,7 @@ public class TestSupportController {
+         // (and their identity counters restarted) regardless of FK order.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+@@ -73,18 +74,24 @@ public class TestSupportController {
+                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+         for (Map<String, Object> in : invoices) {
+             Object status = in.get("status");
++            Object amount = in.get("amount");
+             Object issuedDate = in.get("issuedDate");
+             Object dueDate = in.get("dueDate");
+-            // Insert only the columns the fixture supplies for the (optional) dates, so the
+-            // table's own defaults apply when a fixture omits them (a plain null would trip the
+-            // NOT NULL columns). status defaults to DRAFT — a new invoice starts as a draft.
+-            StringBuilder cols = new StringBuilder("id, project_id, amount, status");
+-            StringBuilder marks = new StringBuilder("?, ?, ?, ?");
++            // Insert only the columns the fixture supplies, so the table's own defaults apply when a
++            // fixture omits them (a plain null would trip the NOT NULL columns). status defaults to
++            // DRAFT and amount defaults to 0 — an invoice's amount is now derived from its line
++            // items, so fixtures list lineItems rather than a single typed amount.
++            StringBuilder cols = new StringBuilder("id, project_id, status");
++            StringBuilder marks = new StringBuilder("?, ?, ?");
+             List<Object> args = new java.util.ArrayList<>(List.of(
+                     ((Number) in.get("id")).longValue(),
+                     ((Number) in.get("projectId")).longValue(),
+-                    ((Number) in.get("amount")).doubleValue(),
+                     status == null ? "DRAFT" : status.toString()));
++            if (amount != null) {
++                cols.append(", amount");
++                marks.append(", ?");
++                args.add(((Number) amount).doubleValue());
++            }
+             if (issuedDate != null) {
+                 cols.append(", issued_date");
+                 marks.append(", ?");
+@@ -97,6 +104,17 @@ public class TestSupportController {
+             }
+             jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
+                     args.toArray());
++            List<Map<String, Object>> lineItems =
++                    (List<Map<String, Object>>) in.getOrDefault("lineItems", List.of());
++            for (Map<String, Object> li : lineItems) {
++                jdbc.update(
++                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
++                                + " VALUES (?, ?, ?, ?, ?)",
++                        ((Number) li.get("id")).longValue(),
++                        ((Number) in.get("id")).longValue(), li.get("description"),
++                        ((Number) li.get("qty")).intValue(),
++                        ((Number) li.get("unitPrice")).doubleValue());
++            }
+         }
+         List<Map<String, Object>> tasks =
+                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreateLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/CreateLineItem.java
+new file mode 100644
+index 0000000..f843430
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreateLineItem.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/{id}/line-items — add a thing being charged for (description, quantity, unit
++ * price) to an invoice. The invoice's amount is the running sum of its line items.
++ */
++public class CreateLineItem {
++
++    public void service(@HttpPathParameter("id") String id, @RequestBody NewLineItem body,
++            LineItemRepository repository, ObjectResponse<LineItem> response) {
++        String description = body.getDescription() == null ? "" : body.getDescription().trim();
++        if (description.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A line item requires a description");
++        }
++        Integer qty = body.getQty();
++        if (qty == null || qty <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A line item quantity must be more than zero");
++        }
++        BigDecimal unitPrice = body.getUnitPrice();
++        if (unitPrice == null || unitPrice.signum() < 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A line item price cannot be negative");
++        }
++        LineItem item = new LineItem();
++        item.setInvoiceId(Long.valueOf(id));
++        item.setDescription(description);
++        item.setQty(qty);
++        item.setUnitPrice(unitPrice);
++        response.send(repository.save(item));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItem.java b/src/main/java/net/officefloor/hq/app/invoice/LineItem.java
+new file mode 100644
+index 0000000..30092c4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItem.java
+@@ -0,0 +1,69 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** One thing being charged for on an invoice: a description, how many, and the price of each. */
++@Entity
++@Table(name = "line_items")
++public class LineItem {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id")
++    private Long invoiceId;
++
++    private String description;
++
++    private Integer qty;
++
++    @Column(name = "unit_price")
++    private BigDecimal unitPrice;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public void setInvoiceId(Long invoiceId) {
++        this.invoiceId = invoiceId;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public void setDescription(String description) {
++        this.description = description;
++    }
++
++    public Integer getQty() {
++        return qty;
++    }
++
++    public void setQty(Integer qty) {
++        this.qty = qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    public void setUnitPrice(BigDecimal unitPrice) {
++        this.unitPrice = unitPrice;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemRepository.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemRepository.java
+new file mode 100644
+index 0000000..12778cb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.invoice;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link LineItem}. */
++public interface LineItemRepository extends JpaRepository<LineItem, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/LineItemView.java b/src/main/java/net/officefloor/hq/app/invoice/LineItemView.java
+new file mode 100644
+index 0000000..7be2715
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/LineItemView.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** A line item as the invoice detail surfaces it: what it is, how many, and the price of each. */
++public class LineItemView {
++
++    private final Long id;
++    private final Long invoiceId;
++    private final String description;
++    private final Integer qty;
++    private final BigDecimal unitPrice;
++
++    public LineItemView(Long id, Long invoiceId, String description, Integer qty,
++            BigDecimal unitPrice) {
++        this.id = id;
++        this.invoiceId = invoiceId;
++        this.description = description;
++        this.qty = qty;
++        this.unitPrice = unitPrice;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public Integer getQty() {
++        return qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+index e5e2b86..391a15c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+@@ -19,7 +19,9 @@ public class ListAllInvoices {
+                 rs.getLong("project_id"), rs.getString("project_name"), rs.getBigDecimal("amount"),
+                 rs.getString("status"));
+         boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
+-        String base = "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status "
++        String base = "SELECT i.id, i.project_id, p.name AS project_name, i.status, "
++                + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                + "WHERE li.invoice_id = i.id), 0) AS amount "
+                 + "FROM invoices i JOIN projects p ON p.id = i.project_id ";
+         List<AllInvoiceView> invoices = all
+                 ? jdbc.query(base + "ORDER BY i.id", mapper)
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoiceLineItems.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoiceLineItems.java
+new file mode 100644
+index 0000000..f6bc992
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoiceLineItems.java
+@@ -0,0 +1,22 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/invoices/{id}/line-items — the things one invoice is charging for, oldest first. */
++public class ListInvoiceLineItems {
++
++    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++            ObjectResponse<List<LineItemView>> response) {
++        List<LineItemView> items = jdbc.query(
++                "SELECT id, invoice_id, description, qty, unit_price FROM line_items "
++                        + "WHERE invoice_id = ? ORDER BY id",
++                (rs, i) -> new LineItemView(rs.getLong("id"), rs.getLong("invoice_id"),
++                        rs.getString("description"), rs.getInt("qty"),
++                        rs.getBigDecimal("unit_price")),
++                Long.valueOf(id));
++        response.send(items);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+index d3faf00..073b55d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+@@ -10,8 +10,12 @@ public class ListInvoices {
+ 
+     public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
+             ObjectResponse<List<InvoiceView>> response) {
++        // The invoice amount is the sum of its line items (qty * unit price); an invoice with no
++        // lines totals zero.
+         List<InvoiceView> invoices = jdbc.query(
+-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
++                "SELECT id, project_id, status, issued_date, due_date, "
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = invoices.id), 0) AS amount FROM invoices"
+                         + " WHERE project_id = ? ORDER BY id",
+                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+                         rs.getBigDecimal("amount"), rs.getString("status"),
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/NewLineItem.java b/src/main/java/net/officefloor/hq/app/invoice/NewLineItem.java
+new file mode 100644
+index 0000000..cc45830
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/NewLineItem.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** Request body for adding a line item: what is being charged for, how many, and the price each. */
++public class NewLineItem {
++
++    private String description;
++
++    private Integer qty;
++
++    private BigDecimal unitPrice;
++
++    public String getDescription() {
++        return description;
++    }
++
++    public void setDescription(String description) {
++        this.description = description;
++    }
++
++    public Integer getQty() {
++        return qty;
++    }
++
++    public void setQty(Integer qty) {
++        this.qty = qty;
++    }
++
++    public BigDecimal getUnitPrice() {
++        return unitPrice;
++    }
++
++    public void setUnitPrice(BigDecimal unitPrice) {
++        this.unitPrice = unitPrice;
++    }
++}
+diff --git a/src/main/resources/db/migration/V13__line_items.sql b/src/main/resources/db/migration/V13__line_items.sql
+new file mode 100644
+index 0000000..9528a3f
+--- /dev/null
++++ b/src/main/resources/db/migration/V13__line_items.sql
+@@ -0,0 +1,17 @@
++-- Invoice line items: an invoice is now built from the things being charged for. Each line records
++-- a description, a quantity, and the price of each — the invoice's amount is the sum of qty*price
++-- across its lines. Additive: a new table alongside invoices, one row per line.
++CREATE TABLE line_items (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id  BIGINT NOT NULL REFERENCES invoices(id),
++    description VARCHAR(255) NOT NULL,
++    qty         INTEGER NOT NULL,
++    unit_price  DECIMAL(12, 2) NOT NULL
++);
++
++-- The invoice amount is no longer a single figure the user types: it is derived from the line
++-- items. Relax the stored amount column so an invoice can exist (and start empty, totalling zero)
++-- without a typed amount — the running total is computed from its lines.
++ALTER TABLE invoices DROP CONSTRAINT invoices_amount_positive;
++ALTER TABLE invoices ALTER COLUMN amount SET NULL;
++ALTER TABLE invoices ALTER COLUMN amount SET DEFAULT 0;
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.GET.yml
+new file mode 100644
+index 0000000..279e93b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.ListInvoiceLineItems
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.POST.yml
+new file mode 100644
+index 0000000..e478d2a
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/line-items.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.CreateLineItem
