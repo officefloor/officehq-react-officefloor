@@ -6,7 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * GET /api/dashboard — the home screen summary: how many clients and projects exist, and how much
- * money is still owed (the sum of every UNPAID invoice's amount across all projects).
+ * money is still owed. Money owed counts only invoices that have actually been SENT (not drafts,
+ * and not those already paid) — the sum of every SENT invoice's amount across all projects.
  */
 public class GetDashboard {
 
@@ -14,7 +15,7 @@ public class GetDashboard {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'UNPAID'",
+                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
                 BigDecimal.class);
         response.send(new DashboardView(clients, projects, outstanding));
     }
