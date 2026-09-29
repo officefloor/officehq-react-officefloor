@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 
 /** A project the user does for a client: name + the client it is for. */
 @Entity
@@ -24,6 +25,9 @@ public class Project {
     private boolean archived;
 
     private String status;
+
+    /** The agreed budget for the project; null until one is set. */
+    private BigDecimal budget;
 
     public Long getId() {
         return id;
@@ -63,5 +67,13 @@ public class Project {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public BigDecimal getBudget() {
+        return budget;
+    }
+
+    public void setBudget(BigDecimal budget) {
+        this.budget = budget;
     }
 }

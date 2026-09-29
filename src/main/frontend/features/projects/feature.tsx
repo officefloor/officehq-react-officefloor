@@ -43,6 +43,17 @@ function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
 
+// Budget figures are shown with thousands separators (e.g. $1,000.00) so larger amounts stay
+// readable at a glance.
+function moneyGrouped(amount: number): string {
+  return `$${Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+type ProjectBudget = { budget: number | null; invoiced: number; remaining: number | null };
+
 // One charge line while it is being edited on screen: the fields are held as raw strings so the
 // inputs stay controlled and the total can recompute live as they change.
 type EditItem = { id: number; description: string; qty: string; unitPrice: string };
@@ -305,10 +316,35 @@ function ProjectDetail({ project }: { project: Project }) {
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteText, setNoteText] = useState('');
+  const [budget, setBudget] = useState<ProjectBudget | null>(null);
+  const [budgetInput, setBudgetInput] = useState('');
+
+  async function loadBudget() {
+    const res = await fetch(`/api/projects/${project.id}/budget`);
+    setBudget(await res.json());
+  }
 
   async function load() {
     const res = await fetch(`/api/invoices?projectId=${project.id}`);
     setInvoices(await res.json());
+    // Invoiced (and so remaining) is derived from the project's invoices, so re-read the budget
+    // picture whenever the invoices change.
+    await loadBudget();
+  }
+
+  async function submitBudget(e: React.FormEvent) {
+    e.preventDefault();
+    const value = Number(budgetInput);
+    if (budgetInput.trim() === '' || !Number.isFinite(value) || value < 0) {
+      return;
+    }
+    await fetch(`/api/projects/${project.id}/budget`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ budget: value }),
+    });
+    setBudgetInput('');
+    await loadBudget();
   }
 
   async function loadNotes() {
@@ -414,6 +450,27 @@ function ProjectDetail({ project }: { project: Project }) {
   return (
     <section data-testid="project-detail">
       <h2 data-testid="project-detail-name">{project.name}</h2>
+
+      <section data-testid="project-budget-panel">
+        <p data-testid="project-budget">
+          {budget && budget.budget != null ? moneyGrouped(budget.budget) : ''}
+        </p>
+        <p data-testid="project-invoiced">{moneyGrouped(budget ? budget.invoiced : 0)}</p>
+        <p data-testid="project-remaining">
+          {budget && budget.remaining != null ? moneyGrouped(budget.remaining) : ''}
+        </p>
+        <form data-testid="project-budget-form" onSubmit={submitBudget}>
+          <input
+            data-testid="project-budget-input"
+            placeholder="Budget"
+            value={budgetInput}
+            onChange={(e) => setBudgetInput(e.target.value)}
+          />
+          <button data-testid="project-budget-submit" type="submit">
+            Set budget
+          </button>
+        </form>
+      </section>
 
       <div data-testid="project-tags">
         {tags.map((tag) => (

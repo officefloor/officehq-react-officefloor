@@ -78,6 +78,7 @@ public class TestSupportController {
                     .set("client_id", id(p, "clientId"))
                     .set("status", p.get("status") == null ? "ACTIVE" : p.get("status").toString())
                     .setIfPresent("archived", p.get("archived"))
+                    .setIfPresent("budget", asDouble(p.get("budget")))
                     .run();
         }
     }
