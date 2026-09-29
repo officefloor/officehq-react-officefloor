@@ -1,0 +1,362 @@
+{
+  "checkpoint": 5,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp05_invoice_pay_audit",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me mark an invoice as paid. Keep a record every time I do so I can check back later.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me mark an invoice as paid. Keep a record every time I do so I can check back later.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "11a7d3311ae023d9c3cd1ba7f6ed69a3c498bd67",
+  "reset_sha": "",
+  "preagent_sha": "b3635616d6997856402b7894f2fb1d2223ca0cf8",
+  "prev_sha": "b3635616d6997856402b7894f2fb1d2223ca0cf8",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7238875,
+    "input_tokens": 38,
+    "output_tokens": 7604,
+    "cache_read_tokens": 546779,
+    "cache_creation_tokens": 25903,
+    "num_turns": 23,
+    "duration_ms": 125958,
+    "duration_api_ms": 108175,
+    "model": "claude-opus-4-8",
+    "session_id": "42ea5dff-1d0e-47e1-bfd1-780507292ace",
+    "stop_reason": "success",
+    "result_text": "Both tests pass. Let me summarize the full-stack change I implemented.\n\n## Summary\n\nI implemented \"mark an invoice as paid, with a record kept each time\" as a full-stack, additive change:\n\n**Database** \u2014 `V5__invoices_status.sql`: adds a `status VARCHAR(16) NOT NULL DEFAULT 'UNPAID'` column to `invoices`.\n\n**Server** (OfficeFloor + Spring):\n- `Invoice` entity: added the `status` field with accessors.\n- `InvoiceView`: now carries `status` so the list endpoint surfaces it.\n- `ListInvoices`: selects `status` in its query.\n- `CreateInvoice`: sets `status = \"UNPAID\"` on new invoices (JPA would otherwise insert NULL against the NOT NULL column).\n- **New endpoint** `POST /api/invoices/{id}/pay` \u2014 a new YAML file (`rest/api/invoices/{id}/pay.POST.yml`) + a new `PayInvoice` logic class. It flips the status to `PAID`, saves, and calls the injected `Audit` service to append `INVOICE_PAID id=1 amount=100.00` \u2014 the exact record the spec asserts.\n- `TestSupportController` seed: inserts the fixture's `status` (defaulting to `UNPAID`), keeping the existing seed contract working.\n\n**Front-end** (`features/projects/feature.tsx`): the invoice row now shows a `data-testid=\"invoice-status\"` cell and a `data-testid=\"invoice-pay-<id>\"` button that POSTs to the pay endpoint and reloads. All existing `data-testid`s are preserved.\n\nBoth spec tests pass (status flips `UNPAID` \u2192 `PAID` in the UI, and the audit record is written).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.7238875,
+        "num_turns": 23,
+        "duration_ms": 125958,
+        "duration_api_ms": 108175,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp05.agent.jsonl",
+  "agent_diff_file": "cp05.agent.diff",
+  "build_log_file": "cp05.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 11,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 647,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 347,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 323,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 262,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 233,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 361,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 377,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 4.4,
+            "impact": 404,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "lang": "typescript",
+                "cost": 404,
+                "mutation": 320,
+                "godclass": 84,
+                "mut_fns": 1,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 20,
+                "cost": 320,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/feature.tsx",
+                "name": "pay",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 21,
+                "cost": 84,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 1,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 26.76,
+            "impact": 822,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 60,
+                "mutation": 60,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "lang": "java",
+                "cost": 36,
+                "mutation": 0,
+                "godclass": 36,
+                "mut_fns": 0,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java",
+                "lang": "java",
+                "cost": 21,
+                "mutation": 9,
+                "godclass": 12,
+                "mut_fns": 1,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java",
+                "lang": "java",
+                "cost": 12,
+                "mutation": 0,
+                "godclass": 12,
+                "mut_fns": 0,
+                "new_fns": 1
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java",
+                "lang": "java",
+                "cost": 4,
+                "mutation": 4,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java",
+                "lang": "java",
+                "cost": 4,
+                "mutation": 4,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 5,
+                "wmc_other": 2,
+                "cost": 60,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::getStatus",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 6,
+                "cost": 18,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/Invoice.java",
+                "name": "Invoice::setStatus",
+                "container": "Invoice",
+                "cc": 1,
+                "wmc_other": 6,
+                "cost": 18,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java",
+                "name": "InvoiceView::getStatus",
+                "container": "InvoiceView",
+                "cc": 1,
+                "wmc_other": 4,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java",
+                "name": "PayInvoice::service",
+                "container": "PayInvoice",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java",
+                "name": "InvoiceView::InvoiceView",
+                "container": "InvoiceView",
+                "cc": 1,
+                "wmc_other": 3,
+                "cost": 9,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java",
+                "name": "CreateInvoice::service",
+                "container": "CreateInvoice",
+                "cc": 4,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java",
+                "name": "ListInvoices::service",
+                "container": "ListInvoices",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 4,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 5,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
