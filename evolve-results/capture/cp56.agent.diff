@@ -1,0 +1,286 @@
+diff --git a/src/main/frontend/features/clients/ClientDetails.tsx b/src/main/frontend/features/clients/ClientDetails.tsx
+index bc86e7b..97cc232 100644
+--- a/src/main/frontend/features/clients/ClientDetails.tsx
++++ b/src/main/frontend/features/clients/ClientDetails.tsx
+@@ -3,6 +3,7 @@ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
+ import { ClientSummary } from './ClientSummary';
+ import { ClientStatement } from './ClientStatement';
++import { ClientRecordPayment } from './ClientRecordPayment';
+ 
+ // The panels shown for the currently opened client. ClientStatement is keyed by clientId so it
+ // remounts (rather than merely re-fetches) when the open client changes.
+@@ -11,6 +12,7 @@ export function ClientDetails({ clientId }: { clientId: number }) {
+     <>
+       <ClientSummary clientId={clientId} />
+       <ClientStatement key={clientId} clientId={clientId} />
++      <ClientRecordPayment key={`payment-${clientId}`} clientId={clientId} />
+       <ClientProjects clientId={clientId} />
+       <ClientContacts clientId={clientId} />
+     </>
+diff --git a/src/main/frontend/features/clients/ClientRecordPayment.tsx b/src/main/frontend/features/clients/ClientRecordPayment.tsx
+new file mode 100644
+index 0000000..6640dfa
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientRecordPayment.tsx
+@@ -0,0 +1,113 @@
++import React, { useState } from 'react';
++
++// Record one lump payment from a client and split it across their open invoices. Owns its own state
++// (CLAUDE.md — features own their state; clients does not import the invoices feature). It reads the
++// client's open invoices from the same GET /api/clients/statement endpoint the statement uses, then
++// posts the split to POST /api/payments/split, which records one payment per allocated invoice so each
++// invoice's derived balance settles on its own.
++type StatementInvoice = {
++  id: number;
++  projectName: string;
++  due: number;
++  status: string;
++};
++
++function money(n: number): string {
++  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
++}
++
++export function ClientRecordPayment({ clientId }: { clientId: number }) {
++  const [open, setOpen] = useState(false);
++  const [invoices, setInvoices] = useState<StatementInvoice[]>([]);
++  const [amount, setAmount] = useState('');
++  const [date, setDate] = useState('');
++  const [allocations, setAllocations] = useState<Record<number, string>>({});
++
++  async function begin() {
++    setOpen(true);
++    const res = await fetch(`/api/clients/statement?clientId=${clientId}`);
++    if (res.ok) {
++      const statement: { invoices: StatementInvoice[] } = await res.json();
++      // Only invoices that still owe something can take a share of the payment.
++      setInvoices(statement.invoices.filter((inv) => Number(inv.due) > 0));
++    }
++  }
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    const shares = invoices
++      .map((inv) => ({ invoiceId: inv.id, amount: Number(allocations[inv.id]) }))
++      .filter((a) => Number.isFinite(a.amount) && a.amount > 0);
++    const res = await fetch('/api/payments/split', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ amount: Number(amount), date, allocations: shares }),
++    });
++    if (res.ok) {
++      setOpen(false);
++      setAmount('');
++      setDate('');
++      setAllocations({});
++    }
++  }
++
++  return (
++    <section data-testid="client-payment">
++      <button type="button" data-testid="client-record-payment" onClick={() => void begin()}>
++        Record payment
++      </button>
++      {open ? (
++        <form data-testid="payment-form" onSubmit={onSubmit}>
++          <label>
++            Amount
++            <input
++              data-testid="payment-form-amount"
++              placeholder="Amount"
++              value={amount}
++              onChange={(e) => setAmount(e.target.value)}
++            />
++          </label>
++          <label>
++            Date
++            <input
++              data-testid="payment-form-date"
++              placeholder="yyyy-mm-dd"
++              value={date}
++              onChange={(e) => setDate(e.target.value)}
++            />
++          </label>
++          <table data-testid="payment-alloc-table">
++            <thead>
++              <tr>
++                <th>Job</th>
++                <th>Due</th>
++                <th>Apply</th>
++              </tr>
++            </thead>
++            <tbody>
++              {invoices.map((inv) => (
++                <tr key={inv.id} data-testid={`payment-alloc-row-${inv.id}`}>
++                  <td>{inv.projectName}</td>
++                  <td>{money(inv.due)}</td>
++                  <td>
++                    <input
++                      data-testid={`payment-alloc-${inv.id}`}
++                      placeholder="0"
++                      value={allocations[inv.id] ?? ''}
++                      onChange={(e) =>
++                        setAllocations((prev) => ({ ...prev, [inv.id]: e.target.value }))
++                      }
++                    />
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++          <button type="submit" data-testid="payment-form-submit">
++            Record payment
++          </button>
++        </form>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/src/main/java/net/officefloor/hq/app/NewSplitPayment.java b/src/main/java/net/officefloor/hq/app/NewSplitPayment.java
+new file mode 100644
+index 0000000..0ab8941
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/NewSplitPayment.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * Request body for splitting one lump payment across several invoices (POST /api/payments/split).
++ * The client pays a single {@code amount} on a single {@code date}; {@code allocations} says how much
++ * of it lands on each invoice. One {@link Payment} row is recorded per allocation, so each invoice's
++ * balance reflects its share.
++ */
++public class NewSplitPayment {
++
++    private BigDecimal amount;
++    private String date;
++    private List<PaymentAllocation> allocations;
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public void setDate(String date) {
++        this.date = date;
++    }
++
++    public List<PaymentAllocation> getAllocations() {
++        return allocations;
++    }
++
++    public void setAllocations(List<PaymentAllocation> allocations) {
++        this.allocations = allocations;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/PaymentAllocation.java b/src/main/java/net/officefloor/hq/app/PaymentAllocation.java
+new file mode 100644
+index 0000000..5af3983
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/PaymentAllocation.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * One share of a split payment: how much of a lump sum is applied to a single invoice. Part of the
++ * {@link NewSplitPayment} request body (POST /api/payments/split).
++ */
++public class PaymentAllocation {
++
++    private long invoiceId;
++    private BigDecimal amount;
++
++    public long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public void setInvoiceId(long invoiceId) {
++        this.invoiceId = invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/PaymentsSplitPostLogic.java b/src/main/java/net/officefloor/hq/app/PaymentsSplitPostLogic.java
+new file mode 100644
+index 0000000..ee9b1dc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/PaymentsSplitPostLogic.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/payments/split — record one lump payment split across several invoices. Each allocation
++ * with a positive share becomes its own {@link Payment} row, so every invoice's derived balance and
++ * status settle from the payments on file just as a single payment does. One audit line per created
++ * payment (PAYMENT_RECORDED id=&lt;id&gt; amount=&lt;amount&gt;), matching a single payment, so a
++ * split reads back the same way.
++ */
++public class PaymentsSplitPostLogic {
++
++    public void service(@RequestBody NewSplitPayment body, PaymentRepository repository, Audit audit,
++            ObjectResponse<List<Payment>> response) {
++        String date = body.getDate() == null ? "" : body.getDate().trim();
++        if (date.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A date is required.");
++        }
++        List<PaymentAllocation> allocations =
++                body.getAllocations() == null ? List.of() : body.getAllocations();
++        List<Payment> created = new ArrayList<>();
++        for (PaymentAllocation allocation : allocations) {
++            BigDecimal amount = allocation.getAmount();
++            // An allocation left blank or zero simply does not apply to that invoice; skip it so a
++            // client can spread a lump sum over only some of their open invoices.
++            if (amount == null || amount.signum() <= 0) {
++                continue;
++            }
++            if (allocation.getInvoiceId() <= 0) {
++                throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice is required.");
++            }
++            Payment payment = repository.create(allocation.getInvoiceId(),
++                    amount.setScale(2, RoundingMode.HALF_UP), date);
++            audit.record("PAYMENT_RECORDED id=" + payment.id() + " amount="
++                    + payment.amount().toPlainString());
++            created.add(payment);
++        }
++        if (created.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A positive amount is required.");
++        }
++        response.send(created);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/payments/split.POST.yml b/src/main/resources/officefloor/rest/api/payments/split.POST.yml
+new file mode 100644
+index 0000000..23ae128
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/payments/split.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.PaymentsSplitPostLogic
