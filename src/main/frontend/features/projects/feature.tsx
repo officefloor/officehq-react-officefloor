@@ -23,6 +23,7 @@ type Invoice = {
   dueDate: string;
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
+type Tag = { id: number; name: string };
 
 type LineItem = {
   id: number;
@@ -217,6 +218,9 @@ function InvoiceDetail({
 function ProjectDetail({ project }: { project: Project }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [tagToAdd, setTagToAdd] = useState('');
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'DONE'>('ALL');
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
@@ -233,14 +237,43 @@ function ProjectDetail({ project }: { project: Project }) {
     setTasks(await res.json());
   }
 
+  async function loadTags() {
+    const [mine, all] = await Promise.all([
+      fetch(`/api/projects/${project.id}/tags`).then((r) => r.json()),
+      fetch('/api/tags').then((r) => r.json()),
+    ]);
+    setTags(mine);
+    setAllTags(all);
+  }
+
   useEffect(() => {
     void load();
     void loadTasks();
+    void loadTags();
   }, [project.id]);
 
   async function toggleTask(id: number) {
     await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
     await loadTasks();
+  }
+
+  async function addTag(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tagToAdd) {
+      return;
+    }
+    await fetch(`/api/projects/${project.id}/tags`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tagId: Number(tagToAdd) }),
+    });
+    setTagToAdd('');
+    await loadTags();
+  }
+
+  async function removeTag(id: number) {
+    await fetch(`/api/projects/${project.id}/tags/${id}/remove`, { method: 'POST' });
+    await loadTags();
   }
 
   async function submit(e: React.FormEvent) {
@@ -282,6 +315,41 @@ function ProjectDetail({ project }: { project: Project }) {
   return (
     <section data-testid="project-detail">
       <h2 data-testid="project-detail-name">{project.name}</h2>
+
+      <div data-testid="project-tags">
+        {tags.map((tag) => (
+          <span key={tag.id}>
+            <span data-testid={`project-tag-${tag.id}`}>{tag.name}</span>
+            <button
+              data-testid={`project-tag-remove-${tag.id}`}
+              type="button"
+              onClick={() => removeTag(tag.id)}
+            >
+              Remove
+            </button>
+          </span>
+        ))}
+      </div>
+
+      <form data-testid="project-tag-form" onSubmit={addTag}>
+        <select
+          data-testid="project-tag-add"
+          value={tagToAdd}
+          onChange={(e) => setTagToAdd(e.target.value)}
+        >
+          <option value="">Add a label</option>
+          {allTags
+            .filter((t) => !tags.some((mine) => mine.id === t.id))
+            .map((t) => (
+              <option key={t.id} value={String(t.id)}>
+                {t.name}
+              </option>
+            ))}
+        </select>
+        <button data-testid="project-tag-add-submit" type="submit">
+          Add label
+        </button>
+      </form>
 
       <select
         data-testid="task-filter"
