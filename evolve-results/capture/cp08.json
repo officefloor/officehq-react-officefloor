@@ -1,0 +1,314 @@
+{
+  "checkpoint": 8,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp08_dashboard",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "I want a home screen. Show me how many clients and projects I have. Show me how much money I\nam still owed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nI want a home screen. Show me how many clients and projects I have. Show me how much money I\nam still owed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "46ff4f4bea2a353bfeefb78bec013c7c73161467",
+  "reset_sha": "",
+  "preagent_sha": "c12515aaff6d8ad4f433937c93f9bb211e4c8c7d",
+  "prev_sha": "c12515aaff6d8ad4f433937c93f9bb211e4c8c7d",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.586044,
+    "input_tokens": 30,
+    "output_tokens": 5459,
+    "cache_read_tokens": 400070,
+    "cache_creation_tokens": 24818,
+    "num_turns": 15,
+    "duration_ms": 107225,
+    "duration_api_ms": 91214,
+    "model": "claude-opus-4-8",
+    "session_id": "6c2443ee-e0b2-4808-bd37-5627ad32667e",
+    "stop_reason": "success",
+    "result_text": "The test passes.\n\nI implemented the home screen as a full-stack, additive change:\n\n**Backend** (new files, no edits to central infra):\n- `DashboardSummary.java` \u2014 record DTO with `clientsCount`, `projectsCount`, `outstandingTotal`.\n- `DashboardRepository.java` \u2014 counts clients/projects and sums UNPAID invoice amounts (`COALESCE(SUM(amount), 0)` so it's never null).\n- `DashboardGetLogic.java` + `rest/api/dashboard.GET.yml` \u2014 new `GET /api/dashboard` endpoint under `/api/` so it bypasses the SPA fallback.\n\n**Frontend** (new feature folder, auto-discovered by the router glob):\n- `features/dashboard/DashboardPage.tsx` \u2014 fetches the summary and renders the three anchors the spec expects: `dashboard-clients-count`, `dashboard-projects-count`, `dashboard-outstanding-total` (formatted to 2 decimals, e.g. `300.00`).\n- `features/dashboard/route.tsx` \u2014 registers `section: 'dashboard'` (giving `nav-dashboard`) with `order: 0` so it's the first nav item / landing page.\n\nNo schema migration was needed since the dashboard only reads existing tables, and the spec expects no audit records. `bin/e2e` passes (1/1).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.586044,
+        "num_turns": 15,
+        "duration_ms": 107225,
+        "duration_api_ms": 91214,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp08.agent.jsonl",
+  "agent_diff_file": "cp08.agent.diff",
+  "build_log_file": "cp08.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 14,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 245,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 198,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 211,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 271,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 326,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 208,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 361,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 350,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 169,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 187,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 6.99,
+            "impact": 642,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/dashboard/DashboardPage.tsx",
+                "lang": "typescript",
+                "cost": 321,
+                "mutation": 0,
+                "godclass": 321,
+                "mut_fns": 0,
+                "new_fns": 3
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/dashboard/DashboardPage.tsx",
+                "name": "DashboardPage",
+                "container": "",
+                "cc": 10,
+                "wmc_other": 0,
+                "cost": 300,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/dashboard/DashboardPage.tsx",
+                "name": "load",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 0,
+                "cost": 12,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/frontend/features/dashboard/DashboardPage.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 9,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 2,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 1.56,
+            "impact": 48,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/DashboardRepository.java",
+                "lang": "java",
+                "cost": 13,
+                "mutation": 0,
+                "godclass": 13,
+                "mut_fns": 0,
+                "new_fns": 2
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/DashboardGetLogic.java",
+                "lang": "java",
+                "cost": 3,
+                "mutation": 0,
+                "godclass": 3,
+                "mut_fns": 0,
+                "new_fns": 1
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/DashboardRepository.java",
+                "name": "DashboardRepository::summary",
+                "container": "DashboardRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 10,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/DashboardGetLogic.java",
+                "name": "DashboardGetLogic::service",
+                "container": "DashboardGetLogic",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/DashboardRepository.java",
+                "name": "DashboardRepository::DashboardRepository",
+                "container": "DashboardRepository",
+                "cc": 1,
+                "wmc_other": 0,
+                "cost": 3,
+                "kind": "godclass"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 0,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}

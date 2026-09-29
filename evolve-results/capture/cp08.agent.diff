@@ -1,0 +1,132 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+new file mode 100644
+index 0000000..3156c44
+--- /dev/null
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -0,0 +1,36 @@
++import React, { useEffect, useState } from 'react';
++
++// Dashboard feature: a read-only home screen summarising clients, projects and money still owed.
++// Owns its own state (CLAUDE.md — features own their state, no global store).
++type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
++
++export function DashboardPage() {
++  const [summary, setSummary] = useState<Summary | null>(null);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch('/api/dashboard');
++      if (res.ok) {
++        setSummary(await res.json());
++      }
++    }
++    void load();
++  }, []);
++
++  // Money owed is always shown to 2 decimal places (e.g. 300 -> "300.00").
++  const outstanding = Number(summary?.outstandingTotal ?? 0).toFixed(2);
++
++  return (
++    <section data-testid="dashboard-page">
++      <h1>Dashboard</h1>
++      <dl>
++        <dt>Clients</dt>
++        <dd data-testid="dashboard-clients-count">{summary?.clientsCount ?? 0}</dd>
++        <dt>Projects</dt>
++        <dd data-testid="dashboard-projects-count">{summary?.projectsCount ?? 0}</dd>
++        <dt>Outstanding</dt>
++        <dd data-testid="dashboard-outstanding-total">{outstanding}</dd>
++      </dl>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/dashboard/route.tsx b/src/main/frontend/features/dashboard/route.tsx
+new file mode 100644
+index 0000000..ee83260
+--- /dev/null
++++ b/src/main/frontend/features/dashboard/route.tsx
+@@ -0,0 +1,9 @@
++import type { FeatureRoute } from '../../router/routes';
++import { DashboardPage } from './DashboardPage';
++
++export const route: FeatureRoute = {
++  section: 'dashboard',
++  label: 'Dashboard',
++  order: 0,
++  Page: DashboardPage,
++};
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardGetLogic.java b/src/main/java/net/officefloor/hq/app/DashboardGetLogic.java
+new file mode 100644
+index 0000000..2adbc19
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardGetLogic.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/dashboard — counts of clients and projects plus the outstanding (unpaid) total. */
++public class DashboardGetLogic {
++
++    public void service(DashboardRepository repository, ObjectResponse<DashboardSummary> response) {
++        response.send(repository.summary());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardRepository.java b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+new file mode 100644
+index 0000000..f03e3dc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardRepository.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Repository;
++
++/** Read-only aggregate queries backing the home dashboard (counts + outstanding total). */
++@Repository
++public class DashboardRepository {
++
++    private final JdbcTemplate jdbc;
++
++    public DashboardRepository(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    public DashboardSummary summary() {
++        long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
++        long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
++        // Money still owed = sum of UNPAID invoice amounts across all projects. COALESCE keeps the
++        // total at 0.00 (never null) when nothing is outstanding.
++        BigDecimal outstanding = jdbc.queryForObject(
++                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'UNPAID'",
++                BigDecimal.class);
++        return new DashboardSummary(clients, projects, outstanding);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardSummary.java b/src/main/java/net/officefloor/hq/app/DashboardSummary.java
+new file mode 100644
+index 0000000..1f50bfe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardSummary.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * Cross-feature aggregate for the home dashboard: how many clients and projects exist, and the
++ * total still owed (sum of UNPAID invoice amounts across all projects). Serialised as JSON by
++ * GET /api/dashboard.
++ */
++public record DashboardSummary(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
++}
+diff --git a/src/main/resources/officefloor/rest/api/dashboard.GET.yml b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+new file mode 100644
+index 0000000..9b45586
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.DashboardGetLogic
