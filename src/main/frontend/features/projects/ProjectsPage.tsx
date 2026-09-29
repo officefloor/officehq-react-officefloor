@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ProjectBudget } from './ProjectBudget';
 import { ProjectInvoices } from './ProjectInvoices';
 import { ProjectNotes } from './ProjectNotes';
 import { ProjectTags } from './ProjectTags';
@@ -246,6 +247,7 @@ export function ProjectsPage() {
 
       {openProjectId !== null ? (
         <>
+          <ProjectBudget projectId={openProjectId} />
           <ProjectNotes projectId={openProjectId} />
           <ProjectTags projectId={openProjectId} />
           <ProjectTasks projectId={openProjectId} />

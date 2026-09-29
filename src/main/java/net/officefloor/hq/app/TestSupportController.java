@@ -84,12 +84,14 @@ public class TestSupportController {
         for (Map<String, Object> p : rows(fixture, "projects")) {
             Object status = p.get("status");
             Object archived = p.get("archived");
+            Object budget = p.get("budget");
             jdbc.update(
-                    "INSERT INTO projects (id, name, client_id, status, archived)"
-                            + " VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO projects (id, name, client_id, status, archived, budget)"
+                            + " VALUES (?, ?, ?, ?, ?, ?)",
                     id(p, "id"), p.get("name"), id(p, "clientId"),
                     status == null ? "ACTIVE" : status.toString(),
-                    archived != null && Boolean.parseBoolean(archived.toString()));
+                    archived != null && Boolean.parseBoolean(archived.toString()),
+                    budget == null ? null : new BigDecimal(budget.toString()));
         }
     }
 

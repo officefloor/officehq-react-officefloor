@@ -114,6 +114,23 @@ public class ProjectRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * A project's budget summary: the agreed budget (null when none is set), how much has been
+     * invoiced against it (the sum of its issued invoices' line-item totals — drafts are not yet
+     * invoiced), and what is left (budget minus invoiced, null when there is no budget).
+     */
+    public ProjectBudget budgetSummary(long id) {
+        java.math.BigDecimal budget = jdbc.queryForObject(
+                "SELECT budget FROM projects WHERE id = ?", java.math.BigDecimal.class, id);
+        java.math.BigDecimal invoiced = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM invoices i"
+                        + " JOIN line_items li ON li.invoice_id = i.id"
+                        + " WHERE i.project_id = ? AND i.status <> 'DRAFT'",
+                java.math.BigDecimal.class, id);
+        java.math.BigDecimal remaining = budget == null ? null : budget.subtract(invoiced);
+        return new ProjectBudget(budget, invoiced, remaining);
+    }
+
     public boolean delete(long id) {
         return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
     }
