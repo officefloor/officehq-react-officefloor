@@ -28,6 +28,15 @@ public class ProjectsPostLogic {
         if (!STATUSES.contains(status)) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Unknown project status: " + status);
         }
-        response.send(repository.create(name, body.getClientId(), status));
+        String code = body.getCode() == null ? "" : body.getCode().trim();
+        if (code.isEmpty()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "A job code is required.");
+        }
+        // No two jobs may share a code — reject the create when the code is already in use (mirrors
+        // the projects_code_unique constraint). CONFLICT so the front-end can flag the code field.
+        if (repository.existsByCode(code)) {
+            throw new HttpException(HttpStatus.CONFLICT, "A job with this code already exists.");
+        }
+        response.send(repository.create(name, body.getClientId(), status, code));
     }
 }

@@ -94,13 +94,15 @@ public class TestSupportController {
             Object status = p.get("status");
             Object archived = p.get("archived");
             Object budget = p.get("budget");
+            Object code = p.get("code");
             jdbc.update(
-                    "INSERT INTO projects (id, name, client_id, status, archived, budget)"
-                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO projects (id, name, client_id, status, archived, budget, code)"
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?)",
                     id(p, "id"), p.get("name"), id(p, "clientId"),
                     status == null ? "ACTIVE" : status.toString(),
                     archived != null && Boolean.parseBoolean(archived.toString()),
-                    budget == null ? null : new BigDecimal(budget.toString()));
+                    budget == null ? null : new BigDecimal(budget.toString()),
+                    code == null ? null : code.toString());
         }
     }
 

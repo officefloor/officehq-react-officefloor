@@ -7,5 +7,5 @@ package net.officefloor.hq.app;
  * state: ACTIVE, ON_HOLD or FINISHED.
  */
 public record Project(long id, String name, long clientId, String clientName, boolean archived,
-        String status) {
+        String status, String code) {
 }

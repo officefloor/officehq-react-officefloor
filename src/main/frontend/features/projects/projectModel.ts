@@ -9,6 +9,7 @@ export type Project = {
   clientName: string;
   archived: boolean;
   status: ProjectStatus;
+  code: string;
 };
 
 export type Client = { id: number; name: string };

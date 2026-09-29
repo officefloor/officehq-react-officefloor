@@ -19,10 +19,10 @@ public class ProjectRepository {
     private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
             (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
                     rs.getLong("client_id"), rs.getString("client_name"),
-                    rs.getBoolean("archived"), rs.getString("status"));
+                    rs.getBoolean("archived"), rs.getString("status"), rs.getString("code"));
 
     private static final String SELECT =
-            "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name"
+            "SELECT p.id, p.name, p.client_id, p.archived, p.status, p.code, c.name AS client_name"
                     + " FROM projects p JOIN clients c ON p.client_id = c.id";
 
     /**
@@ -124,20 +124,29 @@ public class ProjectRepository {
                 MAPPER, "%" + term.trim().toLowerCase() + "%");
     }
 
-    public Project create(String name, long clientId, String status) {
+    public Project create(String name, long clientId, String status, String code) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(con -> {
             var ps = con.prepareStatement(
-                    "INSERT INTO projects (name, client_id, status) VALUES (?, ?, ?)",
+                    "INSERT INTO projects (name, client_id, status, code) VALUES (?, ?, ?, ?)",
                     new String[] {"id"});
             ps.setString(1, name);
             ps.setLong(2, clientId);
             ps.setString(3, status);
+            ps.setString(4, code);
             return ps;
         }, keys);
         String clientName = jdbc.queryForObject(
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
-        return new Project(keys.getKey().longValue(), name, clientId, clientName, false, status);
+        return new Project(keys.getKey().longValue(), name, clientId, clientName, false, status,
+                code);
+    }
+
+    /** Whether any project already carries {@code code} — backs the "codes are unique" rule. */
+    public boolean existsByCode(String code) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM projects WHERE code = ?", Integer.class, code);
+        return count != null && count > 0;
     }
 
     /** Look up one project (with joined client name), or null when there is no such row. */

@@ -13,6 +13,8 @@ export function ProjectForm({
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
 
   // Default to the first client once the list arrives, without clobbering a chosen value.
   useEffect(() => {
@@ -21,14 +23,21 @@ export function ProjectForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setCodeError('');
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
+      body: JSON.stringify({ name, clientId: Number(clientId), status, code }),
     });
     if (res.ok) {
       onCreated(await res.json());
       setName('');
+      setCode('');
+    } else {
+      // A duplicate code (409) is rejected server-side; flag the code field so the owner can fix it.
+      setCodeError(
+        res.status === 409 ? 'That code is already in use.' : 'A job code is required.',
+      );
     }
   }
 
@@ -62,6 +71,17 @@ export function ProjectForm({
           </option>
         ))}
       </select>
+      <input
+        data-testid="project-form-code"
+        placeholder="Code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+      />
+      {codeError && (
+        <span data-testid="project-form-code-error" role="alert">
+          {codeError}
+        </span>
+      )}
       <button type="submit" data-testid="project-form-submit">
         Add job
       </button>

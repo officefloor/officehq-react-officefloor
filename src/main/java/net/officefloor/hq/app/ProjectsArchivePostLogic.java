@@ -24,6 +24,6 @@ public class ProjectsArchivePostLogic {
         repository.archive(existing.id());
         audit.record("PROJECT_ARCHIVED id=" + existing.id());
         response.send(new Project(existing.id(), existing.name(), existing.clientId(),
-                existing.clientName(), true, existing.status()));
+                existing.clientName(), true, existing.status(), existing.code()));
     }
 }

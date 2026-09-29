@@ -144,6 +144,7 @@ export function ProjectsPage() {
         <table data-testid="projects-table">
           <thead>
             <tr>
+              <th>Code</th>
               <th>Name</th>
               <th>Client</th>
               <th>Status</th>
@@ -153,6 +154,7 @@ export function ProjectsPage() {
           <tbody>
             {projects.map((p) => (
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
+                <td data-testid="project-code">{p.code}</td>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
                 <td data-testid="project-status">{p.status}</td>
