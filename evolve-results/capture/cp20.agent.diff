@@ -1,0 +1,296 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index b98e1a7..51dad45 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -16,6 +16,7 @@ type Invoice = {
+   issuedDate: string;
+   dueDate: string;
+ };
++type Task = { id: number; projectId: number; title: string; done: boolean };
+ 
+ function money(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+@@ -25,6 +26,7 @@ function money(amount: number): string {
+ // own invoice state, scoped to the one project it is showing.
+ function ProjectDetail({ project }: { project: Project }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
++  const [tasks, setTasks] = useState<Task[]>([]);
+   const [amount, setAmount] = useState('');
+   const [amountError, setAmountError] = useState('');
+   const [sortByDue, setSortByDue] = useState(false);
+@@ -34,10 +36,21 @@ function ProjectDetail({ project }: { project: Project }) {
+     setInvoices(await res.json());
+   }
+ 
++  async function loadTasks() {
++    const res = await fetch(`/api/tasks?projectId=${project.id}`);
++    setTasks(await res.json());
++  }
++
+   useEffect(() => {
+     void load();
++    void loadTasks();
+   }, [project.id]);
+ 
++  async function toggleTask(id: number) {
++    await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
++    await loadTasks();
++  }
++
+   async function submit(e: React.FormEvent) {
+     e.preventDefault();
+     const value = Number(amount);
+@@ -74,6 +87,22 @@ function ProjectDetail({ project }: { project: Project }) {
+     <section data-testid="project-detail">
+       <h2 data-testid="project-detail-name">{project.name}</h2>
+ 
++      <table data-testid="project-tasks-table">
++        <tbody>
++          {tasks.map((t) => (
++            <tr key={t.id} data-testid={`task-row-${t.id}`}>
++              <td data-testid="task-title">{t.title}</td>
++              <td data-testid="task-status">{t.done ? 'DONE' : 'OPEN'}</td>
++              <td>
++                <button data-testid={`task-toggle-${t.id}`} onClick={() => toggleTask(t.id)}>
++                  {t.done ? 'Reopen' : 'Tick off'}
++                </button>
++              </td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
+       <form data-testid="invoice-form" onSubmit={submit}>
+         <input
+           data-testid="invoice-form-amount"
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6a81b7d..b0fae39 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,6 +35,7 @@ public class TestSupportController {
+         // projects references clients; drop referential integrity so both tables can be truncated
+         // (and their identity counters restarted) regardless of FK order.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+@@ -97,5 +98,13 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
+                     args.toArray());
+         }
++        List<Map<String, Object>> tasks =
++                (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
++        for (Map<String, Object> t : tasks) {
++            jdbc.update("INSERT INTO tasks (id, project_id, title, done) VALUES (?, ?, ?, ?)",
++                    ((Number) t.get("id")).longValue(),
++                    ((Number) t.get("projectId")).longValue(), t.get("title"),
++                    Boolean.TRUE.equals(t.get("done")));
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/task/ListTasks.java b/src/main/java/net/officefloor/hq/app/task/ListTasks.java
+new file mode 100644
+index 0000000..8b7fb11
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ListTasks.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.task;
++
++import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/tasks?projectId=<id> — every task on one project, oldest first. */
++public class ListTasks {
++
++    public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
++            ObjectResponse<List<TaskView>> response) {
++        List<TaskView> tasks = jdbc.query(
++                "SELECT id, project_id, title, done FROM tasks WHERE project_id = ? ORDER BY id",
++                (rs, i) -> new TaskView(rs.getLong("id"), rs.getLong("project_id"),
++                        rs.getString("title"), rs.getBoolean("done")),
++                Long.valueOf(projectId));
++        response.send(tasks);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/Task.java b/src/main/java/net/officefloor/hq/app/task/Task.java
+new file mode 100644
+index 0000000..e2f9573
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/Task.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.task;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A checklist item on a project: the project it belongs to, a title, and whether it is done. */
++@Entity
++@Table(name = "tasks")
++public class Task {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "project_id")
++    private Long projectId;
++
++    private String title;
++
++    private boolean done;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public void setProjectId(Long projectId) {
++        this.projectId = projectId;
++    }
++
++    public String getTitle() {
++        return title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
++    public boolean isDone() {
++        return done;
++    }
++
++    public void setDone(boolean done) {
++        this.done = done;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskRepository.java b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+new file mode 100644
+index 0000000..92b3bf6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.task;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Task}. */
++public interface TaskRepository extends JpaRepository<Task, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/TaskView.java b/src/main/java/net/officefloor/hq/app/task/TaskView.java
+new file mode 100644
+index 0000000..8b8f806
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/TaskView.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.task;
++
++/** A task as the project detail surfaces it: id, its project, the title, and whether it is done. */
++public class TaskView {
++
++    private final Long id;
++    private final Long projectId;
++    private final String title;
++    private final boolean done;
++
++    public TaskView(Long id, Long projectId, String title, boolean done) {
++        this.id = id;
++        this.projectId = projectId;
++        this.title = title;
++        this.done = done;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public String getTitle() {
++        return title;
++    }
++
++    public boolean isDone() {
++        return done;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/task/ToggleTask.java b/src/main/java/net/officefloor/hq/app/task/ToggleTask.java
+new file mode 100644
+index 0000000..2e84a24
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/task/ToggleTask.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.task;
++
++import net.officefloor.hq.app.Audit;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/tasks/{id}/toggle — tick a task off or reopen it: flip its done flag and record the
++ * fact to the audit file so it can be checked back later.
++ */
++public class ToggleTask {
++
++    public void service(@HttpPathParameter("id") String id, TaskRepository repository,
++            Audit audit, ObjectResponse<TaskView> response) {
++        Long taskId = Long.valueOf(id);
++        Task task = repository.findById(taskId)
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such task"));
++        task.setDone(!task.isDone());
++        Task saved = repository.save(task);
++        audit.record((saved.isDone() ? "TASK_DONE" : "TASK_REOPENED") + " id=" + saved.getId());
++        response.send(new TaskView(saved.getId(), saved.getProjectId(), saved.getTitle(),
++                saved.isDone()));
++    }
++}
+diff --git a/src/main/resources/db/migration/V12__tasks.sql b/src/main/resources/db/migration/V12__tasks.sql
+new file mode 100644
+index 0000000..8e6c7ef
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__tasks.sql
+@@ -0,0 +1,10 @@
++-- Project tasks feature: a checklist item on a project (title + whether it is done).
++-- BY DEFAULT identity so the test seed can insert explicit ids (fixture ids), while normal
++-- creates still auto-generate. project_id is a required foreign key onto projects; done tracks
++-- whether the task has been ticked off (defaults to open).
++CREATE TABLE tasks (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    project_id BIGINT NOT NULL REFERENCES projects(id),
++    title      VARCHAR(255) NOT NULL,
++    done       BOOLEAN NOT NULL DEFAULT FALSE
++);
+diff --git a/src/main/resources/officefloor/rest/api/tasks.GET.yml b/src/main/resources/officefloor/rest/api/tasks.GET.yml
+new file mode 100644
+index 0000000..4fe38bf
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/tasks.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.task.ListTasks
+diff --git a/src/main/resources/officefloor/rest/api/tasks/{id}/toggle.POST.yml b/src/main/resources/officefloor/rest/api/tasks/{id}/toggle.POST.yml
+new file mode 100644
+index 0000000..8e80df8
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/tasks/{id}/toggle.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.task.ToggleTask
