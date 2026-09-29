@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { Feature } from '../../router/routes';
 
 // Clients feature: add a client (name + email) and list every client. Opening a client
@@ -27,21 +27,38 @@ function money(amount: number): string {
   })}`;
 }
 
+// Every client (and contact) needs a proper email. Same shape the server enforces (see CreateClient
+// / CreateContact) so the UI and the API agree on what "valid" means.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmail(value: string): boolean {
+  return EMAIL_RE.test(value.trim());
+}
+
+// Load a JSON resource from `url` into state, refetching whenever the url changes, and hand back a
+// `reload` for callers that mutate the resource and need to pull the fresh version. Every client
+// panel reads one url this way, so this is where that fetch-into-state pattern lives once.
+function useJsonResource<T>(url: string, initial: T): [T, () => Promise<void>] {
+  const [data, setData] = useState<T>(initial);
+  const reload = useCallback(async () => {
+    const res = await fetch(url);
+    setData(await res.json());
+  }, [url]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  return [data, reload];
+}
+
 // A client's statement: all of their invoices in one place, each with what is still owed on it, and
 // the total still owed across them all. Kept behind an opener so the client detail stays compact.
 // Owns its own statement state, scoped to the one client it is showing; talks to that client's own
 // /api/clients/<id>/statement endpoint.
 function ClientStatement({ client }: { client: Client }) {
-  const [statement, setStatement] = useState<ClientStatement | null>(null);
+  const [statement] = useJsonResource<ClientStatement | null>(
+    `/api/clients/${client.id}/statement`,
+    null,
+  );
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    async function load() {
-      const res = await fetch(`/api/clients/${client.id}/statement`);
-      setStatement(await res.json());
-    }
-    void load();
-  }, [client.id]);
 
   return (
     <section data-testid="client-statement">
@@ -70,15 +87,10 @@ function ClientStatement({ client }: { client: Client }) {
 // summary state, scoped to the one client it is showing; talks to that client's own
 // /api/clients/<id>/summary endpoint.
 function ClientSummaryBadges({ client }: { client: Client }) {
-  const [summary, setSummary] = useState<ClientSummary>({ projectCount: 0, contactCount: 0 });
-
-  useEffect(() => {
-    async function load() {
-      const res = await fetch(`/api/clients/${client.id}/summary`);
-      setSummary(await res.json());
-    }
-    void load();
-  }, [client.id]);
+  const [summary] = useJsonResource<ClientSummary>(`/api/clients/${client.id}/summary`, {
+    projectCount: 0,
+    contactCount: 0,
+  });
 
   return (
     <section data-testid="client-summary">
@@ -88,51 +100,114 @@ function ClientSummaryBadges({ client }: { client: Client }) {
   );
 }
 
-// A client's contacts: the people the user keeps for them (name, email, role), with a form to add
-// another. Owns its own contact state, scoped to the one client it is showing; talks to that
-// client's own /api/clients/<id>/contacts endpoints.
-function ClientContacts({ client }: { client: Client }) {
-  const [contacts, setContacts] = useState<Contact[]>([]);
+// The add-a-contact form: name, email and role, all required, with the same email check the server
+// runs. Owns only its own field state and clears itself once the parent has taken the new contact.
+function ContactForm({
+  onAdd,
+}: {
+  onAdd: (contact: { name: string; email: string; role: string }) => Promise<void>;
+}) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
   const [emailError, setEmailError] = useState('');
-
-  async function load() {
-    const res = await fetch(`/api/clients/${client.id}/contacts`);
-    setContacts(await res.json());
-  }
-
-  useEffect(() => {
-    void load();
-  }, [client.id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !role.trim()) {
       return;
     }
-    // A contact needs a proper email too; same shape the server enforces (see CreateContact).
-    if (!EMAIL_RE.test(email.trim())) {
+    if (!isValidEmail(email)) {
       setEmailError('Enter a valid email address.');
       return;
     }
     setEmailError('');
-    await fetch(`/api/clients/${client.id}/contacts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, role }),
-    });
+    await onAdd({ name, email, role });
     setName('');
     setEmail('');
     setRole('');
-    await load();
+  }
+
+  return (
+    <form data-testid="contact-form" onSubmit={submit}>
+      <input
+        data-testid="contact-form-name"
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        data-testid="contact-form-email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      {emailError && (
+        <p data-testid="contact-form-email-error" role="alert">
+          {emailError}
+        </p>
+      )}
+      <input
+        data-testid="contact-form-role"
+        placeholder="Role"
+        value={role}
+        onChange={(e) => setRole(e.target.value)}
+      />
+      <button data-testid="contact-form-submit" type="submit">
+        Add contact
+      </button>
+    </form>
+  );
+}
+
+// The contacts list itself: a row per contact with a control to promote it to the client's primary.
+function ContactsTable({
+  contacts,
+  onMakePrimary,
+}: {
+  contacts: Contact[];
+  onMakePrimary: (id: number) => void;
+}) {
+  return (
+    <table data-testid="client-contacts-table">
+      <tbody>
+        {contacts.map((ct) => (
+          <tr key={ct.id} data-testid={`contact-row-${ct.id}`}>
+            <td data-testid="contact-name">{ct.name}</td>
+            <td data-testid="contact-email">{ct.email}</td>
+            <td data-testid="contact-role">{ct.role}</td>
+            <td>
+              <button data-testid={`contact-primary-${ct.id}`} onClick={() => onMakePrimary(ct.id)}>
+                Make primary
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// A client's contacts: the people the user keeps for them (name, email, role), with a form to add
+// another. Owns its own contact state, scoped to the one client it is showing; talks to that
+// client's own /api/clients/<id>/contacts endpoints. The form and the table are their own pieces so
+// this stays a thin coordinator: load, add, promote, show who is primary.
+function ClientContacts({ client }: { client: Client }) {
+  const [contacts, reload] = useJsonResource<Contact[]>(`/api/clients/${client.id}/contacts`, []);
+
+  async function addContact(contact: { name: string; email: string; role: string }) {
+    await fetch(`/api/clients/${client.id}/contacts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(contact),
+    });
+    await reload();
   }
 
   // Pick this contact as the client's one main contact, then refresh so the new primary shows.
   async function makePrimary(id: number) {
     await fetch(`/api/contacts/${id}/primary`, { method: 'POST' });
-    await load();
+    await reload();
   }
 
   const primary = contacts.find((ct) => ct.primary) ?? null;
@@ -140,54 +215,8 @@ function ClientContacts({ client }: { client: Client }) {
   return (
     <section data-testid="client-contacts">
       <p data-testid="client-primary-contact">{primary ? primary.name : ''}</p>
-      <form data-testid="contact-form" onSubmit={submit}>
-        <input
-          data-testid="contact-form-name"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          data-testid="contact-form-email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        {emailError && (
-          <p data-testid="contact-form-email-error" role="alert">
-            {emailError}
-          </p>
-        )}
-        <input
-          data-testid="contact-form-role"
-          placeholder="Role"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-        />
-        <button data-testid="contact-form-submit" type="submit">
-          Add contact
-        </button>
-      </form>
-
-      <table data-testid="client-contacts-table">
-        <tbody>
-          {contacts.map((ct) => (
-            <tr key={ct.id} data-testid={`contact-row-${ct.id}`}>
-              <td data-testid="contact-name">{ct.name}</td>
-              <td data-testid="contact-email">{ct.email}</td>
-              <td data-testid="contact-role">{ct.role}</td>
-              <td>
-                <button
-                  data-testid={`contact-primary-${ct.id}`}
-                  onClick={() => makePrimary(ct.id)}
-                >
-                  Make primary
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ContactForm onAdd={addContact} />
+      <ContactsTable contacts={contacts} onMakePrimary={makePrimary} />
     </section>
   );
 }
@@ -197,17 +226,11 @@ function ClientContacts({ client }: { client: Client }) {
 // Shows only the client's ACTIVE projects by default (scope=active); the show-all toggle asks the
 // server for everything (scope=all), so the finished and hidden (archived) ones appear too.
 function ClientProjects({ client }: { client: Client }) {
-  const [projects, setProjects] = useState<Project[]>([]);
   const [showAll, setShowAll] = useState(false);
-
-  useEffect(() => {
-    async function load() {
-      const scope = showAll ? 'all' : 'active';
-      const res = await fetch(`/api/clients/${client.id}/projects?scope=${scope}`);
-      setProjects(await res.json());
-    }
-    void load();
-  }, [client.id, showAll]);
+  const [projects] = useJsonResource<Project[]>(
+    `/api/clients/${client.id}/projects?scope=${showAll ? 'all' : 'active'}`,
+    [],
+  );
 
   return (
     <section data-testid="client-projects">
@@ -227,50 +250,120 @@ function ClientProjects({ client }: { client: Client }) {
   );
 }
 
-// Every client needs a proper email. Same shape the server enforces (see CreateClient) so the UI
-// and the API agree on what "valid" means.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// A name-and-email form for a client, used to add one and reusable for correcting one. `testid` is
+// the anchor prefix (its fields are `${testid}-name` / `-email` / `-email-error` / `-submit`), so a
+// second instance (e.g. an edit form) just passes a different prefix. Validates the email format the
+// way the server does; `onSubmit` returns an error string to show (e.g. a duplicate the server
+// rejected) or null on success, in which case the form clears back to its initial values.
+function ClientForm({
+  testid,
+  submitLabel,
+  initial = { name: '', email: '' },
+  onSubmit,
+}: {
+  testid: string;
+  submitLabel: string;
+  initial?: { name: string; email: string };
+  onSubmit: (values: { name: string; email: string }) => Promise<string | null>;
+}) {
+  const [name, setName] = useState(initial.name);
+  const [email, setEmail] = useState(initial.email);
+  const [emailError, setEmailError] = useState('');
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isValidEmail(email)) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    const error = await onSubmit({ name, email });
+    if (error) {
+      setEmailError(error);
+      return;
+    }
+    setEmailError('');
+    setName(initial.name);
+    setEmail(initial.email);
+  }
+
+  return (
+    <form data-testid={testid} onSubmit={submit}>
+      <input
+        data-testid={`${testid}-name`}
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        data-testid={`${testid}-email`}
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      {emailError && (
+        <p data-testid={`${testid}-email-error`} role="alert">
+          {emailError}
+        </p>
+      )}
+      <button data-testid={`${testid}-submit`} type="submit">
+        {submitLabel}
+      </button>
+    </form>
+  );
+}
+
+// The client list: a row per client with controls to open its detail or archive it.
+function ClientsTable({
+  clients,
+  onOpen,
+  onArchive,
+}: {
+  clients: Client[];
+  onOpen: (id: number) => void;
+  onArchive: (id: number) => void;
+}) {
+  return (
+    <table data-testid="clients-table">
+      <tbody>
+        {clients.map((c) => (
+          <tr key={c.id} data-testid={`client-row-${c.id}`}>
+            <td data-testid="client-name">{c.name}</td>
+            <td data-testid="client-email">{c.email}</td>
+            <td>
+              <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
+                Open
+              </button>
+              <button data-testid={`client-archive-${c.id}`} onClick={() => onArchive(c.id)}>
+                Archive
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState('');
+  const [clients, reload] = useJsonResource<Client[]>('/api/clients', []);
   // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
   // substring match on the client name; an empty box shows everyone.
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
 
-  async function load() {
-    const res = await fetch('/api/clients');
-    setClients(await res.json());
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!EMAIL_RE.test(email.trim())) {
-      setEmailError('Enter a valid email address.');
-      return;
-    }
-    setEmailError('');
+  // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
+  // form as-is rather than clearing or reloading (nothing was added).
+  async function addClient(values: { name: string; email: string }): Promise<string | null> {
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify(values),
     });
-    // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
-    // form as-is rather than clearing or reloading (nothing was added).
     if (!res.ok) {
-      setEmailError('A client with this email already exists.');
-      return;
+      return 'A client with this email already exists.';
     }
-    setName('');
-    setEmail('');
-    await load();
+    await reload();
+    return null;
   }
 
   // Tuck a client away: archived clients are retained server-side but drop off this list and out of
@@ -280,13 +373,11 @@ function ClientsPage() {
     if (openId === id) {
       setOpenId(null);
     }
-    await load();
+    await reload();
   }
 
-  const visible = clients.filter((c) =>
-    c.name.toLowerCase().includes(search.trim().toLowerCase()),
-  );
-
+  const term = search.trim().toLowerCase();
+  const visible = clients.filter((c) => c.name.toLowerCase().includes(term));
   const open = clients.find((c) => c.id === openId) ?? null;
 
   return (
@@ -297,50 +388,12 @@ function ClientsPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-      <form data-testid="client-form" onSubmit={submit}>
-        <input
-          data-testid="client-form-name"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          data-testid="client-form-email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        {emailError && (
-          <p data-testid="client-form-email-error" role="alert">
-            {emailError}
-          </p>
-        )}
-        <button data-testid="client-form-submit" type="submit">
-          Add client
-        </button>
-      </form>
+      <ClientForm testid="client-form" submitLabel="Add client" onSubmit={addClient} />
 
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
-        <table data-testid="clients-table">
-          <tbody>
-            {visible.map((c) => (
-              <tr key={c.id} data-testid={`client-row-${c.id}`}>
-                <td data-testid="client-name">{c.name}</td>
-                <td data-testid="client-email">{c.email}</td>
-                <td>
-                  <button data-testid={`client-open-${c.id}`} onClick={() => setOpenId(c.id)}>
-                    Open
-                  </button>
-                  <button data-testid={`client-archive-${c.id}`} onClick={() => archive(c.id)}>
-                    Archive
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ClientsTable clients={visible} onOpen={setOpenId} onArchive={archive} />
       )}
 
       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
