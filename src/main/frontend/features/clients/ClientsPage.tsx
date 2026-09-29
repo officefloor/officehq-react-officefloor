@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Client, archiveClient, fetchClients, fetchOutstanding } from './clientsApi';
+import {
+  Client,
+  archiveClient,
+  fetchArchivedClients,
+  fetchClients,
+  fetchOutstanding,
+  restoreClient,
+} from './clientsApi';
 import { ClientForm } from './ClientForm';
 import { ClientEditForm } from './ClientEditForm';
 import { ClientsTable } from './ClientsTable';
+import { ArchivedClients } from './ArchivedClients';
 import { ClientDetails } from './ClientDetails';
 
 // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
@@ -14,6 +22,8 @@ export function ClientsPage() {
   const [owed, setOwed] = useState<Record<number, number>>({});
   const [openClientId, setOpenClientId] = useState<number | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archived, setArchived] = useState<Client[]>([]);
 
   async function load() {
     const loaded = await fetchClients();
@@ -65,6 +75,28 @@ export function ClientsPage() {
     }
   }
 
+  // Flip between the main list and the archived clients, loading the archived list fresh each time
+  // it is opened so a client archived elsewhere shows up.
+  async function onToggleArchived() {
+    const next = !showArchived;
+    setShowArchived(next);
+    if (next) {
+      const loaded = await fetchArchivedClients();
+      if (loaded) {
+        setArchived(loaded);
+      }
+    }
+  }
+
+  // Bring an archived client back: it leaves the archived list and rejoins the main list.
+  async function onRestore(id: number) {
+    const res = await restoreClient(id);
+    if (res.ok) {
+      setArchived((prev) => prev.filter((c) => c.id !== id));
+      await load();
+    }
+  }
+
   return (
     <section data-testid="clients-page">
       <h1>Clients</h1>
@@ -89,7 +121,13 @@ export function ClientsPage() {
         </select>
       </label>
 
-      {clients.length === 0 ? (
+      <button type="button" data-testid="clients-show-archived" onClick={onToggleArchived}>
+        {showArchived ? 'Show active' : 'Show archived'}
+      </button>
+
+      {showArchived ? (
+        <ArchivedClients clients={archived} onRestore={onRestore} />
+      ) : clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
         <ClientsTable

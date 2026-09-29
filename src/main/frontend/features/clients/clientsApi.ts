@@ -68,3 +68,18 @@ export async function archiveClient(id: number): Promise<Response> {
     body: JSON.stringify({ id }),
   });
 }
+
+// Load the archived (tucked-away) clients, so they can be reviewed and brought back. Returns null
+// on failure so the caller can keep whatever it already has rather than blanking the list.
+export async function fetchArchivedClients(): Promise<Client[] | null> {
+  const res = await fetch('/api/clients/archived');
+  return res.ok ? res.json() : null;
+}
+
+export async function restoreClient(id: number): Promise<Response> {
+  return fetch('/api/clients/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+}

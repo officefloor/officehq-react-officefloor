@@ -51,9 +51,24 @@ public class ClientRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * List the archived (tucked-away) clients, so they can be reviewed and brought back. The inverse
+     * of {@link #findAll()}: only rows flagged archived, in the same id order.
+     */
+    public List<Client> findArchived() {
+        return jdbc.query(
+                "SELECT id, name, email FROM clients WHERE archived = TRUE ORDER BY id",
+                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
+    }
+
     /** Tuck a client away: flag it archived so it drops off the lists but its row is retained. */
     public boolean archive(long id) {
         return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
+    }
+
+    /** Bring an archived client back: clear the flag so it returns to the main list and search. */
+    public boolean restore(long id) {
+        return jdbc.update("UPDATE clients SET archived = FALSE WHERE id = ?", id) > 0;
     }
 
     /** Correct a client's name/email. Returns the updated row, or null when there is no such row. */

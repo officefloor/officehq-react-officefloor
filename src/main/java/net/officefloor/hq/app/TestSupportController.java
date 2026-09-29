@@ -86,8 +86,10 @@ public class TestSupportController {
 
     private void seedClients(Map<String, Object> fixture) {
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
-                    id(c, "id"), c.get("name"), c.get("email"));
+            Object archived = c.get("archived");
+            jdbc.update("INSERT INTO clients (id, name, email, archived) VALUES (?, ?, ?, ?)",
+                    id(c, "id"), c.get("name"), c.get("email"),
+                    archived != null && Boolean.parseBoolean(archived.toString()));
         }
     }
 
