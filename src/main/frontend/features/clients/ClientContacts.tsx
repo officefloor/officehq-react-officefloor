@@ -4,11 +4,16 @@ import React, { useEffect, useState } from 'react';
 // Owns its own state (CLAUDE.md — features own their state; no global store) and a form to add one.
 type Contact = { id: number; clientId: number; name: string; email: string; role: string };
 
+// A contact needs a proper email too. Kept in sync with the server-side check in ContactsPostLogic
+// and the DB CHECK constraint (V10__contacts_email_check.sql).
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 export function ClientContacts({ clientId }: { clientId: number }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch(`/api/contacts?clientId=${clientId}`);
@@ -23,6 +28,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    setEmailError('');
     const res = await fetch('/api/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,6 +44,8 @@ export function ClientContacts({ clientId }: { clientId: number }) {
       setName('');
       setEmail('');
       setRole('');
+    } else {
+      setEmailError('Enter a valid email address.');
     }
   }
 
@@ -53,6 +65,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <span data-testid="contact-form-email-error" role="alert">
+            {emailError}
+          </span>
+        )}
         <input
           data-testid="contact-form-role"
           placeholder="Role"
