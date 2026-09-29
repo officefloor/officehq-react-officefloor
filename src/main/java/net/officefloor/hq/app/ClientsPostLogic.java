@@ -19,6 +19,11 @@ public class ClientsPostLogic {
         if (!EMAIL.matcher(email).matches()) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A valid email address is required.");
         }
+        // Two clients cannot share an email — reject the create when the address is already in use
+        // (mirrors the front-end check in ClientsPage.tsx and the clients_email_unique constraint).
+        if (repository.existsByEmail(email)) {
+            throw new HttpException(HttpStatus.CONFLICT, "A client with this email already exists.");
+        }
         response.send(repository.create(body.getName(), email));
     }
 }

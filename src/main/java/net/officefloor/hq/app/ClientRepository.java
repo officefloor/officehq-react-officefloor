@@ -56,6 +56,17 @@ public class ClientRepository {
         return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
     }
 
+    /**
+     * Whether a client already uses this email. Two clients cannot share an email, so a create must
+     * be rejected when one exists (defence alongside the {@code clients_email_unique} constraint in
+     * V27). Considers every row, including archived ones — the email is still taken.
+     */
+    public boolean existsByEmail(String email) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM clients WHERE email = ?", Integer.class, email);
+        return count != null && count > 0;
+    }
+
     public Client create(String name, String email) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(con -> {

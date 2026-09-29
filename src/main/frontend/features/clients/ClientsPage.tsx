@@ -51,8 +51,15 @@ export function ClientsPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!EMAIL_PATTERN.test(email.trim())) {
+    const trimmedEmail = email.trim();
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
       setEmailError('Enter a valid email address.');
+      return;
+    }
+    // Two clients cannot share an email. Catch it here before hitting the server (the server and the
+    // clients_email_unique constraint are the authoritative guards).
+    if (clients.some((c) => c.email === trimmedEmail)) {
+      setEmailError('A client with this email already exists.');
       return;
     }
     setEmailError('');
@@ -66,6 +73,8 @@ export function ClientsPage() {
       setClients((prev) => [...prev, created]);
       setName('');
       setEmail('');
+    } else if (res.status === 409) {
+      setEmailError('A client with this email already exists.');
     } else {
       setEmailError('Enter a valid email address.');
     }
