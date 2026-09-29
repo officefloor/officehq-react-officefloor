@@ -71,6 +71,96 @@ function ClientStatement({ client }: { client: Client }) {
   );
 }
 
+// Recording one lump sum a client paid, split across several of their open invoices. Opening the
+// form lists each open invoice with a box for the share of the lump sum applied to it
+// (payment-alloc-<invoiceId>); submitting records one payment per share, so every invoice's balance
+// then reflects what was put against it. Owns its own form state, scoped to the one client; reads the
+// client's statement for the open invoices and talks to that client's own /api/clients/<id>/payments
+// endpoint.
+function ClientPayment({ client }: { client: Client }) {
+  const [statement, reload] = useJsonResource<ClientStatement | null>(
+    `/api/clients/${client.id}/statement`,
+    null,
+  );
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState('');
+  // The share typed against each invoice, held as raw strings keyed by invoice id so the inputs stay
+  // controlled.
+  const [allocations, setAllocations] = useState<Record<number, string>>({});
+
+  const openInvoices = (statement?.invoices ?? []).filter((inv) => inv.amountDue > 0);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (date.trim() === '') {
+      return;
+    }
+    const shares = openInvoices
+      .map((inv) => ({ invoiceId: inv.id, amount: Number(allocations[inv.id]) }))
+      .filter((s) => Number.isFinite(s.amount) && s.amount > 0);
+    if (shares.length === 0) {
+      return;
+    }
+    await fetch(`/api/clients/${client.id}/payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: Number(amount), date, allocations: shares }),
+    });
+    setOpen(false);
+    setAmount('');
+    setDate('');
+    setAllocations({});
+    await reload();
+  }
+
+  return (
+    <section data-testid="client-payment">
+      <button data-testid="client-record-payment" type="button" onClick={() => setOpen(true)}>
+        Record payment
+      </button>
+      {open && (
+        <form data-testid="payment-form" onSubmit={submit}>
+          <input
+            data-testid="payment-form-amount"
+            placeholder="Amount paid"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <input
+            data-testid="payment-form-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <table data-testid="payment-alloc-table">
+            <tbody>
+              {openInvoices.map((inv) => (
+                <tr key={inv.id} data-testid={`payment-alloc-row-${inv.id}`}>
+                  <td data-testid="payment-alloc-due">{money(inv.amountDue)}</td>
+                  <td>
+                    <input
+                      data-testid={`payment-alloc-${inv.id}`}
+                      placeholder="Applied to this invoice"
+                      value={allocations[inv.id] ?? ''}
+                      onChange={(e) =>
+                        setAllocations((prev) => ({ ...prev, [inv.id]: e.target.value }))
+                      }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button data-testid="payment-form-submit" type="submit">
+            Record payment
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 // A client's at-a-glance counts: how many projects and contacts are kept for them. Owns its own
 // summary state, scoped to the one client it is showing; talks to that client's own
 // /api/clients/<id>/summary endpoint.
@@ -449,6 +539,7 @@ function ClientsPage() {
 
       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
       {open && <ClientStatement key={`statement-${open.id}`} client={open} />}
+      {open && <ClientPayment key={`payment-${open.id}`} client={open} />}
       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
       {open && <ClientProjects key={open.id} client={open} />}
     </section>

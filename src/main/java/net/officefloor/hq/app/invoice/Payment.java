@@ -26,6 +26,11 @@ public class Payment {
     @Column(name = "paid_date")
     private LocalDate paidDate;
 
+    // When this payment is one share of a lump sum split across several invoices, the batch reference
+    // shared by every share of that one lump sum; null for a plain single payment.
+    @Column(name = "batch_ref")
+    private Long batchRef;
+
     public Long getId() {
         return id;
     }
@@ -56,5 +61,13 @@ public class Payment {
 
     public void setPaidDate(LocalDate paidDate) {
         this.paidDate = paidDate;
+    }
+
+    public Long getBatchRef() {
+        return batchRef;
+    }
+
+    public void setBatchRef(Long batchRef) {
+        this.batchRef = batchRef;
     }
 }
