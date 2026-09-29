@@ -1,0 +1,200 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 56c6b73..de63ddd 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,5 +1,5 @@
+ import React, { useEffect, useState } from 'react';
+-import { Client, archiveClient, fetchClients } from './clientsApi';
++import { Client, archiveClient, fetchClients, fetchOutstanding } from './clientsApi';
+ import { ClientForm } from './ClientForm';
+ import { ClientEditForm } from './ClientEditForm';
+ import { ClientsTable } from './ClientsTable';
+@@ -10,6 +10,8 @@ import { ClientDetails } from './ClientDetails';
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [search, setSearch] = useState('');
++  const [sort, setSort] = useState<'name' | 'outstanding'>('name');
++  const [owed, setOwed] = useState<Record<number, number>>({});
+   const [openClientId, setOpenClientId] = useState<number | null>(null);
+   const [editingClientId, setEditingClientId] = useState<number | null>(null);
+ 
+@@ -18,6 +20,10 @@ export function ClientsPage() {
+     if (loaded) {
+       setClients(loaded);
+     }
++    const outstanding = await fetchOutstanding();
++    if (outstanding) {
++      setOwed(Object.fromEntries(outstanding.map((o) => [o.clientId, o.outstanding])));
++    }
+   }
+ 
+   useEffect(() => {
+@@ -26,10 +32,18 @@ export function ClientsPage() {
+ 
+   // The list can get long; filter by name, case-insensitively. Empty box shows every client.
+   const query = search.trim().toLowerCase();
+-  const visibleClients = query
++  const filtered = query
+     ? clients.filter((c) => c.name.toLowerCase().includes(query))
+     : clients;
+ 
++  // Sort a copy so the underlying list order is untouched: by name (A→Z) or by how much each client
++  // owes (most owed first). A client with no outstanding total owes nothing.
++  const visibleClients = [...filtered].sort((a, b) =>
++    sort === 'outstanding'
++      ? (owed[b.id] ?? 0) - (owed[a.id] ?? 0)
++      : a.name.localeCompare(b.name),
++  );
++
+   function onCreated(created: Client) {
+     setClients((prev) => [...prev, created]);
+   }
+@@ -63,6 +77,18 @@ export function ClientsPage() {
+         onChange={(e) => setSearch(e.target.value)}
+       />
+ 
++      <label>
++        Sort
++        <select
++          data-testid="client-sort"
++          value={sort}
++          onChange={(e) => setSort(e.target.value as 'name' | 'outstanding')}
++        >
++          <option value="name">Name</option>
++          <option value="outstanding">Amount owed</option>
++        </select>
++      </label>
++
+       {clients.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
+       ) : (
+diff --git a/src/main/frontend/features/clients/clientsApi.ts b/src/main/frontend/features/clients/clientsApi.ts
+index 3629510..9288ed1 100644
+--- a/src/main/frontend/features/clients/clientsApi.ts
++++ b/src/main/frontend/features/clients/clientsApi.ts
+@@ -24,6 +24,9 @@ export function validateEmail(email: string, takenEmails: string[]): string {
+   return '';
+ }
+ 
++// How much a single client still owes across all of their invoices, keyed by client id.
++export type ClientOutstanding = { clientId: number; outstanding: number };
++
+ // Load the full client list. Returns null when the request fails so callers can keep what they
+ // already have rather than blanking the list.
+ export async function fetchClients(): Promise<Client[] | null> {
+@@ -31,6 +34,13 @@ export async function fetchClients(): Promise<Client[] | null> {
+   return res.ok ? res.json() : null;
+ }
+ 
++// Load how much each client owes, so the list can be sorted by amount owed. Returns null on failure
++// so the caller can fall back to a name sort rather than blanking the list.
++export async function fetchOutstanding(): Promise<ClientOutstanding[] | null> {
++  const res = await fetch('/api/clients/outstanding');
++  return res.ok ? res.json() : null;
++}
++
+ export async function createClient(input: { name: string; email: string }): Promise<Response> {
+   return fetch('/api/clients', {
+     method: 'POST',
+diff --git a/src/main/java/net/officefloor/hq/app/ClientOutstanding.java b/src/main/java/net/officefloor/hq/app/ClientOutstanding.java
+new file mode 100644
+index 0000000..9aa6a51
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientOutstanding.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * How much one client still owes: the sum of what is due across all of their invoices. Serialised as
++ * JSON by GET /api/clients/outstanding so the clients list can be sorted by amount owed.
++ */
++public record ClientOutstanding(long clientId, BigDecimal outstanding) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientOutstandingRepository.java b/src/main/java/net/officefloor/hq/app/ClientOutstandingRepository.java
+new file mode 100644
+index 0000000..7286cd2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientOutstandingRepository.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Repository;
++
++/**
++ * Read-only query giving how much each (non-archived) client still owes, so the clients list can be
++ * sorted by amount owed. Owed is worked out the same way "due" is elsewhere ({@link InvoiceRepository}):
++ * an invoice's line-item total, less any discount, plus tax, minus what has been paid. DRAFT invoices
++ * (not yet issued) and VOID invoices (cancelled) do not count toward money owed (V24).
++ */
++@Repository
++public class ClientOutstandingRepository {
++
++    private final JdbcTemplate jdbc;
++
++    public ClientOutstandingRepository(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    // An invoice's amount is the sum of its line items (qty * unit_price); zero when it has none.
++    private static final String AMOUNT_SUM =
++            "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
++                    + " WHERE li.invoice_id = i.id), 0)";
++
++    // What has been paid against the invoice: the sum of its payments (zero when none).
++    private static final String PAID_SUM =
++            "COALESCE((SELECT SUM(pm.amount) FROM payments pm"
++                    + " WHERE pm.invoice_id = i.id), 0)";
++
++    // The discount (V29) comes off the line-item total; tax (V30) is added on top of that, mirroring
++    // how "due" is derived on individual invoices so the sort matches what each invoice reads as owed.
++    private static final String TAXED_AMOUNT =
++            "(" + AMOUNT_SUM + " * (100 - i.discount_pct) / 100 * (100 + i.tax_pct) / 100)";
++
++    // What is still owed on the invoice: its taxed (post-discount) amount minus what has been paid.
++    private static final String DUE = "(" + TAXED_AMOUNT + " - " + PAID_SUM + ")";
++
++    /** Outstanding total per non-archived client (zero when a client owes nothing), ordered by id. */
++    public List<ClientOutstanding> outstandingByClient() {
++        return jdbc.query(
++                "SELECT c.id AS client_id, COALESCE(SUM(" + DUE + "), 0) AS outstanding"
++                        + " FROM clients c"
++                        + " LEFT JOIN projects p ON p.client_id = c.id"
++                        + " LEFT JOIN invoices i ON i.project_id = p.id"
++                        + " AND i.status NOT IN ('DRAFT', 'VOID')"
++                        + " WHERE c.archived = FALSE"
++                        + " GROUP BY c.id ORDER BY c.id",
++                (rs, n) -> new ClientOutstanding(
++                        rs.getLong("client_id"), rs.getBigDecimal("outstanding")));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientsOutstandingGetLogic.java b/src/main/java/net/officefloor/hq/app/ClientsOutstandingGetLogic.java
+new file mode 100644
+index 0000000..b55d399
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientsOutstandingGetLogic.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/outstanding — how much each client still owes, for sorting the clients list. */
++public class ClientsOutstandingGetLogic {
++
++    public void service(ClientOutstandingRepository repository,
++            ObjectResponse<List<ClientOutstanding>> response) {
++        response.send(repository.outstandingByClient());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml b/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml
+new file mode 100644
+index 0000000..6190277
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientsOutstandingGetLogic
