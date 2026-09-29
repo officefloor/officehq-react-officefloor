@@ -1,0 +1,54 @@
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index a63f8a4..465d4ff 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -15,8 +15,13 @@ function money(n: number): string {
+   return `$${Number(n).toFixed(2)}`;
+ }
+ 
++// The lifecycle stages an invoice can sit at (see V5/V8 migrations: DRAFT -> SENT -> PAID). The
++// filter narrows the all-invoices list to one stage; the empty value keeps every stage visible.
++const STAGES = ['DRAFT', 'SENT', 'PAID'];
++
+ export function AllInvoicesPage() {
+   const [invoices, setInvoices] = useState<InvoiceListing[]>([]);
++  const [stage, setStage] = useState<string>('');
+ 
+   useEffect(() => {
+     async function load() {
+@@ -28,9 +33,26 @@ export function AllInvoicesPage() {
+     void load();
+   }, []);
+ 
++  const shown = stage ? invoices.filter((inv) => inv.status === stage) : invoices;
++
+   return (
+     <section data-testid="all-invoices-page">
+       <h1>Invoices</h1>
++      <label>
++        Stage
++        <select
++          data-testid="invoice-status-filter"
++          value={stage}
++          onChange={(e) => setStage(e.target.value)}
++        >
++          <option value="">All stages</option>
++          {STAGES.map((s) => (
++            <option key={s} value={s}>
++              {s}
++            </option>
++          ))}
++        </select>
++      </label>
+       {invoices.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+@@ -43,7 +65,7 @@ export function AllInvoicesPage() {
+             </tr>
+           </thead>
+           <tbody>
+-            {invoices.map((inv) => (
++            {shown.map((inv) => (
+               <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                 <td data-testid="invoice-project">{inv.projectName}</td>
+                 <td data-testid="invoice-amount">{money(inv.amount)}</td>
