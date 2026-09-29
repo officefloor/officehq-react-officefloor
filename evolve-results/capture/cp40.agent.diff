@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index 8562fa1..5eb3e78 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -16,7 +16,7 @@ type StatementInvoice = {
+ type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
+ 
+ function money(n: number): string {
+-  return `$${Number(n).toFixed(2)}`;
++  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+ }
+ 
+ export function ClientStatement({ clientId }: { clientId: number }) {
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index bc46d8c..382900b 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -23,7 +23,10 @@ export function DashboardPage() {
+   }, []);
+ 
+   // Money owed is always shown with a currency symbol and 2 decimals (e.g. 300 -> "$300.00").
+-  const outstanding = `$${Number(summary?.outstandingTotal ?? 0).toFixed(2)}`;
++  const outstanding = Number(summary?.outstandingTotal ?? 0).toLocaleString('en-US', {
++    style: 'currency',
++    currency: 'USD',
++  });
+ 
+   return (
+     <section data-testid="dashboard-page">
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 8adbcea..a989349 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -21,7 +21,7 @@ type InvoicePage = {
+ };
+ 
+ function money(n: number): string {
+-  return `$${Number(n).toFixed(2)}`;
++  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+ }
+ 
+ // The lifecycle stages an invoice can sit at (see V5/V8 migrations: DRAFT -> SENT -> PAID). The
+diff --git a/src/main/frontend/features/projects/InvoiceDetail.tsx b/src/main/frontend/features/projects/InvoiceDetail.tsx
+index 9913723..0738326 100644
+--- a/src/main/frontend/features/projects/InvoiceDetail.tsx
++++ b/src/main/frontend/features/projects/InvoiceDetail.tsx
+@@ -13,7 +13,7 @@ type LineItem = {
+ };
+ 
+ function money(n: number): string {
+-  return `$${Number(n).toFixed(2)}`;
++  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+ }
+ 
+ type EditDraft = { description: string; qty: string; unitPrice: string };
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index bcab282..3997b92 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -15,7 +15,7 @@ type Invoice = {
+ };
+ 
+ function money(n: number): string {
+-  return `$${Number(n).toFixed(2)}`;
++  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+ }
+ 
+ export function ProjectInvoices({ projectId }: { projectId: number }) {
