@@ -16,13 +16,25 @@ public class ProjectRepository {
         this.jdbc = jdbc;
     }
 
+    private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
+            (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
+                    rs.getLong("client_id"), rs.getString("client_name"));
+
     public List<Project> findAll() {
         return jdbc.query(
                 "SELECT p.id, p.name, p.client_id, c.name AS client_name"
                         + " FROM projects p JOIN clients c ON p.client_id = c.id"
                         + " ORDER BY p.id",
-                (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
-                        rs.getLong("client_id"), rs.getString("client_name")));
+                MAPPER);
+    }
+
+    /** Projects done for one client — reused by the client detail view. */
+    public List<Project> findByClient(long clientId) {
+        return jdbc.query(
+                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
+                        + " WHERE p.client_id = ? ORDER BY p.id",
+                MAPPER, clientId);
     }
 
     public Project create(String name, long clientId) {

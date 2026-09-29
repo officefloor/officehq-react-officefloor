@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ClientProjects } from './ClientProjects';
 
 // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
 type Client = { id: number; name: string; email: string };
@@ -13,6 +14,7 @@ export function ClientsPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [openClientId, setOpenClientId] = useState<number | null>(null);
 
   // The list can get long; filter by name, case-insensitively. Empty box shows every client.
   const query = search.trim().toLowerCase();
@@ -94,6 +96,7 @@ export function ClientsPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -101,11 +104,22 @@ export function ClientsPage() {
               <tr key={c.id} data-testid={`client-row-${c.id}`}>
                 <td data-testid="client-name">{c.name}</td>
                 <td data-testid="client-email">{c.email}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`client-open-${c.id}`}
+                    onClick={() => setOpenClientId(c.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
     </section>
   );
 }
