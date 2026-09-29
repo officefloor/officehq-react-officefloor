@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 330ee0a..c6022c6 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -3,10 +3,15 @@ import React, { useEffect, useState } from 'react';
+ // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
+ type Client = { id: number; name: string; email: string };
+ 
++// Every client needs a proper email address. Kept in sync with the server-side check in
++// ClientsPostLogic and the DB CHECK constraint (V2__clients_email_check.sql).
++const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
++
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
++  const [emailError, setEmailError] = useState('');
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -21,6 +26,11 @@ export function ClientsPage() {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
++    if (!EMAIL_PATTERN.test(email.trim())) {
++      setEmailError('Enter a valid email address.');
++      return;
++    }
++    setEmailError('');
+     const res = await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -31,6 +41,8 @@ export function ClientsPage() {
+       setClients((prev) => [...prev, created]);
+       setName('');
+       setEmail('');
++    } else {
++      setEmailError('Enter a valid email address.');
+     }
+   }
+ 
+@@ -50,6 +62,11 @@ export function ClientsPage() {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <span data-testid="client-form-email-error" role="alert">
++            {emailError}
++          </span>
++        )}
+         <button type="submit" data-testid="client-form-submit">
+           Add client
+         </button>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java b/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
+index 128107d..3eea3a6 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ClientsPostLogic.java
+@@ -1,13 +1,24 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.regex.Pattern;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /** POST /api/clients — create a client from the request body. */
+ public class ClientsPostLogic {
+ 
++    // Every client needs a proper email address. Kept in sync with the front-end check in
++    // ClientsPage.tsx and the DB CHECK constraint (V2__clients_email_check.sql).
++    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
++
+     public void service(@RequestBody NewClient body, ClientRepository repository,
+             ObjectResponse<Client> response) {
+-        response.send(repository.create(body.getName(), body.getEmail()));
++        String email = body.getEmail() == null ? "" : body.getEmail().trim();
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A valid email address is required.");
++        }
++        response.send(repository.create(body.getName(), email));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V2__clients_email_check.sql b/src/main/resources/db/migration/V2__clients_email_check.sql
+new file mode 100644
+index 0000000..aa234ae
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__clients_email_check.sql
+@@ -0,0 +1,5 @@
++-- Every client needs a proper email address: enforce a basic well-formed email at the schema level
++-- (defence in depth alongside the front-end and server checks). Additive: a new versioned migration.
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_format
++    CHECK (REGEXP_LIKE(email, '^[^@\s]+@[^@\s]+\.[^@\s]+$'));
