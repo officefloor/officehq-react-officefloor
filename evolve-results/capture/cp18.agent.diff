@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/features/clients/ClientContacts.tsx b/src/main/frontend/features/clients/ClientContacts.tsx
+index b40912c..13a5b67 100644
+--- a/src/main/frontend/features/clients/ClientContacts.tsx
++++ b/src/main/frontend/features/clients/ClientContacts.tsx
+@@ -4,11 +4,16 @@ import React, { useEffect, useState } from 'react';
+ // Owns its own state (CLAUDE.md — features own their state; no global store) and a form to add one.
+ type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+ 
++// A contact needs a proper email too. Kept in sync with the server-side check in ContactsPostLogic
++// and the DB CHECK constraint (V10__contacts_email_check.sql).
++const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
++
+ export function ClientContacts({ clientId }: { clientId: number }) {
+   const [contacts, setContacts] = useState<Contact[]>([]);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [role, setRole] = useState('');
++  const [emailError, setEmailError] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/contacts?clientId=${clientId}`);
+@@ -23,6 +28,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
++    if (!EMAIL_PATTERN.test(email.trim())) {
++      setEmailError('Enter a valid email address.');
++      return;
++    }
++    setEmailError('');
+     const res = await fetch('/api/contacts', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -34,6 +44,8 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+       setName('');
+       setEmail('');
+       setRole('');
++    } else {
++      setEmailError('Enter a valid email address.');
+     }
+   }
+ 
+@@ -53,6 +65,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <span data-testid="contact-form-email-error" role="alert">
++            {emailError}
++          </span>
++        )}
+         <input
+           data-testid="contact-form-role"
+           placeholder="Role"
+diff --git a/src/main/java/net/officefloor/hq/app/ContactsPostLogic.java b/src/main/java/net/officefloor/hq/app/ContactsPostLogic.java
+index 4620c58..06e98c1 100644
+--- a/src/main/java/net/officefloor/hq/app/ContactsPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ContactsPostLogic.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.regex.Pattern;
+ import net.officefloor.server.http.HttpException;
+ import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.ObjectResponse;
+@@ -8,6 +9,10 @@ import org.springframework.web.bind.annotation.RequestBody;
+ /** POST /api/contacts — add a contact (name, email, role) to a client from the request body. */
+ public class ContactsPostLogic {
+ 
++    // Every contact needs a proper email address. Kept in sync with the front-end check in
++    // ClientContacts.tsx and the DB CHECK constraint (V10__contacts_email_check.sql).
++    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
++
+     public void service(@RequestBody NewContact body, ContactRepository repository,
+             ObjectResponse<Contact> response) {
+         if (body.getClientId() <= 0) {
+@@ -19,8 +24,8 @@ public class ContactsPostLogic {
+         if (name.isEmpty()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A contact name is required.");
+         }
+-        if (email.isEmpty()) {
+-            throw new HttpException(HttpStatus.BAD_REQUEST, "A contact email is required.");
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A valid contact email is required.");
+         }
+         if (role.isEmpty()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A contact role is required.");
+diff --git a/src/main/resources/db/migration/V10__contacts_email_check.sql b/src/main/resources/db/migration/V10__contacts_email_check.sql
+new file mode 100644
+index 0000000..835ea5c
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__contacts_email_check.sql
+@@ -0,0 +1,6 @@
++-- Contacts need a proper email address too: enforce a basic well-formed email at the schema level
++-- (defence in depth alongside the front-end and server checks), mirroring V2 for clients.
++-- Additive: a new versioned migration.
++ALTER TABLE contacts
++    ADD CONSTRAINT contacts_email_format
++    CHECK (REGEXP_LIKE(email, '^[^@\s]+@[^@\s]+\.[^@\s]+$'));
