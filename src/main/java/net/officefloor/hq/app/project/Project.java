@@ -19,6 +19,9 @@ public class Project {
 
     private String name;
 
+    /** Short reference code, unique across projects; set when the project is created. */
+    private String code;
+
     @Column(name = "client_id")
     private Long clientId;
 
@@ -43,6 +46,14 @@ public class Project {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 
     public Long getClientId() {

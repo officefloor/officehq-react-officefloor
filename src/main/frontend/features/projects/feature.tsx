@@ -12,6 +12,7 @@ type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
 type Project = {
   id: number;
   name: string;
+  code: string;
   clientId: number;
   clientName: string;
   archived: boolean;
@@ -753,6 +754,7 @@ function ProjectsTable({
         {projects.map((p) => (
           <tr key={p.id} data-testid={`project-row-${p.id}`}>
             <td data-testid="project-name">{p.name}</td>
+            <td data-testid="project-code">{p.code}</td>
             <td data-testid="project-client">{p.clientName}</td>
             <td data-testid="project-status">{p.status}</td>
             <td>
@@ -781,6 +783,8 @@ function ProjectsPage() {
   const [tagFilter, setTagFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -790,15 +794,23 @@ function ProjectsPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !clientId) {
+    setCodeError('');
+    if (!name.trim() || !clientId || !code.trim()) {
       return;
     }
-    await fetch('/api/projects', {
+    const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
+      body: JSON.stringify({ name, code, clientId: Number(clientId), status }),
     });
+    // A code must be unique across jobs; the server rejects a duplicate, which surfaces here as a
+    // field error rather than a new row.
+    if (!res.ok) {
+      setCodeError('That code is already in use');
+      return;
+    }
     setName('');
+    setCode('');
     setClientId('');
     setStatus('ACTIVE');
     await reloadProjects();
@@ -836,6 +848,12 @@ function ProjectsPage() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+        <input
+          data-testid="project-form-code"
+          placeholder="Reference code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
         <select
           data-testid="project-form-client"
           value={clientId}
@@ -860,6 +878,11 @@ function ProjectsPage() {
         <button data-testid="project-form-submit" type="submit">
           Add job
         </button>
+        {codeError && (
+          <p data-testid="project-form-code-error" role="alert">
+            {codeError}
+          </p>
+        )}
       </form>
 
       <button

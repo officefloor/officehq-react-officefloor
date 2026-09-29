@@ -20,6 +20,16 @@ public class CreateProject {
         if (body.getClientId() == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a client");
         }
+        String code = body.getCode() == null ? "" : body.getCode().trim();
+        if (code.isEmpty()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "A project requires a code");
+        }
+        // Two projects cannot share a reference code; reject a duplicate before it reaches the
+        // unique constraint (see V28__projects_code.sql).
+        if (repository.existsByCode(code)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "A project with this code already exists");
+        }
         // Default to ACTIVE when the request omits a status; reject anything unrecognised.
         String status = body.getStatus() == null ? "ACTIVE" : body.getStatus();
         if (!STATUSES.contains(status)) {
@@ -27,6 +37,7 @@ public class CreateProject {
         }
         Project project = new Project();
         project.setName(name);
+        project.setCode(code);
         project.setClientId(body.getClientId());
         project.setStatus(status);
         response.send(repository.save(project));

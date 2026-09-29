@@ -5,15 +5,17 @@ public class ProjectView {
 
     private final Long id;
     private final String name;
+    private final String code;
     private final Long clientId;
     private final String clientName;
     private final boolean archived;
     private final String status;
 
-    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
-            String status) {
+    public ProjectView(Long id, String name, String code, Long clientId, String clientName,
+            boolean archived, String status) {
         this.id = id;
         this.name = name;
+        this.code = code;
         this.clientId = clientId;
         this.clientName = clientName;
         this.archived = archived;
@@ -26,6 +28,10 @@ public class ProjectView {
 
     public String getName() {
         return name;
+    }
+
+    public String getCode() {
+        return code;
     }
 
     public Long getClientId() {

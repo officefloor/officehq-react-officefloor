@@ -84,6 +84,7 @@ public class TestSupportController {
             new Insert("projects")
                     .set("id", id(p, "id"))
                     .set("name", p.get("name"))
+                    .setIfPresent("code", p.get("code"))
                     .set("client_id", id(p, "clientId"))
                     .set("status", p.get("status") == null ? "ACTIVE" : p.get("status").toString())
                     .setIfPresent("archived", p.get("archived"))
