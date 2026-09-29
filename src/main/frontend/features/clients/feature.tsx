@@ -8,6 +8,29 @@ import type { Feature } from '../../router/routes';
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
 type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+type ClientSummary = { projectCount: number; contactCount: number };
+
+// A client's at-a-glance counts: how many projects and contacts are kept for them. Owns its own
+// summary state, scoped to the one client it is showing; talks to that client's own
+// /api/clients/<id>/summary endpoint.
+function ClientSummaryBadges({ client }: { client: Client }) {
+  const [summary, setSummary] = useState<ClientSummary>({ projectCount: 0, contactCount: 0 });
+
+  useEffect(() => {
+    async function load() {
+      const res = await fetch(`/api/clients/${client.id}/summary`);
+      setSummary(await res.json());
+    }
+    void load();
+  }, [client.id]);
+
+  return (
+    <section data-testid="client-summary">
+      <span data-testid="client-projects-count">{summary.projectCount}</span>
+      <span data-testid="client-contacts-count">{summary.contactCount}</span>
+    </section>
+  );
+}
 
 // A client's contacts: the people the user keeps for them (name, email, role), with a form to add
 // another. Owns its own contact state, scoped to the one client it is showing; talks to that
@@ -219,6 +242,7 @@ function ClientsPage() {
         </table>
       )}
 
+      {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}
       {open && <ClientProjects key={open.id} client={open} />}
     </section>
