@@ -1,0 +1,197 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index b976970..a9f81cc 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -65,6 +65,15 @@ function InvoiceDetail({
+   const [payments, setPayments] = useState<Payment[]>([]);
+   const [paymentAmount, setPaymentAmount] = useState('');
+   const [paymentDate, setPaymentDate] = useState('');
++  const [status, setStatus] = useState('');
++
++  // The status is worked out from the payments recorded against the invoice, so re-read it whenever
++  // a payment is added rather than flipping it by hand.
++  async function loadStatus() {
++    const res = await fetch(`/api/invoices/${invoiceId}`);
++    const inv: Invoice = await res.json();
++    setStatus(inv.status);
++  }
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
+@@ -101,11 +110,14 @@ function InvoiceDetail({
+     setPaymentAmount('');
+     setPaymentDate('');
+     await loadPayments();
++    await loadStatus();
++    onChange();
+   }
+ 
+   useEffect(() => {
+     void load();
+     void loadPayments();
++    void loadStatus();
+   }, [invoiceId]);
+ 
+   function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
+@@ -169,6 +181,8 @@ function InvoiceDetail({
+         Back to invoices
+       </button>
+ 
++      <p data-testid="invoice-status">{status}</p>
++
+       <table data-testid="invoice-lineitems-table">
+         <tbody>
+           {items.map((li) => (
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java b/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java
+index ab4cc4d..881affe 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java
+@@ -1,8 +1,10 @@
+ package net.officefloor.hq.app.invoice;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.time.format.DateTimeParseException;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.server.http.HttpException;
+ import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.HttpPathParameter;
+@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+ public class CreatePayment {
+ 
+     public void service(@HttpPathParameter("id") String id, @RequestBody NewPayment body,
+-            PaymentRepository repository, ObjectResponse<Payment> response) {
++            PaymentRepository repository, Audit audit, ObjectResponse<Payment> response) {
+         BigDecimal amount = body.getAmount();
+         if (amount == null || amount.signum() <= 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A payment amount must be more than zero");
+@@ -32,6 +34,11 @@ public class CreatePayment {
+         payment.setInvoiceId(Long.valueOf(id));
+         payment.setAmount(amount);
+         payment.setPaidDate(paidDate);
+-        response.send(repository.save(payment));
++        Payment saved = repository.save(payment);
++        // Recording the payment is what drives the invoice's status now, so the fact is audited here
++        // (the amount to two decimal places) instead of on a manual mark-paid.
++        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
++                + saved.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString());
++        response.send(saved);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+new file mode 100644
+index 0000000..2df3394
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/invoices/{id} — one invoice, with its amount (sum of line items), the amount still due
++ * (that less everything paid), and its status worked out from the payments recorded against it.
++ */
++public class GetInvoice {
++
++    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++            ObjectResponse<InvoiceView> response) {
++        InvoiceView invoice = jdbc.query(
++                "SELECT id, project_id, status, issued_date, due_date, "
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = invoices.id), 0) "
++                        + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
++                        + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
++                        + " WHERE id = ?",
++                (rs, i) -> {
++                    BigDecimal amount = rs.getBigDecimal("amount");
++                    BigDecimal amountDue = rs.getBigDecimal("amount_due");
++                    String status = InvoiceStatus.derive(rs.getString("status"), amount,
++                            amount.subtract(amountDue));
++                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
++                            amountDue, status, rs.getString("issued_date"),
++                            rs.getString("due_date"));
++                },
++                Long.valueOf(id)).stream().findFirst()
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
++        response.send(invoice);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+new file mode 100644
+index 0000000..844710d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceStatus.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/**
++ * Works out an invoice's payment status from what has actually been paid against it, rather than a
++ * flag flipped by hand: once some (but not all) of the amount is covered it reads PARTIAL, and once
++ * the payments cover the whole amount it reads PAID. With nothing paid yet the invoice keeps its
++ * stored lifecycle status (DRAFT before it is sent, SENT after).
++ */
++final class InvoiceStatus {
++
++    private InvoiceStatus() {
++    }
++
++    /**
++     * @param stored the invoice's own lifecycle status (e.g. DRAFT / SENT).
++     * @param amount the invoice total (sum of its line items).
++     * @param paid   the total of the payments recorded against it.
++     */
++    static String derive(String stored, BigDecimal amount, BigDecimal paid) {
++        if (paid == null || paid.signum() <= 0) {
++            return stored;
++        }
++        if (amount != null && amount.signum() > 0 && paid.compareTo(amount) >= 0) {
++            return "PAID";
++        }
++        return "PARTIAL";
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+index 0a0d689..106cf57 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoices.java
+@@ -22,10 +22,17 @@ public class ListInvoices {
+                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
+                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
+                         + " WHERE project_id = ? ORDER BY id",
+-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getBigDecimal("amount_due"),
+-                        rs.getString("status"), rs.getString("issued_date"),
+-                        rs.getString("due_date")),
++                (rs, i) -> {
++                    java.math.BigDecimal amount = rs.getBigDecimal("amount");
++                    java.math.BigDecimal amountDue = rs.getBigDecimal("amount_due");
++                    // Paid = the whole amount less what is still due; the status is worked out from
++                    // that rather than read from the stored flag.
++                    String status = InvoiceStatus.derive(rs.getString("status"), amount,
++                            amount.subtract(amountDue));
++                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
++                            amountDue, status, rs.getString("issued_date"),
++                            rs.getString("due_date"));
++                },
+                 Long.valueOf(projectId));
+         response.send(invoices);
+     }
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{id}.GET.yml
+new file mode 100644
+index 0000000..c6bd140
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.GetInvoice
