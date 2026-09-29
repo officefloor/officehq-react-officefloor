@@ -27,10 +27,12 @@ public class CreateLineItem {
         if (unitPrice == null || unitPrice.signum() < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A line item price cannot be negative");
         }
+        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
         LineItem item = new LineItem();
         item.setInvoiceId(Long.valueOf(id));
         item.setDescription(description);
         item.setQty(qty);
+        item.setUnit(unit);
         item.setUnitPrice(unitPrice);
         response.send(repository.save(item));
     }

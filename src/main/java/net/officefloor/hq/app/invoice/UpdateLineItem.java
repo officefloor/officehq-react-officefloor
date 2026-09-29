@@ -36,8 +36,10 @@ public class UpdateLineItem {
         if (unitPrice == null || unitPrice.signum() < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A line item price cannot be negative");
         }
+        String unit = body.getUnit() == null ? "" : body.getUnit().trim();
         item.setDescription(description);
         item.setQty(qty);
+        item.setUnit(unit);
         item.setUnitPrice(unitPrice);
         response.send(repository.save(item));
     }

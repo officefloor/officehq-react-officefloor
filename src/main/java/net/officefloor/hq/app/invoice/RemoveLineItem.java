@@ -22,7 +22,7 @@ public class RemoveLineItem {
             throw new HttpException(HttpStatus.NOT_FOUND, "No such line item on this invoice");
         }
         LineItemView removed = new LineItemView(item.getId(), item.getInvoiceId(),
-                item.getDescription(), item.getQty(), item.getUnitPrice());
+                item.getDescription(), item.getQty(), item.getUnit(), item.getUnitPrice());
         repository.deleteById(itemId);
         response.send(removed);
     }

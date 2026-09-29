@@ -124,10 +124,11 @@ public class TestSupportController {
         long invoiceId = id(invoice, "id");
         for (Map<String, Object> li : rows(invoice, "lineItems")) {
             jdbc.update(
-                    "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
-                            + " VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO line_items (id, invoice_id, description, qty, unit, unit_price)"
+                            + " VALUES (?, ?, ?, ?, ?, ?)",
                     id(li, "id"), invoiceId, li.get("description"),
                     ((Number) li.get("qty")).intValue(),
+                    li.get("unit") == null ? "" : li.get("unit").toString(),
                     ((Number) li.get("unitPrice")).doubleValue());
         }
     }

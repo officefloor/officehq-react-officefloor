@@ -11,10 +11,10 @@ public class ListInvoiceLineItems {
     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
             ObjectResponse<List<LineItemView>> response) {
         List<LineItemView> items = jdbc.query(
-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items "
+                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items "
                         + "WHERE invoice_id = ? ORDER BY id",
                 (rs, i) -> new LineItemView(rs.getLong("id"), rs.getLong("invoice_id"),
-                        rs.getString("description"), rs.getInt("qty"),
+                        rs.getString("description"), rs.getInt("qty"), rs.getString("unit"),
                         rs.getBigDecimal("unit_price")),
                 Long.valueOf(id));
         response.send(items);

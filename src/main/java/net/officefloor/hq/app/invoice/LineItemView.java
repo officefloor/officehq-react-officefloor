@@ -9,14 +9,16 @@ public class LineItemView {
     private final Long invoiceId;
     private final String description;
     private final Integer qty;
+    private final String unit;
     private final BigDecimal unitPrice;
 
-    public LineItemView(Long id, Long invoiceId, String description, Integer qty,
+    public LineItemView(Long id, Long invoiceId, String description, Integer qty, String unit,
             BigDecimal unitPrice) {
         this.id = id;
         this.invoiceId = invoiceId;
         this.description = description;
         this.qty = qty;
+        this.unit = unit;
         this.unitPrice = unitPrice;
     }
 
@@ -34,6 +36,10 @@ public class LineItemView {
 
     public Integer getQty() {
         return qty;
+    }
+
+    public String getUnit() {
+        return unit;
     }
 
     public BigDecimal getUnitPrice() {

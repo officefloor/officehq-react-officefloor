@@ -34,6 +34,7 @@ type LineItem = {
   invoiceId: number;
   description: string;
   qty: number;
+  unit: string;
   unitPrice: number;
 };
 
@@ -59,7 +60,7 @@ type ProjectBudget = { budget: number | null; invoiced: number; remaining: numbe
 
 // One charge line while it is being edited on screen: the fields are held as raw strings so the
 // inputs stay controlled and the total can recompute live as they change.
-type EditItem = { id: number; description: string; qty: string; unitPrice: string };
+type EditItem = { id: number; description: string; qty: string; unit: string; unitPrice: string };
 
 // An opened invoice's detail: the things it is charging for, listed as line items (description, how
 // many, price each), the total worked out for you, and a form to add another line. Each line can be
@@ -77,6 +78,7 @@ function InvoiceDetail({
   const [items, setItems] = useState<EditItem[]>([]);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
+  const [unit, setUnit] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -99,6 +101,7 @@ function InvoiceDetail({
         id: li.id,
         description: li.description,
         qty: String(li.qty),
+        unit: li.unit,
         unitPrice: String(li.unitPrice),
       })),
     );
@@ -136,7 +139,11 @@ function InvoiceDetail({
     void loadStatus();
   }, [invoiceId]);
 
-  function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
+  function editField(
+    id: number,
+    field: 'description' | 'qty' | 'unit' | 'unitPrice',
+    value: string,
+  ) {
     setItems((prev) => prev.map((li) => (li.id === id ? { ...li, [field]: value } : li)));
   }
 
@@ -155,6 +162,7 @@ function InvoiceDetail({
       body: JSON.stringify({
         description: li.description,
         qty: Number(li.qty),
+        unit: li.unit,
         unitPrice: Number(li.unitPrice),
       }),
     });
@@ -179,11 +187,13 @@ function InvoiceDetail({
       body: JSON.stringify({
         description,
         qty: Number(qty),
+        unit,
         unitPrice: Number(unitPrice),
       }),
     });
     setDescription('');
     setQty('');
+    setUnit('');
     setUnitPrice('');
     await load();
     onChange();
@@ -210,13 +220,8 @@ function InvoiceDetail({
                   onChange={(e) => editField(li.id, 'description', e.target.value)}
                 />
               </td>
-              <td>
-                <input
-                  data-testid="lineitem-qty"
-                  value={li.qty}
-                  onChange={(e) => editField(li.id, 'qty', e.target.value)}
-                />
-              </td>
+              <td data-testid="lineitem-qty">{li.qty}</td>
+              <td data-testid="lineitem-unit">{li.unit}</td>
               <td>
                 <input
                   data-testid="lineitem-unitprice"
@@ -260,6 +265,12 @@ function InvoiceDetail({
           placeholder="How many"
           value={qty}
           onChange={(e) => setQty(e.target.value)}
+        />
+        <input
+          data-testid="lineitem-form-unit"
+          placeholder="Unit"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
         />
         <input
           data-testid="lineitem-form-unitprice"
