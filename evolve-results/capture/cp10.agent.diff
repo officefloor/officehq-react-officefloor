@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index c79f37b..051aa4a 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -12,6 +12,7 @@ function money(n: number): string {
+ export function ProjectInvoices({ projectId }: { projectId: number }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
++  const [amountError, setAmountError] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${projectId}`);
+@@ -26,6 +27,12 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
++    const parsed = Number(amount);
++    if (!Number.isFinite(parsed) || parsed <= 0) {
++      setAmountError('Amount must be more than zero.');
++      return;
++    }
++    setAmountError('');
+     const res = await fetch('/api/invoices', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -65,6 +72,11 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+         <button type="submit" data-testid="invoice-form-submit">
+           Add invoice
+         </button>
++        {amountError ? (
++          <p data-testid="invoice-form-amount-error" role="alert">
++            {amountError}
++          </p>
++        ) : null}
+       </form>
+ 
+       <table data-testid="project-invoices-table">
+diff --git a/src/main/java/net/officefloor/hq/app/InvoicesPostLogic.java b/src/main/java/net/officefloor/hq/app/InvoicesPostLogic.java
+index 4c7c37b..83e0026 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoicesPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/InvoicesPostLogic.java
+@@ -15,8 +15,8 @@ public class InvoicesPostLogic {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A project is required.");
+         }
+         BigDecimal amount = body.getAmount();
+-        if (amount == null || amount.signum() < 0) {
+-            throw new HttpException(HttpStatus.BAD_REQUEST, "A non-negative amount is required.");
++        if (amount == null || amount.signum() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A positive amount is required.");
+         }
+         response.send(repository.create(body.getProjectId(), amount.setScale(2,
+                 java.math.RoundingMode.HALF_UP)));
+diff --git a/src/main/resources/db/migration/V6__invoices_amount_positive.sql b/src/main/resources/db/migration/V6__invoices_amount_positive.sql
+new file mode 100644
+index 0000000..235e254
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__invoices_amount_positive.sql
+@@ -0,0 +1,3 @@
++-- An invoice must bill a positive amount: zero/negative invoices are not allowed.
++-- Additive: a new versioned migration alongside the existing invoices table.
++ALTER TABLE invoices ADD CONSTRAINT invoices_amount_positive CHECK (amount > 0);
