@@ -2,7 +2,12 @@ import React, { useEffect, useState } from 'react';
 
 // Dashboard feature: a read-only home screen summarising clients, projects and money still owed.
 // Owns its own state (CLAUDE.md — features own their state, no global store).
-type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
+type Summary = {
+  clientsCount: number;
+  projectsCount: number;
+  outstandingTotal: number;
+  overdueCount: number;
+};
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -30,6 +35,8 @@ export function DashboardPage() {
         <dd data-testid="dashboard-projects-count">{summary?.projectsCount ?? 0}</dd>
         <dt>Outstanding</dt>
         <dd data-testid="dashboard-outstanding-total">{outstanding}</dd>
+        <dt>Overdue invoices</dt>
+        <dd data-testid="dashboard-overdue-count">{summary?.overdueCount ?? 0}</dd>
       </dl>
     </section>
   );

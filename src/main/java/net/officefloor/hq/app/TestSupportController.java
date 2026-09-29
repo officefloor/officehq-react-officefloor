@@ -33,7 +33,7 @@ public class TestSupportController {
      */
     private static final List<String> DOMAIN_TABLES = List.of(
             "notes", "project_tags", "tags", "tasks", "payments", "line_items",
-            "invoices", "contacts", "projects", "clients");
+            "invoices", "contacts", "projects", "clients", "dashboard_settings");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -71,6 +71,15 @@ public class TestSupportController {
         seedNotes(fixture);
         seedInvoices(fixture);
         seedPayments(fixture);
+        seedDashboardSettings(fixture);
+    }
+
+    private void seedDashboardSettings(Map<String, Object> fixture) {
+        Object asOf = fixture.get("asOf");
+        if (asOf != null) {
+            jdbc.update("INSERT INTO dashboard_settings (id, as_of) VALUES (1, ?)",
+                    Date.valueOf(asOf.toString()));
+        }
     }
 
     private void seedClients(Map<String, Object> fixture) {
