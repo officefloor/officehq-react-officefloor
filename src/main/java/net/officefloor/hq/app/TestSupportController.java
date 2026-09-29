@@ -1,5 +1,6 @@
 package net.officefloor.hq.app;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -14,6 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
  * harness launch (bin/start sets spring.profiles.active=harness) — never in a real deploy. This is
  * APP CODE and EVOLVES with the schema (NOT pinned); a change that breaks a prior spec's seed is a
  * seed-path regression. Tests call these to ARRANGE data; they ASSERT only through the UI.
+ *
+ * <p>{@link #seed} is a plain sequence of one {@code seed*} method per entity. Teaching a new entity
+ * to the harness is therefore additive: add its {@code seed*} method, call it from {@link #seed},
+ * and add its {@code TRUNCATE} to {@link #reset} — no existing entity's code is touched.
  */
 @Profile("harness")
 @RestController
@@ -32,115 +37,103 @@ public class TestSupportController {
     @PostMapping("/reset")
     public void reset() {
         audit.clear();
-        // projects references clients; drop referential integrity so both tables can be truncated
-        // (and their identity counters restarted) regardless of FK order.
+        // Referential integrity is dropped for the duration so the tables can be truncated (and
+        // their identity counters restarted) regardless of FK order (e.g. projects -> clients).
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
-        jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
-        jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+        for (String table : List.of("notes", "project_tags", "tags", "tasks", "line_items",
+                "invoices", "contacts", "projects", "clients")) {
+            jdbc.execute("TRUNCATE TABLE " + table + " RESTART IDENTITY");
+        }
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
-    /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+    /** Insert the fixture a spec needs; each entity is seeded by its own {@code seed*} method. */
     @PostMapping("/seed")
-    @SuppressWarnings("unchecked")
     public void seed(@RequestBody Map<String, Object> fixture) {
-        List<Map<String, Object>> clients =
-                (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
-        for (Map<String, Object> c : clients) {
+        seedClients(fixture);
+        seedProjects(fixture);
+        seedContacts(fixture);
+        seedInvoices(fixture);
+        seedTasks(fixture);
+        seedTags(fixture);
+        seedNotes(fixture);
+        seedProjectTags(fixture);
+    }
+
+    private void seedClients(Map<String, Object> fixture) {
+        for (Map<String, Object> c : rows(fixture, "clients")) {
             jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
-                    ((Number) c.get("id")).longValue(), c.get("name"), c.get("email"));
+                    id(c, "id"), c.get("name"), c.get("email"));
         }
-        List<Map<String, Object>> projects =
-                (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
-        for (Map<String, Object> p : projects) {
+    }
+
+    private void seedProjects(Map<String, Object> fixture) {
+        for (Map<String, Object> p : rows(fixture, "projects")) {
             jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
-                    ((Number) p.get("id")).longValue(), p.get("name"),
-                    ((Number) p.get("clientId")).longValue());
+                    id(p, "id"), p.get("name"), id(p, "clientId"));
         }
-        List<Map<String, Object>> contacts =
-                (List<Map<String, Object>>) fixture.getOrDefault("contacts", List.of());
-        for (Map<String, Object> ct : contacts) {
+    }
+
+    private void seedContacts(Map<String, Object> fixture) {
+        for (Map<String, Object> ct : rows(fixture, "contacts")) {
             jdbc.update(
                     "INSERT INTO contacts (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
-                    ((Number) ct.get("id")).longValue(),
-                    ((Number) ct.get("clientId")).longValue(), ct.get("name"), ct.get("email"),
+                    id(ct, "id"), id(ct, "clientId"), ct.get("name"), ct.get("email"),
                     ct.get("role"));
         }
-        List<Map<String, Object>> invoices =
-                (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
-        for (Map<String, Object> in : invoices) {
-            Object status = in.get("status");
-            Object amount = in.get("amount");
-            Object issuedDate = in.get("issuedDate");
-            Object dueDate = in.get("dueDate");
+    }
+
+    private void seedInvoices(Map<String, Object> fixture) {
+        for (Map<String, Object> in : rows(fixture, "invoices")) {
             // Insert only the columns the fixture supplies, so the table's own defaults apply when a
             // fixture omits them (a plain null would trip the NOT NULL columns). status defaults to
-            // DRAFT and amount defaults to 0 — an invoice's amount is now derived from its line
-            // items, so fixtures list lineItems rather than a single typed amount.
-            StringBuilder cols = new StringBuilder("id, project_id, status");
-            StringBuilder marks = new StringBuilder("?, ?, ?");
-            List<Object> args = new java.util.ArrayList<>(List.of(
-                    ((Number) in.get("id")).longValue(),
-                    ((Number) in.get("projectId")).longValue(),
-                    status == null ? "DRAFT" : status.toString()));
-            if (amount != null) {
-                cols.append(", amount");
-                marks.append(", ?");
-                args.add(((Number) amount).doubleValue());
-            }
-            if (issuedDate != null) {
-                cols.append(", issued_date");
-                marks.append(", ?");
-                args.add(issuedDate.toString());
-            }
-            if (dueDate != null) {
-                cols.append(", due_date");
-                marks.append(", ?");
-                args.add(dueDate.toString());
-            }
-            jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
-                    args.toArray());
-            List<Map<String, Object>> lineItems =
-                    (List<Map<String, Object>>) in.getOrDefault("lineItems", List.of());
-            for (Map<String, Object> li : lineItems) {
-                jdbc.update(
-                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
-                                + " VALUES (?, ?, ?, ?, ?)",
-                        ((Number) li.get("id")).longValue(),
-                        ((Number) in.get("id")).longValue(), li.get("description"),
-                        ((Number) li.get("qty")).intValue(),
-                        ((Number) li.get("unitPrice")).doubleValue());
-            }
+            // DRAFT and amount defaults to 0 — an invoice's amount is derived from its line items,
+            // so fixtures list lineItems rather than a single typed amount.
+            new Insert("invoices")
+                    .set("id", id(in, "id"))
+                    .set("project_id", id(in, "projectId"))
+                    .set("status", in.get("status") == null ? "DRAFT" : in.get("status").toString())
+                    .setIfPresent("amount", asDouble(in.get("amount")))
+                    .setIfPresent("issued_date", asText(in.get("issuedDate")))
+                    .setIfPresent("due_date", asText(in.get("dueDate")))
+                    .run();
+            seedLineItems(in);
         }
-        List<Map<String, Object>> tasks =
-                (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
-        for (Map<String, Object> t : tasks) {
+    }
+
+    private void seedLineItems(Map<String, Object> invoice) {
+        long invoiceId = id(invoice, "id");
+        for (Map<String, Object> li : rows(invoice, "lineItems")) {
+            jdbc.update(
+                    "INSERT INTO line_items (id, invoice_id, description, qty, unit_price)"
+                            + " VALUES (?, ?, ?, ?, ?)",
+                    id(li, "id"), invoiceId, li.get("description"),
+                    ((Number) li.get("qty")).intValue(),
+                    ((Number) li.get("unitPrice")).doubleValue());
+        }
+    }
+
+    private void seedTasks(Map<String, Object> fixture) {
+        for (Map<String, Object> t : rows(fixture, "tasks")) {
             jdbc.update("INSERT INTO tasks (id, project_id, title, done) VALUES (?, ?, ?, ?)",
-                    ((Number) t.get("id")).longValue(),
-                    ((Number) t.get("projectId")).longValue(), t.get("title"),
+                    id(t, "id"), id(t, "projectId"), t.get("title"),
                     Boolean.TRUE.equals(t.get("done")));
         }
-        List<Map<String, Object>> tags =
-                (List<Map<String, Object>>) fixture.getOrDefault("tags", List.of());
-        for (Map<String, Object> tg : tags) {
-            jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)",
-                    ((Number) tg.get("id")).longValue(), tg.get("name"));
+    }
+
+    private void seedTags(Map<String, Object> fixture) {
+        for (Map<String, Object> tg : rows(fixture, "tags")) {
+            jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)", id(tg, "id"), tg.get("name"));
         }
-        List<Map<String, Object>> notes =
-                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
+    }
+
+    private void seedNotes(Map<String, Object> fixture) {
+        List<Map<String, Object>> notes = rows(fixture, "notes");
         for (Map<String, Object> n : notes) {
             jdbc.update(
                     "INSERT INTO notes (id, target_type, target_id, text, created_at)"
                             + " VALUES (?, ?, ?, ?, ?)",
-                    ((Number) n.get("id")).longValue(), n.get("targetType"),
-                    ((Number) n.get("targetId")).longValue(), n.get("text"),
+                    id(n, "id"), n.get("targetType"), id(n, "targetId"), n.get("text"),
                     n.get("at").toString());
         }
         if (!notes.isEmpty()) {
@@ -149,12 +142,67 @@ public class TestSupportController {
             Long next = jdbc.queryForObject("SELECT MAX(id) + 1 FROM notes", Long.class);
             jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + next);
         }
-        List<Map<String, Object>> projectTags =
-                (List<Map<String, Object>>) fixture.getOrDefault("projectTags", List.of());
-        for (Map<String, Object> pt : projectTags) {
+    }
+
+    private void seedProjectTags(Map<String, Object> fixture) {
+        for (Map<String, Object> pt : rows(fixture, "projectTags")) {
             jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
-                    ((Number) pt.get("projectId")).longValue(),
-                    ((Number) pt.get("tagId")).longValue());
+                    id(pt, "projectId"), id(pt, "tagId"));
+        }
+    }
+
+    /** The list of fixture rows under {@code key}, or an empty list when the fixture omits it. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
+        return (List<Map<String, Object>>) fixture.getOrDefault(key, List.of());
+    }
+
+    /** A fixture id column: JSON numbers arrive as {@link Number}, the tables use {@code BIGINT}. */
+    private static long id(Map<String, Object> row, String key) {
+        return ((Number) row.get(key)).longValue();
+    }
+
+    private static Double asDouble(Object value) {
+        return value == null ? null : ((Number) value).doubleValue();
+    }
+
+    private static String asText(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    /**
+     * Builds an {@code INSERT} whose column set is decided per row, so a fixture can omit a column
+     * and let the table's own default apply (a bare null would trip a NOT NULL column). Required
+     * columns are added with {@link #set}; optional ones with {@link #setIfPresent}.
+     */
+    private final class Insert {
+        private final String table;
+        private final StringBuilder cols = new StringBuilder();
+        private final StringBuilder marks = new StringBuilder();
+        private final List<Object> args = new ArrayList<>();
+
+        Insert(String table) {
+            this.table = table;
+        }
+
+        Insert set(String column, Object value) {
+            if (cols.length() > 0) {
+                cols.append(", ");
+                marks.append(", ");
+            }
+            cols.append(column);
+            marks.append("?");
+            args.add(value);
+            return this;
+        }
+
+        Insert setIfPresent(String column, Object value) {
+            return value == null ? this : set(column, value);
+        }
+
+        void run() {
+            jdbc.update("INSERT INTO " + table + " (" + cols + ") VALUES (" + marks + ")",
+                    args.toArray());
         }
     }
 }
