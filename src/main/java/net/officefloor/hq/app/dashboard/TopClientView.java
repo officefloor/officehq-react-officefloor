@@ -11,11 +11,13 @@ public class TopClientView {
 
     private final long id;
     private final String name;
+    private final String currency;
     private final BigDecimal outstanding;
 
-    public TopClientView(long id, String name, BigDecimal outstanding) {
+    public TopClientView(long id, String name, String currency, BigDecimal outstanding) {
         this.id = id;
         this.name = name;
+        this.currency = currency;
         this.outstanding = outstanding;
     }
 
@@ -25,6 +27,10 @@ public class TopClientView {
 
     public String getName() {
         return name;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public BigDecimal getOutstanding() {

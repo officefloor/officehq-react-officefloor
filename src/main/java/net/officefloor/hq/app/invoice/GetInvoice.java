@@ -27,8 +27,10 @@ public class GetInvoice {
                         + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
                         + "* (100 + tax_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
-                        + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
-                        + " WHERE id = ?",
+                        + "WHERE p.invoice_id = invoices.id), 0) AS amount_due, "
+                        + "(SELECT c.currency FROM clients c JOIN projects pr "
+                        + "ON pr.client_id = c.id WHERE pr.id = invoices.project_id) AS currency "
+                        + "FROM invoices WHERE id = ?",
                 (rs, i) -> {
                     BigDecimal amount = rs.getBigDecimal("amount");
                     BigDecimal amountDue = rs.getBigDecimal("amount_due");
@@ -39,6 +41,7 @@ public class GetInvoice {
                             rs.getString("due_date"));
                     view.setDiscountPct(rs.getBigDecimal("discount_pct"));
                     view.setTaxPct(rs.getBigDecimal("tax_pct"));
+                    view.setCurrency(rs.getString("currency"));
                     return view;
                 },
                 Long.valueOf(id)).stream().findFirst()

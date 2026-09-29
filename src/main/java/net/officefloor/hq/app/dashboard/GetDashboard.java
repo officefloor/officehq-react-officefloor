@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.dashboard;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -22,19 +24,29 @@ public class GetDashboard {
         // everywhere else) — so a cancelled (VOID) invoice, no longer SENT, drops out of what is
         // owed, and both a discount and its tax are reflected in what is owed. The discount and tax
         // are applied per invoice (its own percentages off/on its own subtotal) before the totals
-        // are summed.
-        BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100 "
-                        + "* (100 + inv.tax_pct) / 100), 0) FROM ("
+        // are summed. Because clients are paid in different currencies, the totals are kept SEPARATE
+        // per currency (grouped by the invoice's client's currency) and never added across them.
+        Map<String, BigDecimal> outstandingByCurrency = new LinkedHashMap<>();
+        jdbc.query(
+                "SELECT inv.currency AS currency, "
+                        + "COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100 "
+                        + "* (100 + inv.tax_pct) / 100), 0) AS outstanding FROM ("
                         + "SELECT i.discount_pct AS discount_pct, i.tax_pct AS tax_pct, "
+                        + "c.currency AS currency, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = i.id), 0) AS subtotal "
-                        + "FROM invoices i WHERE i.status = 'SENT') inv",
-                BigDecimal.class);
+                        + "FROM invoices i JOIN projects pr ON pr.id = i.project_id "
+                        + "JOIN clients c ON c.id = pr.client_id "
+                        + "WHERE i.status = 'SENT') inv "
+                        + "GROUP BY inv.currency ORDER BY inv.currency",
+                (rs) -> {
+                    outstandingByCurrency.put(rs.getString("currency"),
+                            rs.getBigDecimal("outstanding"));
+                });
         long overdue = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
                         + "COALESCE((SELECT as_of FROM dashboard_clock WHERE id = 1), CURRENT_DATE)",
                 Long.class);
-        response.send(new DashboardView(clients, projects, outstanding, overdue));
+        response.send(new DashboardView(clients, projects, outstandingByCurrency, overdue));
     }
 }

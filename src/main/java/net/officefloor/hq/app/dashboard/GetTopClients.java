@@ -17,8 +17,8 @@ public class GetTopClients {
 
     public void service(JdbcTemplate jdbc, ObjectResponse<List<TopClientView>> response) {
         List<TopClientView> top = jdbc.query(
-                "SELECT id, name, outstanding FROM ("
-                        + "SELECT c.id AS id, c.name AS name, "
+                "SELECT id, name, currency, outstanding FROM ("
+                        + "SELECT c.id AS id, c.name AS name, c.currency AS currency, "
                         + "COALESCE((SELECT SUM("
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
@@ -31,7 +31,7 @@ public class GetTopClients {
                         + "WHERE outstanding > 0 "
                         + "ORDER BY outstanding DESC, name ASC LIMIT 5",
                 (rs, i) -> new TopClientView(rs.getLong("id"), rs.getString("name"),
-                        rs.getBigDecimal("outstanding")));
+                        rs.getString("currency"), rs.getBigDecimal("outstanding")));
         response.send(top);
     }
 }

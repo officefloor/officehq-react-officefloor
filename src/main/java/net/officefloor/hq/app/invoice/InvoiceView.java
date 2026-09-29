@@ -18,6 +18,10 @@ public class InvoiceView {
     // The percentage sales tax added on top after the discount; 0 unless the invoice carries one.
     // Set after construction so callers that don't surface a tax stay untouched.
     private BigDecimal taxPct = BigDecimal.ZERO;
+    // The currency (ISO code) the invoice's client is paid in, so its money is shown in that
+    // currency. Defaults to USD; set after construction so callers that don't surface it stay
+    // untouched.
+    private String currency = "USD";
 
     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal amountDue,
             String status, String issuedDate, String dueDate) {
@@ -72,5 +76,13 @@ public class InvoiceView {
 
     public void setTaxPct(BigDecimal taxPct) {
         this.taxPct = taxPct;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

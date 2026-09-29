@@ -28,6 +28,8 @@ type Invoice = {
   dueDate: string;
   discountPct: number;
   taxPct: number;
+  // The currency the invoice's client is paid in; the invoice's money is shown in it.
+  currency: string;
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
 type Tag = { id: number; name: string };
@@ -44,8 +46,12 @@ type LineItem = {
 
 type Payment = { id: number; invoiceId: number; amount: number; date: string };
 
-function money(amount: number): string {
-  return `$${Number(amount).toLocaleString('en-US', {
+// Each client is paid in their own currency; an invoice's money is shown with that currency's symbol.
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+
+function money(amount: number, currency: string = 'USD'): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '$';
+  return `${symbol}${Number(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -92,6 +98,9 @@ function InvoiceDetail({
   const [discountPct, setDiscountPct] = useState(0);
   // The percentage sales tax added on top after the discount (0 unless one is set).
   const [taxPct, setTaxPct] = useState(0);
+  // The currency the invoice's client is paid in; its money is shown in it. Read alongside the
+  // status from the invoice itself.
+  const [currency, setCurrency] = useState('USD');
 
   // The status is worked out from the payments recorded against the invoice, so re-read it whenever
   // a payment is added rather than flipping it by hand. The discount and tax percentages come back
@@ -102,6 +111,7 @@ function InvoiceDetail({
     setStatus(inv.status);
     setDiscountPct(Number(inv.discountPct) || 0);
     setTaxPct(Number(inv.taxPct) || 0);
+    setCurrency(inv.currency ?? 'USD');
   }
 
   async function load() {
@@ -246,7 +256,7 @@ function InvoiceDetail({
                   onChange={(e) => editField(li.id, 'unitPrice', e.target.value)}
                 />
               </td>
-              <td data-testid="lineitem-amount">{money(amountOf(li))}</td>
+              <td data-testid="lineitem-amount">{money(amountOf(li), currency)}</td>
               <td>
                 <button
                   data-testid={`lineitem-save-${li.id}`}
@@ -268,10 +278,10 @@ function InvoiceDetail({
         </tbody>
       </table>
 
-      <p data-testid="invoice-subtotal">{money(subtotal)}</p>
-      <p data-testid="invoice-discount">{money(discount)}</p>
-      <p data-testid="invoice-tax">{money(tax)}</p>
-      <p data-testid="invoice-amount">{money(total)}</p>
+      <p data-testid="invoice-subtotal">{money(subtotal, currency)}</p>
+      <p data-testid="invoice-discount">{money(discount, currency)}</p>
+      <p data-testid="invoice-tax">{money(tax, currency)}</p>
+      <p data-testid="invoice-amount">{money(total, currency)}</p>
 
       <form data-testid="lineitem-form" onSubmit={submit}>
         <input
@@ -307,7 +317,7 @@ function InvoiceDetail({
         <tbody>
           {payments.map((p) => (
             <tr key={p.id} data-testid={`payment-row-${p.id}`}>
-              <td data-testid="payment-amount">{money(p.amount)}</td>
+              <td data-testid="payment-amount">{money(p.amount, currency)}</td>
               <td data-testid="payment-date">{p.date}</td>
             </tr>
           ))}
@@ -432,6 +442,9 @@ function ProjectInvoices({
   }
 
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  // Every invoice on a project belongs to the same client, so they share one currency; show the
+  // running total in it (defaulting to USD before any invoice has loaded).
+  const currency = invoices[0]?.currency ?? 'USD';
   const shownInvoices = sortByDue
     ? [...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     : invoices;
@@ -465,8 +478,10 @@ function ProjectInvoices({
             <tbody>
               {shownInvoices.map((inv) => (
                 <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
-                  <td data-testid="invoice-due-amount">{money(inv.amountDue)}</td>
+                  <td data-testid="invoice-amount">{money(inv.amount, inv.currency)}</td>
+                  <td data-testid="invoice-due-amount">
+                    {money(inv.amountDue, inv.currency)}
+                  </td>
                   <td data-testid="invoice-issued">{inv.issuedDate}</td>
                   <td data-testid="invoice-due">{inv.dueDate}</td>
                   <td data-testid="invoice-status">{inv.status}</td>
@@ -484,7 +499,7 @@ function ProjectInvoices({
             </tbody>
           </table>
 
-          <p data-testid="project-invoices-total">{money(total)}</p>
+          <p data-testid="project-invoices-total">{money(total, currency)}</p>
         </>
       ) : (
         <InvoiceDetail

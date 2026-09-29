@@ -14,7 +14,7 @@ public class ListArchivedClients {
 
     public void service(JdbcTemplate jdbc, ObjectResponse<List<ClientListView>> response) {
         List<ClientListView> clients = jdbc.query(
-                "SELECT c.id AS id, c.name AS name, c.email AS email, "
+                "SELECT c.id AS id, c.name AS name, c.email AS email, c.currency AS currency, "
                         + "COALESCE((SELECT SUM("
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
                         + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
@@ -25,7 +25,8 @@ public class ListArchivedClients {
                         + "WHERE pr.client_id = c.id), 0) AS outstanding "
                         + "FROM clients c WHERE c.archived = TRUE ORDER BY c.id",
                 (rs, i) -> new ClientListView(rs.getLong("id"), rs.getString("name"),
-                        rs.getString("email"), rs.getBigDecimal("outstanding")));
+                        rs.getString("email"), rs.getString("currency"),
+                        rs.getBigDecimal("outstanding")));
         response.send(clients);
     }
 }

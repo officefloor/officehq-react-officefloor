@@ -6,7 +6,13 @@ import { useJsonResource } from '../../ui/useJsonResource';
 // (client-open-<id>) reveals the projects being done for them — the client's own projects listing,
 // scoped via its /api/clients/<id>/projects endpoint. Owns its own state; talks to its own
 // /api/clients endpoints. data-testid anchors follow the spec's conventions.
-type Client = { id: number; name: string; email: string; outstanding: number };
+type Client = {
+  id: number;
+  name: string;
+  email: string;
+  currency: string;
+  outstanding: number;
+};
 // How the clients list is ordered: alphabetically by name, or by how much each client still owes.
 type SortKey = 'name' | 'outstanding';
 type Project = { id: number; name: string; clientId: number; clientName: string };
@@ -27,9 +33,16 @@ type ClientStatement = {
   outstandingTotal: number;
 };
 
-// Money, the way every invoice figure is shown across the app: a dollar sign and two decimals.
-function money(amount: number): string {
-  return `$${Number(amount).toLocaleString('en-US', {
+// Each client is paid in their own currency; money is shown with that currency's symbol. The
+// currencies the user can pick from, and the symbol each one is shown with.
+const CURRENCIES = ['USD', 'EUR', 'GBP'] as const;
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+
+// Money, the way every figure is shown across the app: the client's currency symbol and two
+// decimals. Defaults to USD when a currency is not supplied.
+function money(amount: number, currency: string = 'USD'): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '$';
+  return `${symbol}${Number(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -71,14 +84,18 @@ function ClientStatement({ client }: { client: Client }) {
                 {statement.invoices.map((inv) => (
                   <tr key={inv.id} data-testid={`statement-line-${inv.id}`}>
                     <td data-testid="statement-line-label">Invoice #{inv.id}</td>
-                    <td data-testid="statement-line-amount">{money(inv.amountDue)}</td>
+                    <td data-testid="statement-line-amount">
+                      {money(inv.amountDue, client.currency)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p data-testid="statement-grand-total-row">
               <span>Grand total owed</span>
-              <span data-testid="statement-grand-total">{money(statement.outstandingTotal)}</span>
+              <span data-testid="statement-grand-total">
+                {money(statement.outstandingTotal, client.currency)}
+              </span>
             </p>
           </article>
           <table data-testid="client-statement-table">
@@ -89,16 +106,22 @@ function ClientStatement({ client }: { client: Client }) {
               >
                 {project.invoices.map((inv) => (
                   <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
-                    <td data-testid="statement-invoice-due">{money(inv.amountDue)}</td>
+                    <td data-testid="statement-invoice-due">
+                      {money(inv.amountDue, client.currency)}
+                    </td>
                   </tr>
                 ))}
                 <tr data-testid="statement-project-subtotal-row">
-                  <td data-testid="statement-project-subtotal">{money(project.subtotal)}</td>
+                  <td data-testid="statement-project-subtotal">
+                    {money(project.subtotal, client.currency)}
+                  </td>
                 </tr>
               </tbody>
             ))}
           </table>
-          <p data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</p>
+          <p data-testid="client-outstanding-total">
+            {money(statement.outstandingTotal, client.currency)}
+          </p>
         </>
       )}
     </section>
@@ -171,7 +194,9 @@ function ClientPayment({ client }: { client: Client }) {
             <tbody>
               {openInvoices.map((inv) => (
                 <tr key={inv.id} data-testid={`payment-alloc-row-${inv.id}`}>
-                  <td data-testid="payment-alloc-due">{money(inv.amountDue)}</td>
+                  <td data-testid="payment-alloc-due">
+                    {money(inv.amountDue, client.currency)}
+                  </td>
                   <td>
                     <input
                       data-testid={`payment-alloc-${inv.id}`}
@@ -208,6 +233,44 @@ function ClientSummaryBadges({ client }: { client: Client }) {
     <section data-testid="client-summary">
       <span data-testid="client-projects-count">{summary.projectCount}</span>
       <span data-testid="client-contacts-count">{summary.contactCount}</span>
+    </section>
+  );
+}
+
+// The currency a client is paid in: shows the one set now (client-currency) and lets the user pick a
+// different one and save it (client-currency-select / client-currency-save). Saving posts to the
+// client's own /api/clients/<id>/currency endpoint, then asks the parent to reload so the client's
+// money — here and everywhere it appears — is shown in the new currency. Owns only its own picker
+// state, scoped to the one client it is showing.
+function ClientCurrency({ client, onSaved }: { client: Client; onSaved: () => Promise<void> }) {
+  const [choice, setChoice] = useState(client.currency);
+
+  async function save() {
+    await fetch(`/api/clients/${client.id}/currency`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currency: choice }),
+    });
+    await onSaved();
+  }
+
+  return (
+    <section data-testid="client-currency-section">
+      <span data-testid="client-currency">{client.currency}</span>
+      <select
+        data-testid="client-currency-select"
+        value={choice}
+        onChange={(e) => setChoice(e.target.value)}
+      >
+        {CURRENCIES.map((code) => (
+          <option key={code} value={code}>
+            {code}
+          </option>
+        ))}
+      </select>
+      <button data-testid="client-currency-save" type="button" onClick={save}>
+        Save currency
+      </button>
     </section>
   );
 }
@@ -473,7 +536,7 @@ function ClientsTable({
           <tr key={c.id} data-testid={`client-row-${c.id}`}>
             <td data-testid="client-name">{c.name}</td>
             <td data-testid="client-email">{c.email}</td>
-            <td data-testid="client-outstanding">{money(c.outstanding)}</td>
+            <td data-testid="client-outstanding">{money(c.outstanding, c.currency)}</td>
             <td>
               <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
                 Open
@@ -621,6 +684,9 @@ function ClientsPage() {
       )}
 
       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
+      {open && (
+        <ClientCurrency key={`currency-${open.id}`} client={open} onSaved={reload} />
+      )}
       {open && <ClientStatement key={`statement-${open.id}`} client={open} />}
       {open && <ClientPayment key={`payment-${open.id}`} client={open} />}
       {open && <ClientContacts key={`contacts-${open.id}`} client={open} />}

@@ -21,6 +21,10 @@ public class Client {
 
     private boolean archived;
 
+    // The currency the client is paid in (ISO code, e.g. USD, EUR); their money is shown in it
+    // everywhere. Defaults to USD so a client created without one matches the column default.
+    private String currency = "USD";
+
     public Long getId() {
         return id;
     }
@@ -51,5 +55,13 @@ public class Client {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

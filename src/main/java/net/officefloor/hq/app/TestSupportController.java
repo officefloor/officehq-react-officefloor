@@ -79,6 +79,7 @@ public class TestSupportController {
                     .set("name", c.get("name"))
                     .set("email", c.get("email"))
                     .setIfPresent("archived", c.get("archived"))
+                    .setIfPresent("currency", c.get("currency"))
                     .run();
         }
     }

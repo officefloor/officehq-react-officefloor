@@ -12,12 +12,15 @@ public class ClientListView {
     private final long id;
     private final String name;
     private final String email;
+    private final String currency;
     private final BigDecimal outstanding;
 
-    public ClientListView(long id, String name, String email, BigDecimal outstanding) {
+    public ClientListView(long id, String name, String email, String currency,
+            BigDecimal outstanding) {
         this.id = id;
         this.name = name;
         this.email = email;
+        this.currency = currency;
         this.outstanding = outstanding;
     }
 
@@ -31,6 +34,10 @@ public class ClientListView {
 
     public String getEmail() {
         return email;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public BigDecimal getOutstanding() {
