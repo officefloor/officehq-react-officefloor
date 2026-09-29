@@ -19,25 +19,50 @@ function money(amount: number): string {
 // The stages an invoice can be at; 'ALL' leaves the list unfiltered.
 const STATUSES = ['DRAFT', 'SENT', 'PAID'] as const;
 
+// One page of the all-invoices list as the /api/all-invoices endpoint serves it: the invoices on
+// this page plus what the next/prev controls need (the 1-based page number and whether a page
+// exists on either side).
+type InvoicePage = {
+  items: AllInvoice[];
+  page: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+};
+
 function InvoicesPage() {
   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
   const [status, setStatus] = useState<string>('ALL');
+  // The list is shown a page at a time (10 per page); this is the 1-based page currently on screen.
+  const [page, setPage] = useState(1);
+  const [hasPrev, setHasPrev] = useState(false);
+  const [hasNext, setHasNext] = useState(false);
 
-  async function load(current: string) {
-    const res = await fetch(`/api/all-invoices?status=${encodeURIComponent(current)}`);
-    setInvoices(await res.json());
+  async function load(current: string, currentPage: number) {
+    const res = await fetch(
+      `/api/all-invoices?status=${encodeURIComponent(current)}&page=${currentPage}`,
+    );
+    const data: InvoicePage = await res.json();
+    setInvoices(data.items);
+    setHasPrev(data.hasPrev);
+    setHasNext(data.hasNext);
   }
 
   useEffect(() => {
-    void load(status);
-  }, [status]);
+    void load(status, page);
+  }, [status, page]);
+
+  // Changing the stage filter re-narrows the whole list, so go back to the first page.
+  function changeStatus(next: string) {
+    setStatus(next);
+    setPage(1);
+  }
 
   return (
     <section data-testid="invoices">
       <select
         data-testid="invoice-status-filter"
         value={status}
-        onChange={(e) => setStatus(e.target.value)}
+        onChange={(e) => changeStatus(e.target.value)}
       >
         <option value="ALL">All stages</option>
         {STATUSES.map((s) => (
@@ -61,6 +86,25 @@ function InvoicesPage() {
           </tbody>
         </table>
       )}
+      <div data-testid="invoice-pager">
+        <button
+          data-testid="invoice-page-prev"
+          type="button"
+          disabled={!hasPrev}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          Previous
+        </button>
+        <span data-testid="invoice-page-label">{page}</span>
+        <button
+          data-testid="invoice-page-next"
+          type="button"
+          disabled={!hasNext}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next
+        </button>
+      </div>
     </section>
   );
 }
