@@ -3,6 +3,7 @@ package net.officefloor.hq.app;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -50,5 +51,39 @@ public class DashboardRepository {
                         + " WHERE status = 'SENT' AND due_date IS NOT NULL AND due_date < ?",
                 Long.class, Date.valueOf(asOf));
         return new DashboardSummary(clients, projects, outstanding, overdue);
+    }
+
+    // What is still owed on an invoice, worked out the same way "due" is everywhere else
+    // (ClientOutstandingRepository / InvoiceRepository): its line-item total (qty * unit_price), less
+    // the discount (V29), plus tax (V30), minus what has been paid. DRAFT invoices (not yet issued)
+    // and VOID invoices (cancelled) do not count toward money owed (V24).
+    private static final String DUE =
+            "(COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
+                    + " WHERE li.invoice_id = i.id), 0)"
+                    + " * (100 - i.discount_pct) / 100 * (100 + i.tax_pct) / 100"
+                    + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
+                    + " WHERE pm.invoice_id = i.id), 0))";
+
+    /**
+     * The home screen's top clients ranked by how much they still owe (highest first), capped at
+     * {@code limit}. Non-archived clients only; a client with no owed invoices totals 0.00. Ties break
+     * by id so the order is deterministic under test.
+     */
+    public List<TopClient> topClients(int limit) {
+        return jdbc.query(
+                "SELECT c.id AS client_id, c.name AS name,"
+                        + " COALESCE(SUM(" + DUE + "), 0) AS outstanding"
+                        + " FROM clients c"
+                        + " LEFT JOIN projects p ON p.client_id = c.id"
+                        + " LEFT JOIN invoices i ON i.project_id = p.id"
+                        + " AND i.status NOT IN ('DRAFT', 'VOID')"
+                        + " WHERE c.archived = FALSE"
+                        + " GROUP BY c.id, c.name"
+                        + " ORDER BY outstanding DESC, c.id ASC"
+                        + " LIMIT ?",
+                (rs, n) -> new TopClient(
+                        rs.getLong("client_id"), rs.getString("name"),
+                        rs.getBigDecimal("outstanding")),
+                limit);
     }
 }
