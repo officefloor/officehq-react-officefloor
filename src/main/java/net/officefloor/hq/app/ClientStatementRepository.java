@@ -30,8 +30,14 @@ public class ClientStatementRepository {
             "COALESCE((SELECT SUM(pm.amount) FROM payments pm"
                     + " WHERE pm.invoice_id = i.id), 0)";
 
-    // The amount still due on the invoice: its amount minus what has been paid.
-    private static final String DUE = "(" + AMOUNT_SUM + " - " + PAID_SUM + ")";
+    // An invoice can carry a percentage discount (discount_pct, V29) taken off its amount; the
+    // discounted amount is what the client is actually billed.
+    private static final String DISCOUNTED_AMOUNT =
+            "(" + AMOUNT_SUM + " * (100 - i.discount_pct) / 100)";
+
+    // The amount still due on the invoice: its discounted amount minus what has been paid, so the
+    // discount flows through to what the statement says is owed.
+    private static final String DUE = "(" + DISCOUNTED_AMOUNT + " - " + PAID_SUM + ")";
 
     // Status worked out from payments: DRAFT until issued, SENT once issued but unpaid, PARTIAL once
     // some (but not all) is paid, PAID once the payments cover the amount.

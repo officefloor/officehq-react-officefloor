@@ -19,15 +19,17 @@ public class DashboardRepository {
     public DashboardSummary summary() {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
-        // Money still owed = for every issued invoice (stored status SENT), the sum of its
-        // line-item amount (qty * unit_price) minus whatever has been paid against it. Amount is
-        // derived from line items (V13), so the stored amount column is not used. DRAFT invoices are
-        // not yet issued and VOID invoices were cancelled, so both are excluded (their stored status
-        // is not SENT). COALESCE keeps the total at 0.00 (never null) when nothing is outstanding.
+        // Money still owed = for every issued invoice (stored status SENT), its discounted amount
+        // (the sum of its line items qty * unit_price, with the invoice's discount_pct taken off)
+        // minus whatever has been paid against it. Amount is derived from line items (V13) and the
+        // discount from discount_pct (V29), so what is owed reflects the discount everywhere. DRAFT
+        // invoices are not yet issued and VOID invoices were cancelled, so both are excluded (their
+        // stored status is not SENT). COALESCE keeps the total at 0.00 (never null) when nothing is
+        // outstanding.
         BigDecimal outstanding = jdbc.queryForObject(
                 "SELECT COALESCE(SUM("
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
-                        + " WHERE li.invoice_id = i.id), 0)"
+                        + " WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100"
                         + " - COALESCE((SELECT SUM(pm.amount) FROM payments pm"
                         + " WHERE pm.invoice_id = i.id), 0)), 0)"
                         + " FROM invoices i WHERE i.status = 'SENT'",

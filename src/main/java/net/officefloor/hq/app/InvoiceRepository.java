@@ -35,7 +35,15 @@ public class InvoiceRepository {
             "COALESCE((SELECT SUM(pm.amount) FROM payments pm"
                     + " WHERE pm.invoice_id = i.id), 0)";
 
-    private static final String DUE = "(" + AMOUNT_SUM + " - " + PAID_SUM + ")";
+    // An invoice can carry a percentage discount (discount_pct, V29) taken off its amount; the
+    // discounted amount is what the client is actually billed. Kept separate from AMOUNT_SUM so the
+    // subtotal still reads as the raw line-item total.
+    private static final String DISCOUNTED_AMOUNT =
+            "(" + AMOUNT_SUM + " * (100 - i.discount_pct) / 100)";
+
+    // What is still owed on the invoice: its discounted amount minus what has been paid, so the
+    // discount flows through everywhere "owed" is shown.
+    private static final String DUE = "(" + DISCOUNTED_AMOUNT + " - " + PAID_SUM + ")";
 
     // An invoice's status is worked out from its recorded payments, not flipped by hand: it stays
     // DRAFT until issued, reads SENT once issued but unpaid, PARTIAL once some (but not all) of the
