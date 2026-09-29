@@ -82,8 +82,10 @@ public class TestSupportController {
 
     private void seedProjects(Map<String, Object> fixture) {
         for (Map<String, Object> p : rows(fixture, "projects")) {
-            jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
-                    id(p, "id"), p.get("name"), id(p, "clientId"));
+            Object status = p.get("status");
+            jdbc.update("INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+                    id(p, "id"), p.get("name"), id(p, "clientId"),
+                    status == null ? "ACTIVE" : status.toString());
         }
     }
 

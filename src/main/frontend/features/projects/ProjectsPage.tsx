@@ -6,9 +6,19 @@ import { ProjectTasks } from './ProjectTasks';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
-type Project = { id: number; name: string; clientId: number; clientName: string; archived: boolean };
+type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
+type Project = {
+  id: number;
+  name: string;
+  clientId: number;
+  clientName: string;
+  archived: boolean;
+  status: ProjectStatus;
+};
 type Client = { id: number; name: string };
 type Tag = { id: number; name: string };
+
+const STATUSES: ProjectStatus[] = ['ACTIVE', 'ON_HOLD', 'FINISHED'];
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -17,6 +27,7 @@ export function ProjectsPage() {
   const [tagFilter, setTagFilter] = useState('');
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -97,7 +108,7 @@ export function ProjectsPage() {
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId) }),
+      body: JSON.stringify({ name, clientId: Number(clientId), status }),
     });
     if (res.ok) {
       const created: Project = await res.json();
@@ -124,6 +135,17 @@ export function ProjectsPage() {
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          data-testid="project-form-status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
             </option>
           ))}
         </select>
@@ -157,6 +179,7 @@ export function ProjectsPage() {
             <tr>
               <th>Name</th>
               <th>Client</th>
+              <th>Status</th>
               <th />
             </tr>
           </thead>
@@ -165,6 +188,7 @@ export function ProjectsPage() {
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
+                <td data-testid="project-status">{p.status}</td>
                 <td>
                   <button
                     type="button"

@@ -19,10 +19,10 @@ public class ProjectRepository {
     private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
             (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
                     rs.getLong("client_id"), rs.getString("client_name"),
-                    rs.getBoolean("archived"));
+                    rs.getBoolean("archived"), rs.getString("status"));
 
     private static final String SELECT =
-            "SELECT p.id, p.name, p.client_id, p.archived, c.name AS client_name"
+            "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name"
                     + " FROM projects p JOIN clients c ON p.client_id = c.id";
 
     /**
@@ -52,18 +52,20 @@ public class ProjectRepository {
                 MAPPER, clientId);
     }
 
-    public Project create(String name, long clientId) {
+    public Project create(String name, long clientId, String status) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(con -> {
             var ps = con.prepareStatement(
-                    "INSERT INTO projects (name, client_id) VALUES (?, ?)", new String[] {"id"});
+                    "INSERT INTO projects (name, client_id, status) VALUES (?, ?, ?)",
+                    new String[] {"id"});
             ps.setString(1, name);
             ps.setLong(2, clientId);
+            ps.setString(3, status);
             return ps;
         }, keys);
         String clientName = jdbc.queryForObject(
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
-        return new Project(keys.getKey().longValue(), name, clientId, clientName, false);
+        return new Project(keys.getKey().longValue(), name, clientId, clientName, false, status);
     }
 
     /** Look up one project (with joined client name), or null when there is no such row. */
