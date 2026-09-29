@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ProjectInvoices } from './ProjectInvoices';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
@@ -10,6 +11,7 @@ export function ProjectsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
 
   async function loadProjects() {
     const res = await fetch('/api/projects');
@@ -80,6 +82,7 @@ export function ProjectsPage() {
             <tr>
               <th>Name</th>
               <th>Client</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -87,11 +90,22 @@ export function ProjectsPage() {
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`project-open-${p.id}`}
+                    onClick={() => setOpenProjectId(p.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openProjectId !== null ? <ProjectInvoices projectId={openProjectId} /> : null}
     </section>
   );
 }

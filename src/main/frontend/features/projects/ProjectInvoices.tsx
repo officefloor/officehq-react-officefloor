@@ -1,0 +1,79 @@
+import React, { useEffect, useState } from 'react';
+
+// A project's invoices, shown when a project is opened from the projects list. Owns its own state
+// (CLAUDE.md — features own their state). Lists the project's invoices, a derived total, and a form
+// to add one. Amounts render with 2 decimals.
+type Invoice = { id: number; projectId: number; amount: number };
+
+function money(n: number): string {
+  return Number(n).toFixed(2);
+}
+
+export function ProjectInvoices({ projectId }: { projectId: number }) {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [amount, setAmount] = useState('');
+
+  async function load() {
+    const res = await fetch(`/api/invoices?projectId=${projectId}`);
+    if (res.ok) {
+      setInvoices(await res.json());
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [projectId]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, amount: Number(amount) }),
+    });
+    if (res.ok) {
+      const created: Invoice = await res.json();
+      setInvoices((prev) => [...prev, created]);
+      setAmount('');
+    }
+  }
+
+  const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+
+  return (
+    <section data-testid="project-invoices">
+      <h2>Invoices</h2>
+      <form data-testid="invoice-form" onSubmit={onSubmit}>
+        <input
+          data-testid="invoice-form-amount"
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <button type="submit" data-testid="invoice-form-submit">
+          Add invoice
+        </button>
+      </form>
+
+      <table data-testid="project-invoices-table">
+        <thead>
+          <tr>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((inv) => (
+            <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+              <td data-testid="invoice-amount">{money(inv.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td data-testid="project-invoices-total">{money(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+  );
+}
