@@ -1,0 +1,147 @@
+diff --git a/src/main/frontend/features/dashboard/feature.tsx b/src/main/frontend/features/dashboard/feature.tsx
+index d83b3dc..cc60b2f 100644
+--- a/src/main/frontend/features/dashboard/feature.tsx
++++ b/src/main/frontend/features/dashboard/feature.tsx
+@@ -2,9 +2,15 @@ import React, { useEffect, useState } from 'react';
+ import type { Feature } from '../../router/routes';
+ 
+ // Dashboard feature: a home screen summarising the whole account — how many clients and projects
+-// there are, and how much money is still owed (the total of every UNPAID invoice across all
+-// projects). Read-only; owns its own state and reads its own /api/dashboard endpoint.
+-type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
++// there are, how much money is still owed (the total of every UNPAID invoice across all projects),
++// and how many SENT invoices are overdue (past their due date). Read-only; owns its own state and
++// reads its own /api/dashboard endpoint.
++type Summary = {
++  clientsCount: number;
++  projectsCount: number;
++  outstandingTotal: number;
++  overdueCount: number;
++};
+ 
+ function money(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+@@ -39,6 +45,10 @@ function DashboardPage() {
+         <span>Outstanding</span>
+         <span data-testid="dashboard-outstanding-total">{money(summary.outstandingTotal)}</span>
+       </div>
++      <div data-testid="dashboard-overdue">
++        <span>Overdue invoices</span>
++        <span data-testid="dashboard-overdue-count">{summary.overdueCount}</span>
++      </div>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 483dfef..8223db5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,8 +40,8 @@ public class TestSupportController {
+         // Referential integrity is dropped for the duration so the tables can be truncated (and
+         // their identity counters restarted) regardless of FK order (e.g. projects -> clients).
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+-        for (String table : List.of("notes", "project_tags", "tags", "tasks", "payments",
+-                "line_items", "invoices", "contacts", "projects", "clients")) {
++        for (String table : List.of("dashboard_clock", "notes", "project_tags", "tags", "tasks",
++                "payments", "line_items", "invoices", "contacts", "projects", "clients")) {
+             jdbc.execute("TRUNCATE TABLE " + table + " RESTART IDENTITY");
+         }
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+@@ -59,6 +59,15 @@ public class TestSupportController {
+         seedTags(fixture);
+         seedNotes(fixture);
+         seedProjectTags(fixture);
++        seedClock(fixture);
++    }
++
++    private void seedClock(Map<String, Object> fixture) {
++        // The dashboard's fixed "as of" reference date (top-level asOf), if the fixture supplies one.
++        Object asOf = fixture.get("asOf");
++        if (asOf != null) {
++            jdbc.update("INSERT INTO dashboard_clock (id, as_of) VALUES (1, ?)", asOf.toString());
++        }
+     }
+ 
+     private void seedClients(Map<String, Object> fixture) {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+index dc9f960..15c94cd 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+@@ -2,17 +2,21 @@ package net.officefloor.hq.app.dashboard;
+ 
+ import java.math.BigDecimal;
+ 
+-/** The home dashboard summary: how many clients and projects, and money still owed. */
++/** The home dashboard summary: how many clients and projects, money still owed, and how many SENT
++ * invoices are overdue. */
+ public class DashboardView {
+ 
+     private final long clientsCount;
+     private final long projectsCount;
+     private final BigDecimal outstandingTotal;
++    private final long overdueCount;
+ 
+-    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
++    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal,
++            long overdueCount) {
+         this.clientsCount = clientsCount;
+         this.projectsCount = projectsCount;
+         this.outstandingTotal = outstandingTotal;
++        this.overdueCount = overdueCount;
+     }
+ 
+     public long getClientsCount() {
+@@ -26,4 +30,8 @@ public class DashboardView {
+     public BigDecimal getOutstandingTotal() {
+         return outstandingTotal;
+     }
++
++    public long getOverdueCount() {
++        return overdueCount;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+index 7ec9754..060e427 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/GetDashboard.java
+@@ -5,9 +5,12 @@ import net.officefloor.web.ObjectResponse;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ 
+ /**
+- * GET /api/dashboard — the home screen summary: how many clients and projects exist, and how much
+- * money is still owed. Money owed counts only invoices that have actually been SENT (not drafts,
+- * and not those already paid) — the sum of every SENT invoice's amount across all projects.
++ * GET /api/dashboard — the home screen summary: how many clients and projects exist, how much
++ * money is still owed, and how many SENT invoices are overdue. Money owed counts only invoices that
++ * have actually been SENT (not drafts, and not those already paid) — the sum of every SENT
++ * invoice's amount across all projects. An invoice is overdue when it is SENT and its due date is
++ * before the dashboard's reference date (the seeded {@code dashboard_clock} as-of date, falling
++ * back to the real current date when none is seeded).
+  */
+ public class GetDashboard {
+ 
+@@ -17,6 +20,10 @@ public class GetDashboard {
+         BigDecimal outstanding = jdbc.queryForObject(
+                 "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                 BigDecimal.class);
+-        response.send(new DashboardView(clients, projects, outstanding));
++        long overdue = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
++                        + "COALESCE((SELECT as_of FROM dashboard_clock WHERE id = 1), CURRENT_DATE)",
++                Long.class);
++        response.send(new DashboardView(clients, projects, outstanding, overdue));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V21__dashboard_clock.sql b/src/main/resources/db/migration/V21__dashboard_clock.sql
+new file mode 100644
+index 0000000..cae3bcf
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__dashboard_clock.sql
+@@ -0,0 +1,7 @@
++-- Dashboard reference date: the fixed "as of" date the home dashboard measures "overdue" against,
++-- so the overdue count is deterministic in tests. A single row (id = 1) holds the date; when absent
++-- the dashboard falls back to the real CURRENT_DATE. Seeded per spec via /__test__/seed's asOf.
++CREATE TABLE dashboard_clock (
++    id     INT PRIMARY KEY,
++    as_of  DATE NOT NULL
++);
