@@ -2,9 +2,15 @@ import React, { useEffect, useState } from 'react';
 import type { Feature } from '../../router/routes';
 
 // Dashboard feature: a home screen summarising the whole account — how many clients and projects
-// there are, and how much money is still owed (the total of every UNPAID invoice across all
-// projects). Read-only; owns its own state and reads its own /api/dashboard endpoint.
-type Summary = { clientsCount: number; projectsCount: number; outstandingTotal: number };
+// there are, how much money is still owed (the total of every UNPAID invoice across all projects),
+// and how many SENT invoices are overdue (past their due date). Read-only; owns its own state and
+// reads its own /api/dashboard endpoint.
+type Summary = {
+  clientsCount: number;
+  projectsCount: number;
+  outstandingTotal: number;
+  overdueCount: number;
+};
 
 function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
@@ -38,6 +44,10 @@ function DashboardPage() {
       <div data-testid="dashboard-outstanding">
         <span>Outstanding</span>
         <span data-testid="dashboard-outstanding-total">{money(summary.outstandingTotal)}</span>
+      </div>
+      <div data-testid="dashboard-overdue">
+        <span>Overdue invoices</span>
+        <span data-testid="dashboard-overdue-count">{summary.overdueCount}</span>
       </div>
     </section>
   );

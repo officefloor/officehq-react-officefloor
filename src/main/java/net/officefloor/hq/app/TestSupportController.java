@@ -40,8 +40,8 @@ public class TestSupportController {
         // Referential integrity is dropped for the duration so the tables can be truncated (and
         // their identity counters restarted) regardless of FK order (e.g. projects -> clients).
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
-        for (String table : List.of("notes", "project_tags", "tags", "tasks", "payments",
-                "line_items", "invoices", "contacts", "projects", "clients")) {
+        for (String table : List.of("dashboard_clock", "notes", "project_tags", "tags", "tasks",
+                "payments", "line_items", "invoices", "contacts", "projects", "clients")) {
             jdbc.execute("TRUNCATE TABLE " + table + " RESTART IDENTITY");
         }
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
@@ -59,6 +59,15 @@ public class TestSupportController {
         seedTags(fixture);
         seedNotes(fixture);
         seedProjectTags(fixture);
+        seedClock(fixture);
+    }
+
+    private void seedClock(Map<String, Object> fixture) {
+        // The dashboard's fixed "as of" reference date (top-level asOf), if the fixture supplies one.
+        Object asOf = fixture.get("asOf");
+        if (asOf != null) {
+            jdbc.update("INSERT INTO dashboard_clock (id, as_of) VALUES (1, ?)", asOf.toString());
+        }
     }
 
     private void seedClients(Map<String, Object> fixture) {
