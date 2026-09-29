@@ -10,15 +10,16 @@ public class ListInvoices {
 
     public void service(@HttpQueryParameter("projectId") String projectId, JdbcTemplate jdbc,
             ObjectResponse<List<InvoiceView>> response) {
-        // The invoice amount is the sum of its line items (qty * unit price); an invoice with no
-        // lines totals zero. The amount due is that amount less everything paid against it (the sum
-        // of its payments), so a fully paid invoice shows zero still to pay.
+        // The invoice amount is the sum of its line items (qty * unit price) less its discount; an
+        // invoice with no lines totals zero. The amount due is that amount less everything paid
+        // against it (the sum of its payments), so a fully paid invoice shows zero still to pay.
         List<InvoiceView> invoices = jdbc.query(
-                "SELECT id, project_id, status, issued_date, due_date, "
+                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
-                        + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
+                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                        + "AS amount, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
-                        + "WHERE li.invoice_id = invoices.id), 0) "
+                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
                         + " WHERE project_id = ? ORDER BY id",
@@ -29,9 +30,11 @@ public class ListInvoices {
                     // that rather than read from the stored flag.
                     String status = InvoiceStatus.derive(rs.getString("status"), amount,
                             amount.subtract(amountDue));
-                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
-                            amountDue, status, rs.getString("issued_date"),
+                    InvoiceView view = new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+                            amount, amountDue, status, rs.getString("issued_date"),
                             rs.getString("due_date"));
+                    view.setDiscountPct(rs.getBigDecimal("discount_pct"));
+                    return view;
                 },
                 Long.valueOf(projectId));
         response.send(invoices);

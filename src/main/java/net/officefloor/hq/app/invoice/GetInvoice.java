@@ -18,9 +18,10 @@ public class GetInvoice {
         InvoiceView invoice = jdbc.query(
                 "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
-                        + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
+                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
+                        + "AS amount, "
                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
-                        + "WHERE li.invoice_id = invoices.id), 0) "
+                        + "WHERE li.invoice_id = invoices.id), 0) * (100 - discount_pct) / 100 "
                         + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
                         + "WHERE p.invoice_id = invoices.id), 0) AS amount_due FROM invoices"
                         + " WHERE id = ?",

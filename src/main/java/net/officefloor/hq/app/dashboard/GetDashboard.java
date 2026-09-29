@@ -18,11 +18,16 @@ public class GetDashboard {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
         // Money owed is the total of every SENT invoice, and an invoice's total is the sum of its
-        // line items (the source of truth everywhere else) — so a cancelled (VOID) invoice, no
-        // longer SENT, drops out of what is owed.
+        // line items less its discount (the source of truth everywhere else) — so a cancelled
+        // (VOID) invoice, no longer SENT, drops out of what is owed, and a discount is reflected in
+        // what is owed. The discount is applied per invoice (its own percentage off its own
+        // subtotal) before the totals are summed.
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM line_items li "
-                        + "JOIN invoices inv ON inv.id = li.invoice_id WHERE inv.status = 'SENT'",
+                "SELECT COALESCE(SUM(inv.subtotal * (100 - inv.discount_pct) / 100), 0) FROM ("
+                        + "SELECT i.discount_pct AS discount_pct, "
+                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+                        + "WHERE li.invoice_id = i.id), 0) AS subtotal "
+                        + "FROM invoices i WHERE i.status = 'SENT') inv",
                 BigDecimal.class);
         long overdue = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
