@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 985390c..00b7fa4 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -35,6 +35,18 @@ export function ProjectsPage() {
+     void loadClients();
+   }, []);
+ 
++  async function onDelete(id: number) {
++    const res = await fetch('/api/projects/delete', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      setProjects((prev) => prev.filter((p) => p.id !== id));
++      setOpenProjectId((prev) => (prev === id ? null : prev));
++    }
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     const res = await fetch('/api/projects', {
+@@ -99,6 +111,13 @@ export function ProjectsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`project-delete-${p.id}`}
++                    onClick={() => void onDelete(p.id)}
++                  >
++                    Delete
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/DeleteProject.java b/src/main/java/net/officefloor/hq/app/DeleteProject.java
+new file mode 100644
+index 0000000..2cfe8b9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DeleteProject.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for deleting a project (POST /api/projects/delete). */
++public class DeleteProject {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 4a46b3b..c4e1c1f 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -50,4 +50,18 @@ public class ProjectRepository {
+                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
+         return new Project(keys.getKey().longValue(), name, clientId, clientName);
+     }
++
++    /** Look up one project (with joined client name), or null when there is no such row. */
++    public Project findById(long id) {
++        List<Project> rows = jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
++                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
++                        + " WHERE p.id = ?",
++                MAPPER, id);
++        return rows.isEmpty() ? null : rows.get(0);
++    }
++
++    public boolean delete(long id) {
++        return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsDeletePostLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsDeletePostLogic.java
+new file mode 100644
+index 0000000..bee5b7e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectsDeletePostLogic.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/projects/delete — delete a project no longer needed. Removes the row and records one
++ * audit line (PROJECT_DELETED id=&lt;id&gt;) so the deletion is kept on record.
++ */
++public class ProjectsDeletePostLogic {
++
++    public void service(@RequestBody DeleteProject body, ProjectRepository repository, Audit audit,
++            ObjectResponse<Project> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A project id is required.");
++        }
++        Project existing = repository.findById(body.getId());
++        if (existing == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such project.");
++        }
++        repository.delete(existing.id());
++        audit.record("PROJECT_DELETED id=" + existing.id());
++        response.send(existing);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/projects/delete.POST.yml b/src/main/resources/officefloor/rest/api/projects/delete.POST.yml
+new file mode 100644
+index 0000000..b9c8910
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/delete.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ProjectsDeletePostLogic
