@@ -35,6 +35,7 @@ public class TestSupportController {
         // projects references clients; drop referential integrity so both tables can be truncated
         // (and their identity counters restarted) regardless of FK order.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
@@ -131,6 +132,22 @@ public class TestSupportController {
         for (Map<String, Object> tg : tags) {
             jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)",
                     ((Number) tg.get("id")).longValue(), tg.get("name"));
+        }
+        List<Map<String, Object>> notes =
+                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
+        for (Map<String, Object> n : notes) {
+            jdbc.update(
+                    "INSERT INTO notes (id, target_type, target_id, text, created_at)"
+                            + " VALUES (?, ?, ?, ?, ?)",
+                    ((Number) n.get("id")).longValue(), n.get("targetType"),
+                    ((Number) n.get("targetId")).longValue(), n.get("text"),
+                    n.get("at").toString());
+        }
+        if (!notes.isEmpty()) {
+            // Seeding explicit ids does not advance H2's identity counter, so bump it past the
+            // seeded rows or the app's next generated note id would collide with a fixture id.
+            Long next = jdbc.queryForObject("SELECT MAX(id) + 1 FROM notes", Long.class);
+            jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + next);
         }
         List<Map<String, Object>> projectTags =
                 (List<Map<String, Object>>) fixture.getOrDefault("projectTags", List.of());

@@ -24,6 +24,7 @@ type Invoice = {
 };
 type Task = { id: number; projectId: number; title: string; done: boolean };
 type Tag = { id: number; name: string };
+type Note = { id: number; targetType: string; targetId: number; text: string; at: string };
 
 type LineItem = {
   id: number;
@@ -226,10 +227,31 @@ function ProjectDetail({ project }: { project: Project }) {
   const [amountError, setAmountError] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [noteText, setNoteText] = useState('');
 
   async function load() {
     const res = await fetch(`/api/invoices?projectId=${project.id}`);
     setInvoices(await res.json());
+  }
+
+  async function loadNotes() {
+    const res = await fetch(`/api/notes?targetType=project&targetId=${project.id}`);
+    setNotes(await res.json());
+  }
+
+  async function submitNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!noteText.trim()) {
+      return;
+    }
+    await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetType: 'project', targetId: project.id, text: noteText }),
+    });
+    setNoteText('');
+    await loadNotes();
   }
 
   async function loadTasks() {
@@ -250,6 +272,7 @@ function ProjectDetail({ project }: { project: Project }) {
     void load();
     void loadTasks();
     void loadTags();
+    void loadNotes();
   }, [project.id]);
 
   async function toggleTask(id: number) {
@@ -376,6 +399,28 @@ function ProjectDetail({ project }: { project: Project }) {
           ))}
         </tbody>
       </table>
+
+      <section data-testid="project-notes">
+        <form data-testid="note-form" onSubmit={submitNote}>
+          <input
+            data-testid="note-form-text"
+            placeholder="Write a note"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+          />
+          <button data-testid="note-form-submit" type="submit">
+            Add note
+          </button>
+        </form>
+
+        <ul data-testid="project-notes-list">
+          {notes.map((n) => (
+            <li key={n.id} data-testid={`note-row-${n.id}`}>
+              <span data-testid="note-text">{n.text}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <form data-testid="invoice-form" onSubmit={submit}>
         <input
