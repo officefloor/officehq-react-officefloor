@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoice;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import net.officefloor.server.http.HttpException;
 import net.officefloor.server.http.HttpStatus;
 import net.officefloor.web.ObjectResponse;
@@ -22,6 +23,9 @@ public class CreateInvoice {
         invoice.setProjectId(body.getProjectId());
         invoice.setAmount(amount);
         invoice.setStatus("UNPAID");
+        LocalDate today = LocalDate.now();
+        invoice.setIssuedDate(today);
+        invoice.setDueDate(today.plusDays(30));
         response.send(repository.save(invoice));
     }
 }

@@ -8,7 +8,14 @@ import type { Feature } from '../../router/routes';
 // data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
-type Invoice = { id: number; projectId: number; amount: number; status: string };
+type Invoice = {
+  id: number;
+  projectId: number;
+  amount: number;
+  status: string;
+  issuedDate: string;
+  dueDate: string;
+};
 
 function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
@@ -80,6 +87,8 @@ function ProjectDetail({ project }: { project: Project }) {
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
               <td data-testid="invoice-amount">{money(inv.amount)}</td>
+              <td data-testid="invoice-issued">{inv.issuedDate}</td>
+              <td data-testid="invoice-due">{inv.dueDate}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td>
                 {inv.status !== 'PAID' && (
