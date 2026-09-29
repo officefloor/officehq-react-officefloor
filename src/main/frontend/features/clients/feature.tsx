@@ -403,6 +403,36 @@ function ClientForm({
   );
 }
 
+// The tucked-away clients: those the user archived earlier. Shown behind the "show archived" toggle
+// so they stay out of the way, each with a control to bring it back (client-restore-<id>) so it
+// returns to the main list. Reads the archived-only /api/clients/archived listing; restoring is the
+// mirror of archiving.
+function ArchivedClients({
+  clients,
+  onRestore,
+}: {
+  clients: Client[];
+  onRestore: (id: number) => void;
+}) {
+  return (
+    <table data-testid="clients-archived-table">
+      <tbody>
+        {clients.map((c) => (
+          <tr key={c.id} data-testid={`client-archived-row-${c.id}`}>
+            <td data-testid="client-name">{c.name}</td>
+            <td data-testid="client-email">{c.email}</td>
+            <td>
+              <button data-testid={`client-restore-${c.id}`} onClick={() => onRestore(c.id)}>
+                Restore
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // The client list: a row per client with controls to open its detail or archive it.
 function ClientsTable({
   clients,
@@ -443,6 +473,11 @@ function ClientsTable({
 
 function ClientsPage() {
   const [clients, reload] = useJsonResource<Client[]>('/api/clients', []);
+  // The tucked-away clients, loaded alongside the live list so the "show archived" toggle can reveal
+  // them; kept separate from `clients` so the default list stays exactly the live ones.
+  const [archived, reloadArchived] = useJsonResource<Client[]>('/api/clients/archived', []);
+  // Whether the archived clients are on show (so one can be brought back) or tucked away by default.
+  const [showArchived, setShowArchived] = useState(false);
   // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
   // substring match on the client name; an empty box shows everyone.
   const [search, setSearch] = useState('');
@@ -498,6 +533,15 @@ function ClientsPage() {
       setEditingId(null);
     }
     await reload();
+    await reloadArchived();
+  }
+
+  // Bring a tucked-away client back: clearing its archived flag returns it to the live list and drops
+  // it from the archived one, so refresh both.
+  async function restore(id: number) {
+    await fetch(`/api/clients/${id}/restore`, { method: 'POST' });
+    await reload();
+    await reloadArchived();
   }
 
   const term = search.trim().toLowerCase();
@@ -528,6 +572,11 @@ function ClientsPage() {
         <option value="outstanding">Outstanding</option>
       </select>
       <ClientForm testid="client-form" submitLabel="Add client" onSubmit={addClient} />
+
+      <button data-testid="clients-show-archived" onClick={() => setShowArchived((v) => !v)}>
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+      {showArchived && <ArchivedClients clients={archived} onRestore={restore} />}
 
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>

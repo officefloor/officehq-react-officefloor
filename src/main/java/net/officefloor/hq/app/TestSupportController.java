@@ -72,8 +72,14 @@ public class TestSupportController {
 
     private void seedClients(Map<String, Object> fixture) {
         for (Map<String, Object> c : rows(fixture, "clients")) {
-            jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
-                    id(c, "id"), c.get("name"), c.get("email"));
+            // archived defaults to FALSE (the table default) unless the fixture pins it, so a
+            // fixture can seed a tucked-away client for the restore flow.
+            new Insert("clients")
+                    .set("id", id(c, "id"))
+                    .set("name", c.get("name"))
+                    .set("email", c.get("email"))
+                    .setIfPresent("archived", c.get("archived"))
+                    .run();
         }
     }
 
