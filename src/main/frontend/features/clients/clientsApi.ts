@@ -39,6 +39,18 @@ export async function createClient(input: { name: string; email: string }): Prom
   });
 }
 
+export async function updateClient(input: {
+  id: number;
+  name: string;
+  email: string;
+}): Promise<Response> {
+  return fetch('/api/clients/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function archiveClient(id: number): Promise<Response> {
   return fetch('/api/clients/archive', {
     method: 'POST',

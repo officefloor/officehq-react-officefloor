@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Client, archiveClient, fetchClients } from './clientsApi';
 import { ClientForm } from './ClientForm';
+import { ClientEditForm } from './ClientEditForm';
 import { ClientsTable } from './ClientsTable';
 import { ClientDetails } from './ClientDetails';
 
@@ -10,6 +11,7 @@ export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState('');
   const [openClientId, setOpenClientId] = useState<number | null>(null);
+  const [editingClientId, setEditingClientId] = useState<number | null>(null);
 
   async function load() {
     const loaded = await fetchClients();
@@ -31,6 +33,14 @@ export function ClientsPage() {
   function onCreated(created: Client) {
     setClients((prev) => [...prev, created]);
   }
+
+  // A saved edit replaces the row in place; the edit form then closes.
+  function onSaved(saved: Client) {
+    setClients((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
+    setEditingClientId(null);
+  }
+
+  const editingClient = clients.find((c) => c.id === editingClientId) ?? null;
 
   // Tuck a client away: it drops off the list and the search, but the row is kept server-side.
   async function onArchive(id: number) {
@@ -56,8 +66,23 @@ export function ClientsPage() {
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
-        <ClientsTable clients={visibleClients} onOpen={setOpenClientId} onArchive={onArchive} />
+        <ClientsTable
+          clients={visibleClients}
+          onOpen={setOpenClientId}
+          onEdit={setEditingClientId}
+          onArchive={onArchive}
+        />
       )}
+
+      {editingClient ? (
+        <ClientEditForm
+          key={editingClient.id}
+          client={editingClient}
+          takenEmails={clients.filter((c) => c.id !== editingClient.id).map((c) => c.email)}
+          onSaved={onSaved}
+          onCancel={() => setEditingClientId(null)}
+        />
+      ) : null}
 
       {openClientId !== null ? <ClientDetails clientId={openClientId} /> : null}
     </section>

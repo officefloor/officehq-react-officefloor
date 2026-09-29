@@ -56,6 +56,12 @@ public class ClientRepository {
         return jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id) > 0;
     }
 
+    /** Correct a client's name/email. Returns the updated row, or null when there is no such row. */
+    public Client update(long id, String name, String email) {
+        int rows = jdbc.update("UPDATE clients SET name = ?, email = ? WHERE id = ?", name, email, id);
+        return rows > 0 ? new Client(id, name, email) : null;
+    }
+
     /**
      * Whether a client already uses this email. Two clients cannot share an email, so a create must
      * be rejected when one exists (defence alongside the {@code clients_email_unique} constraint in
@@ -64,6 +70,17 @@ public class ClientRepository {
     public boolean existsByEmail(String email) {
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM clients WHERE email = ?", Integer.class, email);
+        return count != null && count > 0;
+    }
+
+    /**
+     * Whether a client OTHER than {@code id} already uses this email. Lets a client keep its own
+     * address on an edit while still rejecting a collision with a different client (mirrors the
+     * {@code clients_email_unique} constraint in V27).
+     */
+    public boolean existsByEmailForOther(String email, long id) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM clients WHERE email = ? AND id <> ?", Integer.class, email, id);
         return count != null && count > 0;
     }
 

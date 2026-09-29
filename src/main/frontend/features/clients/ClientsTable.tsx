@@ -6,10 +6,12 @@ import { Client } from './clientsApi';
 function ClientRow({
   client,
   onOpen,
+  onEdit,
   onArchive,
 }: {
   client: Client;
   onOpen: (id: number) => void;
+  onEdit: (id: number) => void;
   onArchive: (id: number) => void;
 }) {
   return (
@@ -19,6 +21,9 @@ function ClientRow({
       <td>
         <button type="button" data-testid={`client-open-${client.id}`} onClick={() => onOpen(client.id)}>
           Open
+        </button>
+        <button type="button" data-testid={`client-edit-${client.id}`} onClick={() => onEdit(client.id)}>
+          Edit
         </button>
         <button
           type="button"
@@ -35,10 +40,12 @@ function ClientRow({
 export function ClientsTable({
   clients,
   onOpen,
+  onEdit,
   onArchive,
 }: {
   clients: Client[];
   onOpen: (id: number) => void;
+  onEdit: (id: number) => void;
   onArchive: (id: number) => void;
 }) {
   return (
@@ -52,7 +59,7 @@ export function ClientsTable({
       </thead>
       <tbody>
         {clients.map((c) => (
-          <ClientRow key={c.id} client={c} onOpen={onOpen} onArchive={onArchive} />
+          <ClientRow key={c.id} client={c} onOpen={onOpen} onEdit={onEdit} onArchive={onArchive} />
         ))}
       </tbody>
     </table>
