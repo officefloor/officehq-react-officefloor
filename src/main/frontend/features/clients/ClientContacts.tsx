@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 
 // A client's contacts (name, email, role), shown when a client is opened from the clients list.
 // Owns its own state (CLAUDE.md — features own their state; no global store) and a form to add one.
-type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+type Contact = {
+  id: number;
+  clientId: number;
+  name: string;
+  email: string;
+  role: string;
+  primary: boolean;
+};
 
 // A contact needs a proper email too. Kept in sync with the server-side check in ContactsPostLogic
 // and the DB CHECK constraint (V10__contacts_email_check.sql).
@@ -25,6 +32,20 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   useEffect(() => {
     void load();
   }, [clientId]);
+
+  // The client has one main contact; pick another to make it the main one.
+  const primaryContact = contacts.find((c) => c.primary) ?? null;
+
+  async function onMakePrimary(contactId: number) {
+    const res = await fetch('/api/contacts/primary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, contactId }),
+    });
+    if (res.ok) {
+      setContacts(await res.json());
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,6 +73,10 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   return (
     <section data-testid="client-contacts">
       <h2>Contacts</h2>
+      <p>
+        Main contact:{' '}
+        <span data-testid="client-primary-contact">{primaryContact?.name ?? ''}</span>
+      </p>
       <form data-testid="contact-form" onSubmit={onSubmit}>
         <input
           data-testid="contact-form-name"
@@ -87,6 +112,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             <th>Name</th>
             <th>Email</th>
             <th>Role</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -95,6 +121,16 @@ export function ClientContacts({ clientId }: { clientId: number }) {
               <td data-testid="contact-name">{c.name}</td>
               <td data-testid="contact-email">{c.email}</td>
               <td data-testid="contact-role">{c.role}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid={`contact-primary-${c.id}`}
+                  disabled={c.primary}
+                  onClick={() => onMakePrimary(c.id)}
+                >
+                  {c.primary ? 'Main contact' : 'Make main'}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

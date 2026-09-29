@@ -106,10 +106,13 @@ public class TestSupportController {
 
     private void seedContacts(Map<String, Object> fixture) {
         for (Map<String, Object> ct : rows(fixture, "contacts")) {
+            Object primary = ct.get("primary");
             jdbc.update(
-                    "INSERT INTO contacts (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO contacts (id, client_id, name, email, role, is_primary)"
+                            + " VALUES (?, ?, ?, ?, ?, ?)",
                     id(ct, "id"), id(ct, "clientId"),
-                    ct.get("name"), ct.get("email"), ct.get("role"));
+                    ct.get("name"), ct.get("email"), ct.get("role"),
+                    primary != null && Boolean.parseBoolean(primary.toString()));
         }
     }
 

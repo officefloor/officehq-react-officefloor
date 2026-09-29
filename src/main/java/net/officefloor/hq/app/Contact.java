@@ -2,7 +2,9 @@ package net.officefloor.hq.app;
 
 /**
  * A person to reach at a client (name, email, role). Serialised as JSON by the /api/contacts
- * routes; carries its client_id so the UI can list a single client's contacts.
+ * routes; carries its client_id so the UI can list a single client's contacts. {@code primary}
+ * marks the client's one main contact (V25__contacts_primary.sql).
  */
-public record Contact(long id, long clientId, String name, String email, String role) {
+public record Contact(long id, long clientId, String name, String email, String role,
+        boolean primary) {
 }
