@@ -1,0 +1,178 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 5bbcaea..87288fb 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -316,10 +316,12 @@ function ClientForm({
+ function ClientsTable({
+   clients,
+   onOpen,
++  onEdit,
+   onArchive,
+ }: {
+   clients: Client[];
+   onOpen: (id: number) => void;
++  onEdit: (id: number) => void;
+   onArchive: (id: number) => void;
+ }) {
+   return (
+@@ -333,6 +335,9 @@ function ClientsTable({
+               <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
+                 Open
+               </button>
++              <button data-testid={`client-edit-${c.id}`} onClick={() => onEdit(c.id)}>
++                Edit
++              </button>
+               <button data-testid={`client-archive-${c.id}`} onClick={() => onArchive(c.id)}>
+                 Archive
+               </button>
+@@ -350,6 +355,9 @@ function ClientsPage() {
+   // substring match on the client name; an empty box shows everyone.
+   const [search, setSearch] = useState('');
+   const [openId, setOpenId] = useState<number | null>(null);
++  // Which client (if any) is being corrected: opening the edit form seeds it with that client's
++  // current name and email so the user tweaks rather than retypes.
++  const [editingId, setEditingId] = useState<number | null>(null);
+ 
+   // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
+   // form as-is rather than clearing or reloading (nothing was added).
+@@ -366,6 +374,25 @@ function ClientsPage() {
+     return null;
+   }
+ 
++  // Correct a client's name or email. The server rejects a duplicate email (against another
++  // client), so surface it and keep the form open; on success reload and close the edit form.
++  async function editClient(
++    id: number,
++    values: { name: string; email: string },
++  ): Promise<string | null> {
++    const res = await fetch(`/api/clients/${id}`, {
++      method: 'PUT',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify(values),
++    });
++    if (!res.ok) {
++      return 'A client with this email already exists.';
++    }
++    await reload();
++    setEditingId(null);
++    return null;
++  }
++
+   // Tuck a client away: archived clients are retained server-side but drop off this list and out of
+   // the search. Reloading after archiving is enough — the /api/clients list excludes them.
+   async function archive(id: number) {
+@@ -373,12 +400,16 @@ function ClientsPage() {
+     if (openId === id) {
+       setOpenId(null);
+     }
++    if (editingId === id) {
++      setEditingId(null);
++    }
+     await reload();
+   }
+ 
+   const term = search.trim().toLowerCase();
+   const visible = clients.filter((c) => c.name.toLowerCase().includes(term));
+   const open = clients.find((c) => c.id === openId) ?? null;
++  const editing = clients.find((c) => c.id === editingId) ?? null;
+ 
+   return (
+     <section data-testid="clients">
+@@ -393,7 +424,22 @@ function ClientsPage() {
+       {clients.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
+       ) : (
+-        <ClientsTable clients={visible} onOpen={setOpenId} onArchive={archive} />
++        <ClientsTable
++          clients={visible}
++          onOpen={setOpenId}
++          onEdit={setEditingId}
++          onArchive={archive}
++        />
++      )}
++
++      {editing && (
++        <ClientForm
++          key={`edit-${editing.id}`}
++          testid="client-edit-form"
++          submitLabel="Save changes"
++          initial={{ name: editing.name, email: editing.email }}
++          onSubmit={(values) => editClient(editing.id, values)}
++        />
+       )}
+ 
+       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index c0b6f46..32721ce 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -11,4 +11,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** Whether a client already uses this email — two clients cannot share one. */
+     boolean existsByEmail(String email);
++
++    /** Whether a client OTHER than this one uses this email — for correcting a client's email. */
++    boolean existsByEmailAndIdNot(String email, Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/UpdateClient.java b/src/main/java/net/officefloor/hq/app/client/UpdateClient.java
+new file mode 100644
+index 0000000..7036871
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/UpdateClient.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.client;
++
++import java.util.regex.Pattern;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * PUT /api/clients/{id} — correct a client's name and/or email. Same email shape the UI and
++ * {@link CreateClient} enforce, and the same rule that two clients cannot share an email (the
++ * client's own current email is of course allowed). Records the change to the audit file and
++ * returns the updated client.
++ */
++public class UpdateClient {
++
++    /** A client needs a proper email; same shape the UI enforces (see feature.tsx). */
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
++    public void service(@HttpPathParameter("id") String id, @RequestBody NewClient body,
++            ClientRepository repository, Audit audit, ObjectResponse<Client> response) {
++        Long clientId = Long.valueOf(id);
++        Client client = repository.findById(clientId)
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such client"));
++        String name = body.getName() == null ? "" : body.getName().trim();
++        String email = body.getEmail() == null ? "" : body.getEmail().trim();
++        if (name.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A client requires a name");
++        }
++        if (!EMAIL.matcher(email).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "A client requires a valid email address");
++        }
++        // Two clients cannot share an email; a duplicate against ANOTHER client is rejected, but the
++        // client keeping its own current email is fine.
++        if (repository.existsByEmailAndIdNot(email, clientId)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A client with this email already exists");
++        }
++        client.setName(name);
++        client.setEmail(email);
++        Client saved = repository.save(client);
++        audit.record("CLIENT_UPDATED id=" + saved.getId());
++        response.send(saved);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{id}.PUT.yml b/src/main/resources/officefloor/rest/api/clients/{id}.PUT.yml
+new file mode 100644
+index 0000000..84aec7a
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{id}.PUT.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.client.UpdateClient
