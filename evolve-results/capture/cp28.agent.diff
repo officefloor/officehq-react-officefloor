@@ -1,0 +1,395 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 3016073..b88c2e6 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -24,6 +24,7 @@ type Invoice = {
+ };
+ type Task = { id: number; projectId: number; title: string; done: boolean };
+ type Tag = { id: number; name: string };
++type Note = { id: number; targetType: string; targetId: number; text: string; at: string };
+ 
+ type LineItem = {
+   id: number;
+@@ -226,12 +227,33 @@ function ProjectDetail({ project }: { project: Project }) {
+   const [amountError, setAmountError] = useState('');
+   const [sortByDue, setSortByDue] = useState(false);
+   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
++  const [notes, setNotes] = useState<Note[]>([]);
++  const [noteText, setNoteText] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${project.id}`);
+     setInvoices(await res.json());
+   }
+ 
++  async function loadNotes() {
++    const res = await fetch(`/api/notes?targetType=project&targetId=${project.id}`);
++    setNotes(await res.json());
++  }
++
++  async function submitNote(e: React.FormEvent) {
++    e.preventDefault();
++    if (!noteText.trim()) {
++      return;
++    }
++    await fetch('/api/notes', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ targetType: 'project', targetId: project.id, text: noteText }),
++    });
++    setNoteText('');
++    await loadNotes();
++  }
++
+   async function loadTasks() {
+     const res = await fetch(`/api/tasks?projectId=${project.id}`);
+     setTasks(await res.json());
+@@ -250,6 +272,7 @@ function ProjectDetail({ project }: { project: Project }) {
+     void load();
+     void loadTasks();
+     void loadTags();
++    void loadNotes();
+   }, [project.id]);
+ 
+   async function toggleTask(id: number) {
+@@ -377,6 +400,28 @@ function ProjectDetail({ project }: { project: Project }) {
+         </tbody>
+       </table>
+ 
++      <section data-testid="project-notes">
++        <form data-testid="note-form" onSubmit={submitNote}>
++          <input
++            data-testid="note-form-text"
++            placeholder="Write a note"
++            value={noteText}
++            onChange={(e) => setNoteText(e.target.value)}
++          />
++          <button data-testid="note-form-submit" type="submit">
++            Add note
++          </button>
++        </form>
++
++        <ul data-testid="project-notes-list">
++          {notes.map((n) => (
++            <li key={n.id} data-testid={`note-row-${n.id}`}>
++              <span data-testid="note-text">{n.text}</span>
++            </li>
++          ))}
++        </ul>
++      </section>
++
+       <form data-testid="invoice-form" onSubmit={submit}>
+         <input
+           data-testid="invoice-form-amount"
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4fe0b0c..9a58b5a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,6 +35,7 @@ public class TestSupportController {
+         // projects references clients; drop referential integrity so both tables can be truncated
+         // (and their identity counters restarted) regardless of FK order.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+@@ -132,6 +133,22 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)",
+                     ((Number) tg.get("id")).longValue(), tg.get("name"));
+         }
++        List<Map<String, Object>> notes =
++                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
++        for (Map<String, Object> n : notes) {
++            jdbc.update(
++                    "INSERT INTO notes (id, target_type, target_id, text, created_at)"
++                            + " VALUES (?, ?, ?, ?, ?)",
++                    ((Number) n.get("id")).longValue(), n.get("targetType"),
++                    ((Number) n.get("targetId")).longValue(), n.get("text"),
++                    n.get("at").toString());
++        }
++        if (!notes.isEmpty()) {
++            // Seeding explicit ids does not advance H2's identity counter, so bump it past the
++            // seeded rows or the app's next generated note id would collide with a fixture id.
++            Long next = jdbc.queryForObject("SELECT MAX(id) + 1 FROM notes", Long.class);
++            jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + next);
++        }
+         List<Map<String, Object>> projectTags =
+                 (List<Map<String, Object>>) fixture.getOrDefault("projectTags", List.of());
+         for (Map<String, Object> pt : projectTags) {
+diff --git a/src/main/java/net/officefloor/hq/app/note/CreateNote.java b/src/main/java/net/officefloor/hq/app/note/CreateNote.java
+new file mode 100644
+index 0000000..7a2cbf8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/CreateNote.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.note;
++
++import java.time.Instant;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/notes — write a note against a target, stamped now so it sorts newest first. */
++public class CreateNote {
++
++    public void service(@RequestBody NewNote body, NoteRepository repository,
++            ObjectResponse<Note> response) {
++        String text = body.getText() == null ? "" : body.getText().trim();
++        if (text.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A note requires text");
++        }
++        String targetType = body.getTargetType() == null ? "" : body.getTargetType().trim();
++        if (targetType.isEmpty() || body.getTargetId() == null) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A note requires a target");
++        }
++        Note note = new Note();
++        note.setTargetType(targetType);
++        note.setTargetId(body.getTargetId());
++        note.setText(text);
++        note.setCreatedAt(Instant.now().toString());
++        response.send(repository.save(note));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/ListNotes.java b/src/main/java/net/officefloor/hq/app/note/ListNotes.java
+new file mode 100644
+index 0000000..968fa96
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/ListNotes.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.note;
++
++import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/**
++ * GET /api/notes?targetType=&lt;type&gt;&amp;targetId=&lt;id&gt; — every note on one target, NEWEST
++ * FIRST (created_at descending, id as a stable tie-break).
++ */
++public class ListNotes {
++
++    public void service(@HttpQueryParameter("targetType") String targetType,
++            @HttpQueryParameter("targetId") String targetId, JdbcTemplate jdbc,
++            ObjectResponse<List<NoteView>> response) {
++        List<NoteView> notes = jdbc.query(
++                "SELECT id, target_type, target_id, text, created_at FROM notes"
++                        + " WHERE target_type = ? AND target_id = ?"
++                        + " ORDER BY created_at DESC, id DESC",
++                (rs, i) -> new NoteView(rs.getLong("id"), rs.getString("target_type"),
++                        rs.getLong("target_id"), rs.getString("text"), rs.getString("created_at")),
++                targetType, Long.valueOf(targetId));
++        response.send(notes);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NewNote.java b/src/main/java/net/officefloor/hq/app/note/NewNote.java
+new file mode 100644
+index 0000000..29be69e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NewNote.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.note;
++
++/** Request body for writing a note: the target it is about and the note text. */
++public class NewNote {
++
++    private String targetType;
++
++    private Long targetId;
++
++    private String text;
++
++    public String getTargetType() {
++        return targetType;
++    }
++
++    public void setTargetType(String targetType) {
++        this.targetType = targetType;
++    }
++
++    public Long getTargetId() {
++        return targetId;
++    }
++
++    public void setTargetId(Long targetId) {
++        this.targetId = targetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public void setText(String text) {
++        this.text = text;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/Note.java b/src/main/java/net/officefloor/hq/app/note/Note.java
+new file mode 100644
+index 0000000..91564ea
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/Note.java
+@@ -0,0 +1,72 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/**
++ * A free-text note written against a target (e.g. a project). Polymorphic by target type + target
++ * id; created_at is an ISO-8601 instant stored as text so "newest first" is a simple sort.
++ */
++@Entity
++@Table(name = "notes")
++public class Note {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "target_type")
++    private String targetType;
++
++    @Column(name = "target_id")
++    private Long targetId;
++
++    private String text;
++
++    @Column(name = "created_at")
++    private String createdAt;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public String getTargetType() {
++        return targetType;
++    }
++
++    public void setTargetType(String targetType) {
++        this.targetType = targetType;
++    }
++
++    public Long getTargetId() {
++        return targetId;
++    }
++
++    public void setTargetId(Long targetId) {
++        this.targetId = targetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public void setText(String text) {
++        this.text = text;
++    }
++
++    public String getCreatedAt() {
++        return createdAt;
++    }
++
++    public void setCreatedAt(String createdAt) {
++        this.createdAt = createdAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRepository.java b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+new file mode 100644
+index 0000000..c0e503c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.note;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Note}. */
++public interface NoteRepository extends JpaRepository<Note, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteView.java b/src/main/java/net/officefloor/hq/app/note/NoteView.java
+new file mode 100644
+index 0000000..3161b03
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteView.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.note;
++
++/** A note as the UI surfaces it: id, its target, the text, and when it was written. */
++public class NoteView {
++
++    private final Long id;
++    private final String targetType;
++    private final Long targetId;
++    private final String text;
++    private final String at;
++
++    public NoteView(Long id, String targetType, Long targetId, String text, String at) {
++        this.id = id;
++        this.targetType = targetType;
++        this.targetId = targetId;
++        this.text = text;
++        this.at = at;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getTargetType() {
++        return targetType;
++    }
++
++    public Long getTargetId() {
++        return targetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public String getAt() {
++        return at;
++    }
++}
+diff --git a/src/main/resources/db/migration/V16__notes.sql b/src/main/resources/db/migration/V16__notes.sql
+new file mode 100644
+index 0000000..ee40c05
+--- /dev/null
++++ b/src/main/resources/db/migration/V16__notes.sql
+@@ -0,0 +1,11 @@
++-- Notes feature: a free-text note written against a target (e.g. a project). Polymorphic by
++-- target_type + target_id so notes can attach to any entity. BY DEFAULT identity so the test seed
++-- can insert explicit fixture ids while normal creates still auto-generate. created_at is an ISO-8601
++-- instant stored as text: lexicographically sortable, so "newest first" is ORDER BY created_at DESC.
++CREATE TABLE notes (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    target_type VARCHAR(32) NOT NULL,
++    target_id   BIGINT NOT NULL,
++    text        VARCHAR(2000) NOT NULL,
++    created_at  VARCHAR(64) NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/notes.GET.yml b/src/main/resources/officefloor/rest/api/notes.GET.yml
+new file mode 100644
+index 0000000..bc5f53c
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/notes.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.note.ListNotes
+diff --git a/src/main/resources/officefloor/rest/api/notes.POST.yml b/src/main/resources/officefloor/rest/api/notes.POST.yml
+new file mode 100644
+index 0000000..7fb8d6c
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/notes.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.note.CreateNote
