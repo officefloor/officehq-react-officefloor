@@ -36,6 +36,7 @@ public class TestSupportController {
         // referential integrity for the duration of the reset.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         try {
+            jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
             jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
@@ -97,6 +98,27 @@ public class TestSupportController {
             jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
                     ((Number) pt.get("projectId")).longValue(),
                     ((Number) pt.get("tagId")).longValue());
+        }
+        List<Map<String, Object>> notes =
+                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
+        for (Map<String, Object> n : notes) {
+            Object at = n.get("at");
+            jdbc.update(
+                    "INSERT INTO notes (id, target_type, target_id, body, created_at)"
+                            + " VALUES (?, ?, ?, ?, ?)",
+                    ((Number) n.get("id")).longValue(),
+                    n.get("targetType"),
+                    ((Number) n.get("targetId")).longValue(),
+                    n.get("text"),
+                    at == null ? null : java.time.OffsetDateTime.parse(at.toString()));
+        }
+        if (!notes.isEmpty()) {
+            // Inserting explicit ids into the IDENTITY column does not advance H2's generator, so a
+            // later app-side INSERT would reuse id 1 and hit the PK. Bump the generator past the
+            // seeded ids.
+            Long nextNoteId =
+                    jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM notes", Long.class);
+            jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + nextNoteId);
         }
         List<Map<String, Object>> invoices =
                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
