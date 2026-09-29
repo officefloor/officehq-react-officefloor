@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/features/projects/ProjectBudget.tsx b/src/main/frontend/features/projects/ProjectBudget.tsx
+new file mode 100644
+index 0000000..dbdca7d
+--- /dev/null
++++ b/src/main/frontend/features/projects/ProjectBudget.tsx
+@@ -0,0 +1,51 @@
++import React, { useEffect, useState } from 'react';
++
++// A project's budget summary, shown when a project is opened from the projects list. Owns its own
++// state (CLAUDE.md — features own their state). Shows the agreed budget, how much has been invoiced
++// against it, and what is left (budget minus invoiced). Amounts render as US dollars with grouping.
++type Budget = {
++  budget: number | null;
++  invoiced: number;
++  remaining: number | null;
++};
++
++function money(n: number): string {
++  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
++}
++
++export function ProjectBudget({ projectId }: { projectId: number }) {
++  const [budget, setBudget] = useState<Budget | null>(null);
++
++  useEffect(() => {
++    let live = true;
++    void (async () => {
++      const res = await fetch(`/api/projects/budget?projectId=${projectId}`);
++      if (res.ok && live) {
++        setBudget(await res.json());
++      }
++    })();
++    return () => {
++      live = false;
++    };
++  }, [projectId]);
++
++  if (budget === null) {
++    return null;
++  }
++
++  return (
++    <section data-testid="project-budget-summary">
++      <h2>Budget</h2>
++      <dl>
++        <dt>Budget</dt>
++        <dd data-testid="project-budget">{budget.budget === null ? '' : money(budget.budget)}</dd>
++        <dt>Invoiced</dt>
++        <dd data-testid="project-invoiced">{money(budget.invoiced)}</dd>
++        <dt>Remaining</dt>
++        <dd data-testid="project-remaining">
++          {budget.remaining === null ? '' : money(budget.remaining)}
++        </dd>
++      </dl>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index afb5b9e..7867541 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { ProjectBudget } from './ProjectBudget';
+ import { ProjectInvoices } from './ProjectInvoices';
+ import { ProjectNotes } from './ProjectNotes';
+ import { ProjectTags } from './ProjectTags';
+@@ -246,6 +247,7 @@ export function ProjectsPage() {
+ 
+       {openProjectId !== null ? (
+         <>
++          <ProjectBudget projectId={openProjectId} />
+           <ProjectNotes projectId={openProjectId} />
+           <ProjectTags projectId={openProjectId} />
+           <ProjectTasks projectId={openProjectId} />
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectBudget.java b/src/main/java/net/officefloor/hq/app/ProjectBudget.java
+new file mode 100644
+index 0000000..799efc6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectBudget.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * A project's budget summary. Serialised as JSON by GET /api/projects/budget. {@code budget} is the
++ * money agreed for the project (null when none is set); {@code invoiced} is how much has been
++ * invoiced against it (the sum of the issued invoices' amounts); {@code remaining} is what is left
++ * (budget minus invoiced, null when there is no budget).
++ */
++public record ProjectBudget(BigDecimal budget, BigDecimal invoiced, BigDecimal remaining) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectBudgetGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectBudgetGetLogic.java
+new file mode 100644
+index 0000000..9f929a5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectBudgetGetLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/projects/budget?projectId=&lt;id&gt; — a project's budget, invoiced and remaining. */
++public class ProjectBudgetGetLogic {
++
++    public void service(@HttpQueryParameter("projectId") String projectId,
++            ProjectRepository repository, ObjectResponse<ProjectBudget> response) {
++        long id = projectId == null || projectId.isBlank() ? 0 : Long.parseLong(projectId.trim());
++        response.send(repository.budgetSummary(id));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 8299688..fe07d68 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -114,6 +114,23 @@ public class ProjectRepository {
+         return rows.isEmpty() ? null : rows.get(0);
+     }
+ 
++    /**
++     * A project's budget summary: the agreed budget (null when none is set), how much has been
++     * invoiced against it (the sum of its issued invoices' line-item totals — drafts are not yet
++     * invoiced), and what is left (budget minus invoiced, null when there is no budget).
++     */
++    public ProjectBudget budgetSummary(long id) {
++        java.math.BigDecimal budget = jdbc.queryForObject(
++                "SELECT budget FROM projects WHERE id = ?", java.math.BigDecimal.class, id);
++        java.math.BigDecimal invoiced = jdbc.queryForObject(
++                "SELECT COALESCE(SUM(li.qty * li.unit_price), 0) FROM invoices i"
++                        + " JOIN line_items li ON li.invoice_id = i.id"
++                        + " WHERE i.project_id = ? AND i.status <> 'DRAFT'",
++                java.math.BigDecimal.class, id);
++        java.math.BigDecimal remaining = budget == null ? null : budget.subtract(invoiced);
++        return new ProjectBudget(budget, invoiced, remaining);
++    }
++
+     public boolean delete(long id) {
+         return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f4999be..abad8da 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -84,12 +84,14 @@ public class TestSupportController {
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+             Object status = p.get("status");
+             Object archived = p.get("archived");
++            Object budget = p.get("budget");
+             jdbc.update(
+-                    "INSERT INTO projects (id, name, client_id, status, archived)"
+-                            + " VALUES (?, ?, ?, ?, ?)",
++                    "INSERT INTO projects (id, name, client_id, status, archived, budget)"
++                            + " VALUES (?, ?, ?, ?, ?, ?)",
+                     id(p, "id"), p.get("name"), id(p, "clientId"),
+                     status == null ? "ACTIVE" : status.toString(),
+-                    archived != null && Boolean.parseBoolean(archived.toString()));
++                    archived != null && Boolean.parseBoolean(archived.toString()),
++                    budget == null ? null : new BigDecimal(budget.toString()));
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V21__projects_budget.sql b/src/main/resources/db/migration/V21__projects_budget.sql
+new file mode 100644
+index 0000000..9f5fe93
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__projects_budget.sql
+@@ -0,0 +1,4 @@
++-- A project can carry a budget: the money the owner has agreed to work to on it. Nullable — a
++-- project may have no budget set yet — so no default; setting a budget writes the column. Additive:
++-- a new versioned migration alongside the existing projects table.
++ALTER TABLE projects ADD COLUMN budget NUMERIC(19, 2);
+diff --git a/src/main/resources/officefloor/rest/api/projects/budget.GET.yml b/src/main/resources/officefloor/rest/api/projects/budget.GET.yml
+new file mode 100644
+index 0000000..c43cbe7
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/budget.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ProjectBudgetGetLogic
