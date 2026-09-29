@@ -2,16 +2,86 @@ import React, { useEffect, useState } from 'react';
 import type { Feature } from '../../router/routes';
 
 // Projects feature: add a project and pick which client it is for, then list every project showing
-// the client's NAME. Owns its own state; talks to its own /api/projects endpoints and reads
-// /api/clients to populate the client picker. data-testid anchors follow the spec's conventions.
+// the client's NAME. Opening a project (project-open-<id>) reveals its detail: the invoices raised
+// against it, their running total, and a form to add another. Owns its own state; talks to its own
+// /api/projects and /api/invoices endpoints and reads /api/clients to populate the client picker.
+// data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
+type Invoice = { id: number; projectId: number; amount: number };
+
+function money(amount: number): string {
+  return Number(amount).toFixed(2);
+}
+
+// A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its
+// own invoice state, scoped to the one project it is showing.
+function ProjectDetail({ project }: { project: Project }) {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [amount, setAmount] = useState('');
+
+  async function load() {
+    const res = await fetch(`/api/invoices?projectId=${project.id}`);
+    setInvoices(await res.json());
+  }
+
+  useEffect(() => {
+    void load();
+  }, [project.id]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (amount.trim() === '') {
+      return;
+    }
+    await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id, amount: Number(amount) }),
+    });
+    setAmount('');
+    await load();
+  }
+
+  const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+
+  return (
+    <section data-testid="project-detail">
+      <h2 data-testid="project-detail-name">{project.name}</h2>
+
+      <form data-testid="invoice-form" onSubmit={submit}>
+        <input
+          data-testid="invoice-form-amount"
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <button data-testid="invoice-form-submit" type="submit">
+          Add invoice
+        </button>
+      </form>
+
+      <table data-testid="project-invoices-table">
+        <tbody>
+          {invoices.map((inv) => (
+            <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+              <td data-testid="invoice-amount">{money(inv.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p data-testid="project-invoices-total">{money(total)}</p>
+    </section>
+  );
+}
 
 function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [openId, setOpenId] = useState<number | null>(null);
 
   async function loadProjects() {
     const res = await fetch('/api/projects');
@@ -42,6 +112,8 @@ function ProjectsPage() {
     setClientId('');
     await loadProjects();
   }
+
+  const open = projects.find((p) => p.id === openId) ?? null;
 
   return (
     <section data-testid="projects">
@@ -78,11 +150,18 @@ function ProjectsPage() {
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
+                <td>
+                  <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {open && <ProjectDetail key={open.id} project={open} />}
     </section>
   );
 }

@@ -35,6 +35,7 @@ public class TestSupportController {
         // projects references clients; drop referential integrity so both tables can be truncated
         // (and their identity counters restarted) regardless of FK order.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
@@ -56,6 +57,14 @@ public class TestSupportController {
             jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
                     ((Number) p.get("id")).longValue(), p.get("name"),
                     ((Number) p.get("clientId")).longValue());
+        }
+        List<Map<String, Object>> invoices =
+                (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+        for (Map<String, Object> in : invoices) {
+            jdbc.update("INSERT INTO invoices (id, project_id, amount) VALUES (?, ?, ?)",
+                    ((Number) in.get("id")).longValue(),
+                    ((Number) in.get("projectId")).longValue(),
+                    ((Number) in.get("amount")).doubleValue());
         }
     }
 }
