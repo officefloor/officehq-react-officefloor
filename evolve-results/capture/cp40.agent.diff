@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 1b3fe48..89cff7a 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -14,7 +14,10 @@ type ClientStatement = { invoices: StatementInvoice[]; outstandingTotal: number
+ 
+ // Money, the way every invoice figure is shown across the app: a dollar sign and two decimals.
+ function money(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ // A client's statement: all of their invoices in one place, each with what is still owed on it, and
+diff --git a/src/main/frontend/features/dashboard/feature.tsx b/src/main/frontend/features/dashboard/feature.tsx
+index cc60b2f..0f59eb9 100644
+--- a/src/main/frontend/features/dashboard/feature.tsx
++++ b/src/main/frontend/features/dashboard/feature.tsx
+@@ -13,7 +13,10 @@ type Summary = {
+ };
+ 
+ function money(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ function DashboardPage() {
+diff --git a/src/main/frontend/features/invoices/feature.tsx b/src/main/frontend/features/invoices/feature.tsx
+index 049ca55..d9c452b 100644
+--- a/src/main/frontend/features/invoices/feature.tsx
++++ b/src/main/frontend/features/invoices/feature.tsx
+@@ -13,7 +13,10 @@ type AllInvoice = {
+ };
+ 
+ function money(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ // The stages an invoice can be at; 'ALL' leaves the list unfiltered.
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 06c6ac1..e2dd196 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -40,7 +40,10 @@ type LineItem = {
+ type Payment = { id: number; invoiceId: number; amount: number; date: string };
+ 
+ function money(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ // Budget figures are shown with thousands separators (e.g. $1,000.00) so larger amounts stay
