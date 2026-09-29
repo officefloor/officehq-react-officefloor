@@ -1,5 +1,17 @@
-// SKELETON router (shared surface: config.yaml -> app.shared_surfaces.frontend).
-// Prefer file/manifest-based routing so adding a page is a NEW file, not an edit here — a
-// checkpoint forced to edit this file scores a boundary violation (DESIGN.md §8).
-// TODO: base routes (just an empty home) + the mechanism for feature routes to register additively.
-export const routes = [] as const;
+// Manifest-based routing (shared surface). A feature is a NEW file at features/<name>/feature.tsx
+// that exports a `feature: Feature`; it is discovered here via import.meta.glob, so adding a page is
+// a new file — never an edit to this router (DESIGN.md §8).
+import type { ComponentType } from 'react';
+
+export type Feature = {
+  id: string; // section id -> nav-<id> data-testid
+  label: string; // nav link text
+  Page: ComponentType;
+};
+
+const modules = import.meta.glob<{ feature: Feature }>('../features/*/feature.tsx', { eager: true });
+
+export const features: Feature[] = Object.values(modules)
+  .map((m) => m.feature)
+  .filter((f): f is Feature => Boolean(f))
+  .sort((a, b) => a.label.localeCompare(b.label));
