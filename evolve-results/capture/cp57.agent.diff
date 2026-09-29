@@ -1,0 +1,187 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index 57a79f6..aaa4497 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -1,9 +1,10 @@
+ import React, { useState } from 'react';
+ 
+-// A client's statement, shown on demand when a client is opened from the clients list: all of that
+-// client's invoices in one place with the total they still owe. Owns its own state (CLAUDE.md —
+-// features own their state; clients does not import the invoices feature). Reads from the dedicated
+-// GET /api/clients/statement endpoint, which derives each invoice's amount and amount still due.
++// A client's statement, shown on demand when a client is opened from the clients list: the client's
++// invoices grouped by job, each job showing a subtotal, plus the total they still owe across every
++// job. Owns its own state (CLAUDE.md — features own their state; clients does not import the invoices
++// feature). Reads from the dedicated GET /api/clients/statement endpoint, which derives each
++// invoice's amount and amount still due and groups them by job with per-job subtotals.
+ type StatementInvoice = {
+   id: number;
+   projectId: number;
+@@ -13,7 +14,18 @@ type StatementInvoice = {
+   status: string;
+ };
+ 
+-type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
++type StatementProject = {
++  projectId: number;
++  projectName: string;
++  invoices: StatementInvoice[];
++  subtotal: number;
++};
++
++type Statement = {
++  projects: StatementProject[];
++  invoices: StatementInvoice[];
++  outstandingTotal: number;
++};
+ 
+ function money(n: number): string {
+   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+@@ -36,26 +48,42 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+       </button>
+       {statement ? (
+         <>
+-          <table data-testid="client-statement-table">
+-            <thead>
+-              <tr>
+-                <th>Job</th>
+-                <th>Amount</th>
+-                <th>Due</th>
+-                <th>Stage</th>
+-              </tr>
+-            </thead>
+-            <tbody>
+-              {statement.invoices.map((inv) => (
+-                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+-                  <td data-testid="statement-invoice-project">{inv.projectName}</td>
+-                  <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
+-                  <td data-testid="statement-invoice-due">{money(inv.due)}</td>
+-                  <td data-testid="statement-invoice-status">{inv.status}</td>
+-                </tr>
+-              ))}
+-            </tbody>
+-          </table>
++          {statement.projects.map((project) => (
++            <div
++              key={project.projectId}
++              data-testid={`statement-project-${project.projectId}`}
++            >
++              <h4 data-testid="statement-project-name">{project.projectName}</h4>
++              <table data-testid="client-statement-table">
++                <thead>
++                  <tr>
++                    <th>Job</th>
++                    <th>Amount</th>
++                    <th>Due</th>
++                    <th>Stage</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {project.invoices.map((inv) => (
++                    <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
++                      <td data-testid="statement-invoice-project">{inv.projectName}</td>
++                      <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
++                      <td data-testid="statement-invoice-due">{money(inv.due)}</td>
++                      <td data-testid="statement-invoice-status">{inv.status}</td>
++                    </tr>
++                  ))}
++                </tbody>
++                <tfoot>
++                  <tr>
++                    <td>Subtotal</td>
++                    <td colSpan={3} data-testid="statement-project-subtotal">
++                      {money(project.subtotal)}
++                    </td>
++                  </tr>
++                </tfoot>
++              </table>
++            </div>
++          ))}
+           <p>
+             Total owed:{' '}
+             <span data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</span>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatement.java b/src/main/java/net/officefloor/hq/app/ClientStatement.java
+index e8d5a59..dc9919e 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientStatement.java
++++ b/src/main/java/net/officefloor/hq/app/ClientStatement.java
+@@ -4,9 +4,11 @@ import java.math.BigDecimal;
+ import java.util.List;
+ 
+ /**
+- * A client's statement: all of that client's invoices in one place, together with the
+- * {@code outstandingTotal} — the sum of what is still due across those invoices. Serialised as JSON
++ * A client's statement: all of that client's invoices, both grouped by job under {@code projects}
++ * (each job carrying its own subtotal) and kept as one flat {@code invoices} list, together with the
++ * {@code outstandingTotal} — the sum of what is still due across every invoice. Serialised as JSON
+  * by GET /api/clients/statement?clientId=&lt;id&gt;.
+  */
+-public record ClientStatement(List<StatementInvoice> invoices, BigDecimal outstandingTotal) {
++public record ClientStatement(List<StatementProject> projects, List<StatementInvoice> invoices,
++        BigDecimal outstandingTotal) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java b/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java
+index 3f47bc6..51c3df4 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Repository;
+ 
+@@ -61,6 +64,29 @@ public class ClientStatementRepository {
+         BigDecimal outstandingTotal = invoices.stream()
+                 .map(StatementInvoice::due)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+-        return new ClientStatement(invoices, outstandingTotal);
++        return new ClientStatement(groupByProject(invoices), invoices, outstandingTotal);
++    }
++
++    /**
++     * Group the (id-ordered) invoices under their job, preserving first-seen job order, and give
++     * each job a subtotal — the sum of what is still due across just that job's invoices, so the
++     * per-job subtotals add up to the statement's outstanding total.
++     */
++    private static List<StatementProject> groupByProject(List<StatementInvoice> invoices) {
++        Map<Long, List<StatementInvoice>> byProject = new LinkedHashMap<>();
++        Map<Long, String> names = new LinkedHashMap<>();
++        for (StatementInvoice inv : invoices) {
++            byProject.computeIfAbsent(inv.projectId(), k -> new ArrayList<>()).add(inv);
++            names.putIfAbsent(inv.projectId(), inv.projectName());
++        }
++        List<StatementProject> projects = new ArrayList<>();
++        for (Map.Entry<Long, List<StatementInvoice>> entry : byProject.entrySet()) {
++            BigDecimal subtotal = entry.getValue().stream()
++                    .map(StatementInvoice::due)
++                    .reduce(BigDecimal.ZERO, BigDecimal::add);
++            projects.add(new StatementProject(entry.getKey(), names.get(entry.getKey()),
++                    entry.getValue(), subtotal));
++        }
++        return projects;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/StatementProject.java b/src/main/java/net/officefloor/hq/app/StatementProject.java
+new file mode 100644
+index 0000000..50d3ede
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/StatementProject.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * One job (project) on a client's statement: the client's invoices raised against that project,
++ * grouped together, with the {@code subtotal} — the sum of what is still due across just those
++ * invoices. The per-job subtotals add up to the statement's {@code outstandingTotal}. Serialised as
++ * JSON by GET /api/clients/statement.
++ */
++public record StatementProject(long projectId, String projectName, List<StatementInvoice> invoices,
++        BigDecimal subtotal) {
++}
