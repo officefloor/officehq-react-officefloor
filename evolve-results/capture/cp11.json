@@ -1,0 +1,346 @@
+{
+  "checkpoint": 11,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "6d654318e3fbc48f7738f45d68e806ce0802eb62"
+  },
+  "checkpoint_id": "cp11_invoice_dates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Put two dates on each invoice. One for when it went out. One for when it is due. Show them both.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nPut two dates on each invoice. One for when it went out. One for when it is due. Show them both.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "ef88f544508fec00d6ad60b66db90189f5a898b7",
+  "reset_sha": "",
+  "preagent_sha": "afcecf3e53a2a8dd5dbd8363840245e025f95f7d",
+  "prev_sha": "afcecf3e53a2a8dd5dbd8363840245e025f95f7d",
+  "base_sha": "6d654318e3fbc48f7738f45d68e806ce0802eb62",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.586492,
+    "input_tokens": 32,
+    "output_tokens": 6129,
+    "cache_read_tokens": 408882,
+    "cache_creation_tokens": 22749,
+    "num_turns": 25,
+    "duration_ms": 108837,
+    "duration_api_ms": 91880,
+    "model": "claude-opus-4-8",
+    "session_id": "054ef600-dc6b-4af5-b401-1c0fa5d71b14",
+    "stop_reason": "success",
+    "result_text": "The test passes. \n\nI implemented the change request \u2014 two dates on each invoice \u2014 as a full-stack, additive change:\n\n- **Database** (`V7__invoices_dates.sql`): new Flyway migration adding nullable `issued_date` and `due_date` DATE columns to `invoices`.\n- **Server**: extended the `Invoice` record with `issuedDate`/`dueDate`, updated `InvoiceRepository` (row mapper + SELECT queries) to read them, and extended the `/__test__/seed` support to insert the fixture's `issuedDate`/`dueDate`.\n- **Front-end** (`ProjectInvoices.tsx`): added `invoice-issued` and `invoice-due` cells to each invoice row (with matching table headers), rendering the dates verbatim.\n\nThe existing `data-testid` values are untouched, and the pinned scaffolding/spec were not modified.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.586492,
+        "num_turns": 25,
+        "duration_ms": 108837,
+        "duration_api_ms": 91880,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp11.agent.jsonl",
+  "agent_diff_file": "cp11.agent.diff",
+  "build_log_file": "cp11.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 18,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 251,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 328,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 218,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 202,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 272,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 198,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 356,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 346,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 181,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 198,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 241,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 187,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 98.0,
+    "max_refactors": 2,
+    "refactors": 0,
+    "passed": true,
+    "attempts": [
+      {
+        "kind": "implement",
+        "blocked": false,
+        "blocked_layers": [],
+        "layers": {
+          "frontend": {
+            "grade": 3.92,
+            "impact": 360,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/frontend/features/projects/ProjectInvoices.tsx",
+                "lang": "typescript",
+                "cost": 360,
+                "mutation": 360,
+                "godclass": 0,
+                "mut_fns": 2,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/frontend/features/projects/ProjectInvoices.tsx",
+                "name": "(anonymous)",
+                "container": "",
+                "cc": 6,
+                "wmc_other": 18,
+                "cost": 216,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/frontend/features/projects/ProjectInvoices.tsx",
+                "name": "ProjectInvoices",
+                "container": "",
+                "cc": 2,
+                "wmc_other": 18,
+                "cost": 144,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 9,
+              "blocked": false,
+              "offenders": []
+            }
+          },
+          "backend": {
+            "grade": 18.46,
+            "impact": 567,
+            "level": "ok",
+            "blocked": false,
+            "blocked_on": [],
+            "files": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "lang": "java",
+                "cost": 140,
+                "mutation": 140,
+                "godclass": 0,
+                "mut_fns": 1,
+                "new_fns": 0
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/InvoiceRepository.java",
+                "lang": "java",
+                "cost": 49,
+                "mutation": 49,
+                "godclass": 0,
+                "mut_fns": 3,
+                "new_fns": 0
+              }
+            ],
+            "drivers": [
+              {
+                "path": "src/main/java/net/officefloor/hq/app/TestSupportController.java",
+                "name": "TestSupportController::seed",
+                "container": "TestSupportController",
+                "cc": 7,
+                "wmc_other": 2,
+                "cost": 140,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/InvoiceRepository.java",
+                "name": "InvoiceRepository::findById",
+                "container": "InvoiceRepository",
+                "cc": 2,
+                "wmc_other": 4,
+                "cost": 24,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/InvoiceRepository.java",
+                "name": "InvoiceRepository::findByProject",
+                "container": "InvoiceRepository",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 15,
+                "kind": "mutation"
+              },
+              {
+                "path": "src/main/java/net/officefloor/hq/app/InvoiceRepository.java",
+                "name": "InvoiceRepository::create",
+                "container": "InvoiceRepository",
+                "cc": 1,
+                "wmc_other": 5,
+                "cost": 10,
+                "kind": "mutation"
+              }
+            ],
+            "cognitive": {
+              "threshold": 20,
+              "max": 9,
+              "blocked": false,
+              "offenders": []
+            }
+          }
+        },
+        "sha": ""
+      }
+    ]
+  }
+}
