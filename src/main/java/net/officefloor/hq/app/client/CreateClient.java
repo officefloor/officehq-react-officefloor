@@ -19,6 +19,12 @@ public class CreateClient {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "A client requires a valid email address");
         }
+        // Two clients cannot share an email; reject a duplicate before it reaches the unique
+        // constraint (see V24__clients_email_unique.sql).
+        if (repository.existsByEmail(email)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "A client with this email already exists");
+        }
         Client client = new Client();
         client.setName(body.getName());
         client.setEmail(email);

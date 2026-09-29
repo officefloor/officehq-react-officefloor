@@ -257,11 +257,17 @@ function ClientsPage() {
       return;
     }
     setEmailError('');
-    await fetch('/api/clients', {
+    const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
     });
+    // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
+    // form as-is rather than clearing or reloading (nothing was added).
+    if (!res.ok) {
+      setEmailError('A client with this email already exists.');
+      return;
+    }
     setName('');
     setEmail('');
     await load();
