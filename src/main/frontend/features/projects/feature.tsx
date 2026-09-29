@@ -16,6 +16,7 @@ type Invoice = {
   issuedDate: string;
   dueDate: string;
 };
+type Task = { id: number; projectId: number; title: string; done: boolean };
 
 function money(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
@@ -25,6 +26,7 @@ function money(amount: number): string {
 // own invoice state, scoped to the one project it is showing.
 function ProjectDetail({ project }: { project: Project }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
@@ -34,9 +36,20 @@ function ProjectDetail({ project }: { project: Project }) {
     setInvoices(await res.json());
   }
 
+  async function loadTasks() {
+    const res = await fetch(`/api/tasks?projectId=${project.id}`);
+    setTasks(await res.json());
+  }
+
   useEffect(() => {
     void load();
+    void loadTasks();
   }, [project.id]);
+
+  async function toggleTask(id: number) {
+    await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
+    await loadTasks();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,6 +86,22 @@ function ProjectDetail({ project }: { project: Project }) {
   return (
     <section data-testid="project-detail">
       <h2 data-testid="project-detail-name">{project.name}</h2>
+
+      <table data-testid="project-tasks-table">
+        <tbody>
+          {tasks.map((t) => (
+            <tr key={t.id} data-testid={`task-row-${t.id}`}>
+              <td data-testid="task-title">{t.title}</td>
+              <td data-testid="task-status">{t.done ? 'DONE' : 'OPEN'}</td>
+              <td>
+                <button data-testid={`task-toggle-${t.id}`} onClick={() => toggleTask(t.id)}>
+                  {t.done ? 'Reopen' : 'Tick off'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <form data-testid="invoice-form" onSubmit={submit}>
         <input
