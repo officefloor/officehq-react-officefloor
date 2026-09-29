@@ -1,0 +1,147 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 87288fb..7e05d3d 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -5,7 +5,9 @@ import type { Feature } from '../../router/routes';
+ // (client-open-<id>) reveals the projects being done for them — the client's own projects listing,
+ // scoped via its /api/clients/<id>/projects endpoint. Owns its own state; talks to its own
+ // /api/clients endpoints. data-testid anchors follow the spec's conventions.
+-type Client = { id: number; name: string; email: string };
++type Client = { id: number; name: string; email: string; outstanding: number };
++// How the clients list is ordered: alphabetically by name, or by how much each client still owes.
++type SortKey = 'name' | 'outstanding';
+ type Project = { id: number; name: string; clientId: number; clientName: string };
+ type Contact = {
+   id: number;
+@@ -331,6 +333,7 @@ function ClientsTable({
+           <tr key={c.id} data-testid={`client-row-${c.id}`}>
+             <td data-testid="client-name">{c.name}</td>
+             <td data-testid="client-email">{c.email}</td>
++            <td data-testid="client-outstanding">{money(c.outstanding)}</td>
+             <td>
+               <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
+                 Open
+@@ -354,6 +357,8 @@ function ClientsPage() {
+   // Client-side name filter: the list can get long, so a search box narrows it. Case-insensitive
+   // substring match on the client name; an empty box shows everyone.
+   const [search, setSearch] = useState('');
++  // How the list is ordered: by name (default) or by how much each client owes (most first).
++  const [sort, setSort] = useState<SortKey>('name');
+   const [openId, setOpenId] = useState<number | null>(null);
+   // Which client (if any) is being corrected: opening the edit form seeds it with that client's
+   // current name and email so the user tweaks rather than retypes.
+@@ -407,7 +412,13 @@ function ClientsPage() {
+   }
+ 
+   const term = search.trim().toLowerCase();
+-  const visible = clients.filter((c) => c.name.toLowerCase().includes(term));
++  // Filter by the search box, then order: by name ascending, or by outstanding amount descending
++  // (the client who owes the most first).
++  const visible = clients
++    .filter((c) => c.name.toLowerCase().includes(term))
++    .sort((a, b) =>
++      sort === 'outstanding' ? b.outstanding - a.outstanding : a.name.localeCompare(b.name),
++    );
+   const open = clients.find((c) => c.id === openId) ?? null;
+   const editing = clients.find((c) => c.id === editingId) ?? null;
+ 
+@@ -419,6 +430,14 @@ function ClientsPage() {
+         value={search}
+         onChange={(e) => setSearch(e.target.value)}
+       />
++      <select
++        data-testid="client-sort"
++        value={sort}
++        onChange={(e) => setSort(e.target.value as SortKey)}
++      >
++        <option value="name">Name</option>
++        <option value="outstanding">Outstanding</option>
++      </select>
+       <ClientForm testid="client-form" submitLabel="Add client" onSubmit={addClient} />
+ 
+       {clients.length === 0 ? (
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientListView.java b/src/main/java/net/officefloor/hq/app/client/ClientListView.java
+new file mode 100644
+index 0000000..c716a2f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ClientListView.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.client;
++
++import java.math.BigDecimal;
++
++/**
++ * A client as the clients list shows it: name + email, plus how much they still owe (the sum of what
++ * is outstanding across every invoice raised for them). The list can be sorted by name or by this
++ * outstanding amount.
++ */
++public class ClientListView {
++
++    private final long id;
++    private final String name;
++    private final String email;
++    private final BigDecimal outstanding;
++
++    public ClientListView(long id, String name, String email, BigDecimal outstanding) {
++        this.id = id;
++        this.name = name;
++        this.email = email;
++        this.outstanding = outstanding;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public BigDecimal getOutstanding() {
++        return outstanding;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ListClients.java b/src/main/java/net/officefloor/hq/app/client/ListClients.java
+index f13f0fd..18c9f46 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ListClients.java
++++ b/src/main/java/net/officefloor/hq/app/client/ListClients.java
+@@ -2,11 +2,32 @@ package net.officefloor.hq.app.client;
+ 
+ import java.util.List;
+ import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
+ 
+-/** GET /api/clients — every client still in play (archived clients are tucked away). */
++/**
++ * GET /api/clients — every client still in play (archived clients are tucked away), each with how
++ * much they still owe so the list can be sorted by name or by outstanding amount.
++ *
++ * <p>A client's outstanding is the sum, across every invoice raised for them (via their projects),
++ * of what is still due on that invoice — line items (qty * unit price) less its discount, plus sales
++ * tax, less everything paid against it. This mirrors the per-client statement total.
++ */
+ public class ListClients {
+ 
+-    public void service(ClientRepository repository, ObjectResponse<List<Client>> response) {
+-        response.send(repository.findByArchivedFalse());
++    public void service(JdbcTemplate jdbc, ObjectResponse<List<ClientListView>> response) {
++        List<ClientListView> clients = jdbc.query(
++                "SELECT c.id AS id, c.name AS name, c.email AS email, "
++                        + "COALESCE((SELECT SUM("
++                        + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
++                        + "WHERE li.invoice_id = i.id), 0) * (100 - i.discount_pct) / 100 "
++                        + "* (100 + i.tax_pct) / 100 "
++                        + "- COALESCE((SELECT SUM(p.amount) FROM payments p "
++                        + "WHERE p.invoice_id = i.id), 0)) "
++                        + "FROM invoices i JOIN projects pr ON pr.id = i.project_id "
++                        + "WHERE pr.client_id = c.id), 0) AS outstanding "
++                        + "FROM clients c WHERE c.archived = FALSE ORDER BY c.id",
++                (rs, i) -> new ClientListView(rs.getLong("id"), rs.getString("name"),
++                        rs.getString("email"), rs.getBigDecimal("outstanding")));
++        response.send(clients);
+     }
+ }
