@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { features } from './router/routes';
+import { GlobalSearch } from './search/GlobalSearch';
 
 // Minimal base shell. Features register additively via the manifest router (router/routes.ts); the
 // shell renders a nav link per feature and the active feature's page. Navigation is via nav-* clicks
@@ -17,6 +18,7 @@ function App() {
           </button>
         ))}
       </nav>
+      <GlobalSearch />
       <main data-testid="app-home">{current ? <current.Page /> : null}</main>
     </div>
   );
