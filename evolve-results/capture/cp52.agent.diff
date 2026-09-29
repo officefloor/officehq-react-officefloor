@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/features/clients/ClientProjects.tsx b/src/main/frontend/features/clients/ClientProjects.tsx
+index 5be0fe3..70fc95d 100644
+--- a/src/main/frontend/features/clients/ClientProjects.tsx
++++ b/src/main/frontend/features/clients/ClientProjects.tsx
+@@ -27,7 +27,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
+ 
+   return (
+     <section data-testid="client-projects">
+-      <h2>Projects</h2>
++      <h2>Jobs</h2>
+       <button
+         type="button"
+         data-testid="client-projects-show-all"
+@@ -37,7 +37,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
+         {showAll ? 'Show active only' : 'Show finished and hidden'}
+       </button>
+       {projects.length === 0 ? (
+-        <p data-testid="client-projects-empty">No projects yet.</p>
++        <p data-testid="client-projects-empty">No jobs yet.</p>
+       ) : (
+         <table data-testid="client-projects-table">
+           <thead>
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index 5eb3e78..57a79f6 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -39,7 +39,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+           <table data-testid="client-statement-table">
+             <thead>
+               <tr>
+-                <th>Project</th>
++                <th>Job</th>
+                 <th>Amount</th>
+                 <th>Due</th>
+                 <th>Stage</th>
+diff --git a/src/main/frontend/features/clients/ClientSummary.tsx b/src/main/frontend/features/clients/ClientSummary.tsx
+index 9905f1b..efc06a6 100644
+--- a/src/main/frontend/features/clients/ClientSummary.tsx
++++ b/src/main/frontend/features/clients/ClientSummary.tsx
+@@ -22,7 +22,7 @@ export function ClientSummary({ clientId }: { clientId: number }) {
+   return (
+     <section data-testid="client-summary">
+       <p>
+-        Projects: <span data-testid="client-projects-count">{summary.projectsCount}</span>
++        Jobs: <span data-testid="client-projects-count">{summary.projectsCount}</span>
+       </p>
+       <p>
+         Contacts: <span data-testid="client-contacts-count">{summary.contactsCount}</span>
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 382900b..5a281e1 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -34,7 +34,7 @@ export function DashboardPage() {
+       <dl>
+         <dt>Clients</dt>
+         <dd data-testid="dashboard-clients-count">{summary?.clientsCount ?? 0}</dd>
+-        <dt>Projects</dt>
++        <dt>Jobs</dt>
+         <dd data-testid="dashboard-projects-count">{summary?.projectsCount ?? 0}</dd>
+         <dt>Outstanding</dt>
+         <dd data-testid="dashboard-outstanding-total">{outstanding}</dd>
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index a989349..e20506a 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -86,7 +86,7 @@ export function AllInvoicesPage() {
+           <table data-testid="all-invoices-table">
+             <thead>
+               <tr>
+-                <th>Project</th>
++                <th>Job</th>
+                 <th>Amount</th>
+                 <th>Stage</th>
+               </tr>
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 7867541..ab5701a 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -133,7 +133,7 @@ export function ProjectsPage() {
+ 
+   return (
+     <section data-testid="projects-page">
+-      <h1>Projects</h1>
++      <h1>Jobs</h1>
+       <form data-testid="project-form" onSubmit={onSubmit}>
+         <input
+           data-testid="project-form-name"
+@@ -164,7 +164,7 @@ export function ProjectsPage() {
+           ))}
+         </select>
+         <button type="submit" data-testid="project-form-submit">
+-          Add project
++          Add job
+         </button>
+       </form>
+ 
+@@ -199,7 +199,7 @@ export function ProjectsPage() {
+       </select>
+ 
+       {projects.length === 0 ? (
+-        <p data-testid="projects-empty">No projects yet.</p>
++        <p data-testid="projects-empty">No jobs yet.</p>
+       ) : (
+         <table data-testid="projects-table">
+           <thead>
+diff --git a/src/main/frontend/features/projects/route.tsx b/src/main/frontend/features/projects/route.tsx
+index b7a7808..2d6874a 100644
+--- a/src/main/frontend/features/projects/route.tsx
++++ b/src/main/frontend/features/projects/route.tsx
+@@ -3,7 +3,7 @@ import { ProjectsPage } from './ProjectsPage';
+ 
+ export const route: FeatureRoute = {
+   section: 'projects',
+-  label: 'Projects',
++  label: 'Jobs',
+   order: 2,
+   Page: ProjectsPage,
+ };
+diff --git a/src/main/frontend/features/search/SearchPage.tsx b/src/main/frontend/features/search/SearchPage.tsx
+index 81dbfa9..44b5b29 100644
+--- a/src/main/frontend/features/search/SearchPage.tsx
++++ b/src/main/frontend/features/search/SearchPage.tsx
+@@ -36,7 +36,7 @@ export function SearchPage() {
+       <h1>Search</h1>
+       <input
+         data-testid="global-search"
+-        placeholder="Search clients and projects"
++        placeholder="Search clients and jobs"
+         value={query}
+         onChange={(e) => setQuery(e.target.value)}
+       />
+@@ -52,7 +52,7 @@ export function SearchPage() {
+       </div>
+ 
+       <div data-testid="search-projects">
+-        <h2>Projects</h2>
++        <h2>Jobs</h2>
+         {results.projects.map((p) => (
+           <div key={p.id} data-testid={`project-row-${p.id}`}>
+             <span data-testid="project-name">{p.name}</span>
