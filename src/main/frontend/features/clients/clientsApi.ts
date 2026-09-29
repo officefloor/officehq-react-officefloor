@@ -24,10 +24,20 @@ export function validateEmail(email: string, takenEmails: string[]): string {
   return '';
 }
 
+// How much a single client still owes across all of their invoices, keyed by client id.
+export type ClientOutstanding = { clientId: number; outstanding: number };
+
 // Load the full client list. Returns null when the request fails so callers can keep what they
 // already have rather than blanking the list.
 export async function fetchClients(): Promise<Client[] | null> {
   const res = await fetch('/api/clients');
+  return res.ok ? res.json() : null;
+}
+
+// Load how much each client owes, so the list can be sorted by amount owed. Returns null on failure
+// so the caller can fall back to a name sort rather than blanking the list.
+export async function fetchOutstanding(): Promise<ClientOutstanding[] | null> {
+  const res = await fetch('/api/clients/outstanding');
   return res.ok ? res.json() : null;
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Client, archiveClient, fetchClients } from './clientsApi';
+import { Client, archiveClient, fetchClients, fetchOutstanding } from './clientsApi';
 import { ClientForm } from './ClientForm';
 import { ClientEditForm } from './ClientEditForm';
 import { ClientsTable } from './ClientsTable';
@@ -10,6 +10,8 @@ import { ClientDetails } from './ClientDetails';
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<'name' | 'outstanding'>('name');
+  const [owed, setOwed] = useState<Record<number, number>>({});
   const [openClientId, setOpenClientId] = useState<number | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
 
@@ -17,6 +19,10 @@ export function ClientsPage() {
     const loaded = await fetchClients();
     if (loaded) {
       setClients(loaded);
+    }
+    const outstanding = await fetchOutstanding();
+    if (outstanding) {
+      setOwed(Object.fromEntries(outstanding.map((o) => [o.clientId, o.outstanding])));
     }
   }
 
@@ -26,9 +32,17 @@ export function ClientsPage() {
 
   // The list can get long; filter by name, case-insensitively. Empty box shows every client.
   const query = search.trim().toLowerCase();
-  const visibleClients = query
+  const filtered = query
     ? clients.filter((c) => c.name.toLowerCase().includes(query))
     : clients;
+
+  // Sort a copy so the underlying list order is untouched: by name (A→Z) or by how much each client
+  // owes (most owed first). A client with no outstanding total owes nothing.
+  const visibleClients = [...filtered].sort((a, b) =>
+    sort === 'outstanding'
+      ? (owed[b.id] ?? 0) - (owed[a.id] ?? 0)
+      : a.name.localeCompare(b.name),
+  );
 
   function onCreated(created: Client) {
     setClients((prev) => [...prev, created]);
@@ -62,6 +76,18 @@ export function ClientsPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+
+      <label>
+        Sort
+        <select
+          data-testid="client-sort"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as 'name' | 'outstanding')}
+        >
+          <option value="name">Name</option>
+          <option value="outstanding">Amount owed</option>
+        </select>
+      </label>
 
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
