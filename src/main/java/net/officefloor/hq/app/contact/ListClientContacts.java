@@ -11,10 +11,11 @@ public class ListClientContacts {
     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
             ObjectResponse<List<ContactView>> response) {
         List<ContactView> contacts = jdbc.query(
-                "SELECT id, client_id, name, email, role FROM contacts "
+                "SELECT id, client_id, name, email, role, is_primary FROM contacts "
                         + "WHERE client_id = ? ORDER BY id",
                 (rs, i) -> new ContactView(rs.getLong("id"), rs.getLong("client_id"),
-                        rs.getString("name"), rs.getString("email"), rs.getString("role")),
+                        rs.getString("name"), rs.getString("email"), rs.getString("role"),
+                        rs.getBoolean("is_primary")),
                 Long.valueOf(id));
         response.send(contacts);
     }

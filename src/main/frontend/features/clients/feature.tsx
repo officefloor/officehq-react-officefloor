@@ -7,7 +7,14 @@ import type { Feature } from '../../router/routes';
 // /api/clients endpoints. data-testid anchors follow the spec's conventions.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
-type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+type Contact = {
+  id: number;
+  clientId: number;
+  name: string;
+  email: string;
+  role: string;
+  primary: boolean;
+};
 type ClientSummary = { projectCount: number; contactCount: number };
 type StatementInvoice = { id: number; projectId: number; amountDue: number };
 type ClientStatement = { invoices: StatementInvoice[]; outstandingTotal: number };
@@ -122,8 +129,17 @@ function ClientContacts({ client }: { client: Client }) {
     await load();
   }
 
+  // Pick this contact as the client's one main contact, then refresh so the new primary shows.
+  async function makePrimary(id: number) {
+    await fetch(`/api/contacts/${id}/primary`, { method: 'POST' });
+    await load();
+  }
+
+  const primary = contacts.find((ct) => ct.primary) ?? null;
+
   return (
     <section data-testid="client-contacts">
+      <p data-testid="client-primary-contact">{primary ? primary.name : ''}</p>
       <form data-testid="contact-form" onSubmit={submit}>
         <input
           data-testid="contact-form-name"
@@ -160,6 +176,14 @@ function ClientContacts({ client }: { client: Client }) {
               <td data-testid="contact-name">{ct.name}</td>
               <td data-testid="contact-email">{ct.email}</td>
               <td data-testid="contact-role">{ct.role}</td>
+              <td>
+                <button
+                  data-testid={`contact-primary-${ct.id}`}
+                  onClick={() => makePrimary(ct.id)}
+                >
+                  Make primary
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
