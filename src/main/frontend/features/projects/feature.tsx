@@ -407,6 +407,14 @@ function ProjectsPage() {
     await loadProjects();
   }
 
+  async function remove(id: number) {
+    await fetch(`/api/projects/${id}/delete`, { method: 'POST' });
+    if (openId === id) {
+      setOpenId(null);
+    }
+    await loadProjects();
+  }
+
   const open = projects.find((p) => p.id === openId) ?? null;
 
   return (
@@ -447,6 +455,9 @@ function ProjectsPage() {
                 <td>
                   <button data-testid={`project-open-${p.id}`} onClick={() => setOpenId(p.id)}>
                     Open
+                  </button>
+                  <button data-testid={`project-delete-${p.id}`} onClick={() => remove(p.id)}>
+                    Delete
                   </button>
                 </td>
               </tr>
