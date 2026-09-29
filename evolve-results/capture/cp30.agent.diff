@@ -1,0 +1,393 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index b88c2e6..742aada 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -34,6 +34,8 @@ type LineItem = {
+   unitPrice: number;
+ };
+ 
++type Payment = { id: number; invoiceId: number; amount: number; date: string };
++
+ function money(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+ }
+@@ -59,6 +61,9 @@ function InvoiceDetail({
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
++  const [payments, setPayments] = useState<Payment[]>([]);
++  const [paymentAmount, setPaymentAmount] = useState('');
++  const [paymentDate, setPaymentDate] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices/${invoiceId}/line-items`);
+@@ -73,8 +78,33 @@ function InvoiceDetail({
+     );
+   }
+ 
++  async function loadPayments() {
++    const res = await fetch(`/api/invoices/${invoiceId}/payments`);
++    setPayments(await res.json());
++  }
++
++  async function submitPayment(e: React.FormEvent) {
++    e.preventDefault();
++    const value = Number(paymentAmount);
++    if (paymentAmount.trim() === '' || !Number.isFinite(value) || value <= 0) {
++      return;
++    }
++    if (paymentDate.trim() === '') {
++      return;
++    }
++    await fetch(`/api/invoices/${invoiceId}/payments`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ amount: value, date: paymentDate }),
++    });
++    setPaymentAmount('');
++    setPaymentDate('');
++    await loadPayments();
++  }
++
+   useEffect(() => {
+     void load();
++    void loadPayments();
+   }, [invoiceId]);
+ 
+   function editField(id: number, field: 'description' | 'qty' | 'unitPrice', value: string) {
+@@ -210,6 +240,35 @@ function InvoiceDetail({
+           Add line item
+         </button>
+       </form>
++
++      <table data-testid="invoice-payments-table">
++        <tbody>
++          {payments.map((p) => (
++            <tr key={p.id} data-testid={`payment-row-${p.id}`}>
++              <td data-testid="payment-amount">{money(p.amount)}</td>
++              <td data-testid="payment-date">{p.date}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
++      <form data-testid="payment-form" onSubmit={submitPayment}>
++        <input
++          data-testid="payment-form-amount"
++          placeholder="Amount paid"
++          value={paymentAmount}
++          onChange={(e) => setPaymentAmount(e.target.value)}
++        />
++        <input
++          data-testid="payment-form-date"
++          type="date"
++          value={paymentDate}
++          onChange={(e) => setPaymentDate(e.target.value)}
++        />
++        <button data-testid="payment-form-submit" type="submit">
++          Record payment
++        </button>
++      </form>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 199fbd1..d52cd6a 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,8 +40,8 @@ public class TestSupportController {
+         // Referential integrity is dropped for the duration so the tables can be truncated (and
+         // their identity counters restarted) regardless of FK order (e.g. projects -> clients).
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+-        for (String table : List.of("notes", "project_tags", "tags", "tasks", "line_items",
+-                "invoices", "contacts", "projects", "clients")) {
++        for (String table : List.of("notes", "project_tags", "tags", "tasks", "payments",
++                "line_items", "invoices", "contacts", "projects", "clients")) {
+             jdbc.execute("TRUNCATE TABLE " + table + " RESTART IDENTITY");
+         }
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+@@ -54,6 +54,7 @@ public class TestSupportController {
+         seedProjects(fixture);
+         seedContacts(fixture);
+         seedInvoices(fixture);
++        seedPayments(fixture);
+         seedTasks(fixture);
+         seedTags(fixture);
+         seedNotes(fixture);
+@@ -113,6 +114,22 @@ public class TestSupportController {
+         }
+     }
+ 
++    private void seedPayments(Map<String, Object> fixture) {
++        List<Map<String, Object>> payments = rows(fixture, "payments");
++        for (Map<String, Object> p : payments) {
++            jdbc.update(
++                    "INSERT INTO payments (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
++                    id(p, "id"), id(p, "invoiceId"), asDouble(p.get("amount")),
++                    asText(p.get("date")));
++        }
++        if (!payments.isEmpty()) {
++            // Seeding explicit ids does not advance H2's identity counter, so bump it past the
++            // seeded rows or the app's next generated payment id would collide with a fixture id.
++            Long next = jdbc.queryForObject("SELECT MAX(id) + 1 FROM payments", Long.class);
++            jdbc.execute("ALTER TABLE payments ALTER COLUMN id RESTART WITH " + next);
++        }
++    }
++
+     private void seedTasks(Map<String, Object> fixture) {
+         for (Map<String, Object> t : rows(fixture, "tasks")) {
+             jdbc.update("INSERT INTO tasks (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java b/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java
+new file mode 100644
+index 0000000..ab4cc4d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreatePayment.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/{id}/payments — record what a client has paid against an invoice: an amount
++ * and the date it was paid. One row per payment; an invoice can have many.
++ */
++public class CreatePayment {
++
++    public void service(@HttpPathParameter("id") String id, @RequestBody NewPayment body,
++            PaymentRepository repository, ObjectResponse<Payment> response) {
++        BigDecimal amount = body.getAmount();
++        if (amount == null || amount.signum() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A payment amount must be more than zero");
++        }
++        String date = body.getDate() == null ? "" : body.getDate().trim();
++        LocalDate paidDate;
++        try {
++            paidDate = LocalDate.parse(date);
++        } catch (DateTimeParseException ex) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A payment requires a valid date");
++        }
++        Payment payment = new Payment();
++        payment.setInvoiceId(Long.valueOf(id));
++        payment.setAmount(amount);
++        payment.setPaidDate(paidDate);
++        response.send(repository.save(payment));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListInvoicePayments.java b/src/main/java/net/officefloor/hq/app/invoice/ListInvoicePayments.java
+new file mode 100644
+index 0000000..7a7f588
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListInvoicePayments.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/invoices/{id}/payments — the payments a client has made against one invoice, oldest first. */
++public class ListInvoicePayments {
++
++    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++            ObjectResponse<List<PaymentView>> response) {
++        List<PaymentView> payments = jdbc.query(
++                "SELECT id, invoice_id, amount, paid_date FROM payments "
++                        + "WHERE invoice_id = ? ORDER BY id",
++                (rs, i) -> new PaymentView(rs.getLong("id"), rs.getLong("invoice_id"),
++                        rs.getBigDecimal("amount"), rs.getString("paid_date")),
++                Long.valueOf(id));
++        response.send(payments);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/NewPayment.java b/src/main/java/net/officefloor/hq/app/invoice/NewPayment.java
+new file mode 100644
+index 0000000..5d20f8a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/NewPayment.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** Request body for recording a payment: how much the client paid and the date they paid it. */
++public class NewPayment {
++
++    private BigDecimal amount;
++
++    private String date;
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public void setDate(String date) {
++        this.date = date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/Payment.java b/src/main/java/net/officefloor/hq/app/invoice/Payment.java
+new file mode 100644
+index 0000000..5942599
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/Payment.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** One payment a client has made against an invoice: how much was paid and the date it was paid. */
++@Entity
++@Table(name = "payments")
++public class Payment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id")
++    private Long invoiceId;
++
++    private BigDecimal amount;
++
++    @Column(name = "paid_date")
++    private LocalDate paidDate;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public void setInvoiceId(Long invoiceId) {
++        this.invoiceId = invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public LocalDate getPaidDate() {
++        return paidDate;
++    }
++
++    public void setPaidDate(LocalDate paidDate) {
++        this.paidDate = paidDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/invoice/PaymentRepository.java
+new file mode 100644
+index 0000000..59315d7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/PaymentRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.invoice;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Payment}. */
++public interface PaymentRepository extends JpaRepository<Payment, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/PaymentView.java b/src/main/java/net/officefloor/hq/app/invoice/PaymentView.java
+new file mode 100644
+index 0000000..c2380ad
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/PaymentView.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** A payment as the invoice detail surfaces it: how much was paid and the date (ISO yyyy-MM-dd). */
++public class PaymentView {
++
++    private final Long id;
++    private final Long invoiceId;
++    private final BigDecimal amount;
++    private final String date;
++
++    public PaymentView(Long id, Long invoiceId, BigDecimal amount, String date) {
++        this.id = id;
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/resources/db/migration/V18__payments.sql b/src/main/resources/db/migration/V18__payments.sql
+new file mode 100644
+index 0000000..7ddd1aa
+--- /dev/null
++++ b/src/main/resources/db/migration/V18__payments.sql
+@@ -0,0 +1,9 @@
++-- Invoice payments: record what a client has paid against an invoice. Each row is one payment with
++-- a money amount and the date it was paid. Additive: a new table alongside invoices, one row per
++-- payment, referencing the invoice it is paid against.
++CREATE TABLE payments (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT NOT NULL REFERENCES invoices(id),
++    amount     DECIMAL(12, 2) NOT NULL,
++    paid_date  DATE NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/payments.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/payments.GET.yml
+new file mode 100644
+index 0000000..24fe07b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/payments.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.ListInvoicePayments
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/payments.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/payments.POST.yml
+new file mode 100644
+index 0000000..653ee7e
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/payments.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.CreatePayment
