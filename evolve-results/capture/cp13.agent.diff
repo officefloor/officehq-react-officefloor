@@ -1,0 +1,172 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index fc11da5..b1e433a 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -59,6 +59,18 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     }
+   }
+ 
++  async function sendInvoice(id: number) {
++    const res = await fetch('/api/invoices/send', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      const sent: Invoice = await res.json();
++      setInvoices((prev) => prev.map((inv) => (inv.id === sent.id ? sent : inv)));
++    }
++  }
++
+   async function payInvoice(id: number) {
+     const res = await fetch('/api/invoices/pay', {
+       method: 'POST',
+@@ -117,7 +129,16 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
+               <td data-testid="invoice-status">{inv.status}</td>
+               <td>
+-                {inv.status === 'PAID' ? null : (
++                {inv.status === 'DRAFT' ? (
++                  <button
++                    type="button"
++                    data-testid={`invoice-send-${inv.id}`}
++                    onClick={() => void sendInvoice(inv.id)}
++                  >
++                    Send
++                  </button>
++                ) : null}
++                {inv.status === 'SENT' ? (
+                   <button
+                     type="button"
+                     data-testid={`invoice-pay-${inv.id}`}
+@@ -125,7 +146,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+                   >
+                     Mark paid
+                   </button>
+-                )}
++                ) : null}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index 36017f6..465d81c 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -53,7 +53,13 @@ public class InvoiceRepository {
+             ps.setBigDecimal(2, amount);
+             return ps;
+         }, keys);
+-        return new Invoice(keys.getKey().longValue(), projectId, amount, "UNPAID", null, null);
++        return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null);
++    }
++
++    /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */
++    public Invoice markSent(long id) {
++        jdbc.update("UPDATE invoices SET status = 'SENT' WHERE id = ?", id);
++        return findById(id);
+     }
+ 
+     /** Flip an invoice to PAID and return the updated row (null if no such invoice). */
+diff --git a/src/main/java/net/officefloor/hq/app/InvoicesPayPostLogic.java b/src/main/java/net/officefloor/hq/app/InvoicesPayPostLogic.java
+index 1e9c684..4e0f6b6 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoicesPayPostLogic.java
++++ b/src/main/java/net/officefloor/hq/app/InvoicesPayPostLogic.java
+@@ -18,12 +18,16 @@ public class InvoicesPayPostLogic {
+         if (body.getId() <= 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice id is required.");
+         }
+-        Invoice invoice = repository.markPaid(body.getId());
++        Invoice invoice = repository.findById(body.getId());
+         if (invoice == null) {
+             throw new HttpException(HttpStatus.NOT_FOUND, "No such invoice.");
+         }
+-        BigDecimal amount = invoice.amount().setScale(2, RoundingMode.HALF_UP);
+-        audit.record("INVOICE_PAID id=" + invoice.id() + " amount=" + amount.toPlainString());
+-        response.send(invoice);
++        if (!"SENT".equals(invoice.status())) {
++            throw new HttpException(HttpStatus.CONFLICT, "An invoice can only be paid once sent.");
++        }
++        Invoice paid = repository.markPaid(invoice.id());
++        BigDecimal amount = paid.amount().setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_PAID id=" + paid.id() + " amount=" + amount.toPlainString());
++        response.send(paid);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoicesSendPostLogic.java b/src/main/java/net/officefloor/hq/app/InvoicesSendPostLogic.java
+new file mode 100644
+index 0000000..c0951d0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/InvoicesSendPostLogic.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/send — send a draft invoice. Flips its status from DRAFT to SENT and records
++ * one audit line (INVOICE_SENT id=&lt;id&gt; amount=&lt;amount&gt;) so the send can be checked back
++ * later. Only a draft invoice can be sent.
++ */
++public class InvoicesSendPostLogic {
++
++    public void service(@RequestBody SendInvoice body, InvoiceRepository repository, Audit audit,
++            ObjectResponse<Invoice> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice id is required.");
++        }
++        Invoice invoice = repository.findById(body.getId());
++        if (invoice == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such invoice.");
++        }
++        if (!"DRAFT".equals(invoice.status())) {
++            throw new HttpException(HttpStatus.CONFLICT, "Only a draft invoice can be sent.");
++        }
++        Invoice sent = repository.markSent(invoice.id());
++        BigDecimal amount = sent.amount().setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_SENT id=" + sent.id() + " amount=" + amount.toPlainString());
++        response.send(sent);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/SendInvoice.java b/src/main/java/net/officefloor/hq/app/SendInvoice.java
+new file mode 100644
+index 0000000..2a78ae4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SendInvoice.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for sending a draft invoice (POST /api/invoices/send). */
++public class SendInvoice {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/resources/db/migration/V8__invoices_status_draft_default.sql b/src/main/resources/db/migration/V8__invoices_status_draft_default.sql
+new file mode 100644
+index 0000000..083162e
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__invoices_status_draft_default.sql
+@@ -0,0 +1,3 @@
++-- Invoices move through a lifecycle: DRAFT (default for a new invoice) -> SENT -> PAID.
++-- Additive: a new versioned migration that switches the default status from UNPAID to DRAFT.
++ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'DRAFT';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/send.POST.yml b/src/main/resources/officefloor/rest/api/invoices/send.POST.yml
+new file mode 100644
+index 0000000..77ad642
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/send.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.InvoicesSendPostLogic
