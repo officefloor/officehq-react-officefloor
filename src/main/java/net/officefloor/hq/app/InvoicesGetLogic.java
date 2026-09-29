@@ -8,8 +8,13 @@ import net.officefloor.web.ObjectResponse;
 public class InvoicesGetLogic {
 
     public void service(@HttpQueryParameter("projectId") String projectId,
-            InvoiceRepository repository, ObjectResponse<List<Invoice>> response) {
+            @HttpQueryParameter("sort") String sort, InvoiceRepository repository,
+            ObjectResponse<List<Invoice>> response) {
         long id = projectId == null || projectId.isBlank() ? 0 : Long.parseLong(projectId.trim());
-        response.send(repository.findByProject(id));
+        if (sort != null && "due".equalsIgnoreCase(sort.trim())) {
+            response.send(repository.findByProjectOrderByDueDate(id));
+        } else {
+            response.send(repository.findByProject(id));
+        }
     }
 }

@@ -29,6 +29,14 @@ public class InvoiceRepository {
                 MAPPER, projectId);
     }
 
+    /** A project's invoices ordered by due date, earliest first (nulls last, id as tiebreak). */
+    public List<Invoice> findByProjectOrderByDueDate(long projectId) {
+        return jdbc.query(
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
+                        + " WHERE project_id = ? ORDER BY due_date ASC NULLS LAST, id",
+                MAPPER, projectId);
+    }
+
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices"
