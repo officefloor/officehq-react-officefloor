@@ -304,35 +304,173 @@ function InvoiceDetail({
   );
 }
 
-// A project's detail: its invoices, what they add up to, and a form to add a new invoice. Owns its
-// own invoice state, scoped to the one project it is showing.
-function ProjectDetail({ project }: { project: Project }) {
+// Which lifecycle actions an invoice offers depends on where it is in its lifecycle: a draft can be
+// sent, a sent invoice can be marked paid. Collecting the mapping here keeps the row markup flat and
+// gives one obvious place to add a new lifecycle action.
+function InvoiceActions({
+  invoice,
+  onOpen,
+  onSend,
+  onPay,
+}: {
+  invoice: Invoice;
+  onOpen: () => void;
+  onSend: () => void;
+  onPay: () => void;
+}) {
+  return (
+    <>
+      <button data-testid={`invoice-open-${invoice.id}`} onClick={onOpen}>
+        Open
+      </button>
+      {invoice.status === 'DRAFT' && (
+        <button data-testid={`invoice-send-${invoice.id}`} onClick={onSend}>
+          Send
+        </button>
+      )}
+      {invoice.status === 'SENT' && (
+        <button data-testid={`invoice-pay-${invoice.id}`} onClick={onPay}>
+          Mark paid
+        </button>
+      )}
+    </>
+  );
+}
+
+// The invoices raised against a project: what they add up to, a form to raise another, and a drill-in
+// to each invoice's line items and payments. Owns its own invoice state, scoped to the one project.
+// Whenever the invoices change (a new one raised, a status moved, a line item edited) the owner is
+// told so figures derived from them — the budget's invoiced/remaining — can be refreshed.
+function ProjectInvoices({
+  projectId,
+  onInvoicesChanged,
+}: {
+  projectId: number;
+  onInvoicesChanged: () => void;
+}) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState('');
+  const [sortByDue, setSortByDue] = useState(false);
+  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+
+  async function load() {
+    const res = await fetch(`/api/invoices?projectId=${projectId}`);
+    setInvoices(await res.json());
+    onInvoicesChanged();
+  }
+
+  useEffect(() => {
+    void load();
+  }, [projectId]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const value = Number(amount);
+    if (amount.trim() === '' || !Number.isFinite(value) || value <= 0) {
+      setAmountError('Amount must be more than zero');
+      return;
+    }
+    setAmountError('');
+    await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, amount: value }),
+    });
+    setAmount('');
+    await load();
+  }
+
+  // A lifecycle move (send, mark paid, …) is a POST to the matching action route followed by a reload;
+  // routing them through one place means a new action is one more call site, not new plumbing.
+  async function transition(id: number, action: 'send' | 'pay') {
+    await fetch(`/api/invoices/${id}/${action}`, { method: 'POST' });
+    await load();
+  }
+
+  const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  const shownInvoices = sortByDue
+    ? [...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    : invoices;
+
+  return (
+    <>
+      <form data-testid="invoice-form" onSubmit={submit}>
+        <input
+          data-testid="invoice-form-amount"
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <button data-testid="invoice-form-submit" type="submit">
+          Add invoice
+        </button>
+        {amountError && (
+          <p data-testid="invoice-form-amount-error" role="alert">
+            {amountError}
+          </p>
+        )}
+      </form>
+
+      <button data-testid="invoice-sort-due" type="button" onClick={() => setSortByDue(true)}>
+        Sort by due date
+      </button>
+
+      {openInvoiceId === null ? (
+        <>
+          <table data-testid="project-invoices-table">
+            <tbody>
+              {shownInvoices.map((inv) => (
+                <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
+                  <td data-testid="invoice-due-amount">{money(inv.amountDue)}</td>
+                  <td data-testid="invoice-issued">{inv.issuedDate}</td>
+                  <td data-testid="invoice-due">{inv.dueDate}</td>
+                  <td data-testid="invoice-status">{inv.status}</td>
+                  <td>
+                    <InvoiceActions
+                      invoice={inv}
+                      onOpen={() => setOpenInvoiceId(inv.id)}
+                      onSend={() => transition(inv.id, 'send')}
+                      onPay={() => transition(inv.id, 'pay')}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <p data-testid="project-invoices-total">{money(total)}</p>
+        </>
+      ) : (
+        <InvoiceDetail
+          invoiceId={openInvoiceId}
+          onChange={load}
+          onClose={() => setOpenInvoiceId(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// A project's detail: its budget, tasks, labels and notes, plus the invoices raised against it (a
+// self-contained panel of its own). Owns the state for everything but the invoices.
+function ProjectDetail({ project }: { project: Project }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagToAdd, setTagToAdd] = useState('');
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'DONE'>('ALL');
-  const [amount, setAmount] = useState('');
-  const [amountError, setAmountError] = useState('');
-  const [sortByDue, setSortByDue] = useState(false);
-  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteText, setNoteText] = useState('');
   const [budget, setBudget] = useState<ProjectBudget | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
 
+  // Invoiced (and so remaining) is derived from the project's invoices, so the invoices panel calls
+  // this whenever they change to re-read the budget picture.
   async function loadBudget() {
     const res = await fetch(`/api/projects/${project.id}/budget`);
     setBudget(await res.json());
-  }
-
-  async function load() {
-    const res = await fetch(`/api/invoices?projectId=${project.id}`);
-    setInvoices(await res.json());
-    // Invoiced (and so remaining) is derived from the project's invoices, so re-read the budget
-    // picture whenever the invoices change.
-    await loadBudget();
   }
 
   async function submitBudget(e: React.FormEvent) {
@@ -384,7 +522,7 @@ function ProjectDetail({ project }: { project: Project }) {
   }
 
   useEffect(() => {
-    void load();
+    void loadBudget();
     void loadTasks();
     void loadTags();
     void loadNotes();
@@ -414,41 +552,9 @@ function ProjectDetail({ project }: { project: Project }) {
     await loadTags();
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const value = Number(amount);
-    if (amount.trim() === '' || !Number.isFinite(value) || value <= 0) {
-      setAmountError('Amount must be more than zero');
-      return;
-    }
-    setAmountError('');
-    await fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: project.id, amount: Number(amount) }),
-    });
-    setAmount('');
-    await load();
-  }
-
-  async function send(id: number) {
-    await fetch(`/api/invoices/${id}/send`, { method: 'POST' });
-    await load();
-  }
-
-  async function pay(id: number) {
-    await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
-    await load();
-  }
-
   const shownTasks = tasks.filter((t) =>
     taskFilter === 'OPEN' ? !t.done : taskFilter === 'DONE' ? t.done : true,
   );
-
-  const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
-  const shownInvoices = sortByDue
-    ? [...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    : invoices;
 
   return (
     <section data-testid="project-detail">
@@ -558,70 +664,7 @@ function ProjectDetail({ project }: { project: Project }) {
         </ul>
       </section>
 
-      <form data-testid="invoice-form" onSubmit={submit}>
-        <input
-          data-testid="invoice-form-amount"
-          placeholder="Amount"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <button data-testid="invoice-form-submit" type="submit">
-          Add invoice
-        </button>
-        {amountError && (
-          <p data-testid="invoice-form-amount-error" role="alert">
-            {amountError}
-          </p>
-        )}
-      </form>
-
-      <button data-testid="invoice-sort-due" type="button" onClick={() => setSortByDue(true)}>
-        Sort by due date
-      </button>
-
-      {openInvoiceId === null ? (
-        <>
-          <table data-testid="project-invoices-table">
-            <tbody>
-              {shownInvoices.map((inv) => (
-                <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-                  <td data-testid="invoice-amount">{money(inv.amount)}</td>
-                  <td data-testid="invoice-due-amount">{money(inv.amountDue)}</td>
-                  <td data-testid="invoice-issued">{inv.issuedDate}</td>
-                  <td data-testid="invoice-due">{inv.dueDate}</td>
-                  <td data-testid="invoice-status">{inv.status}</td>
-                  <td>
-                    <button
-                      data-testid={`invoice-open-${inv.id}`}
-                      onClick={() => setOpenInvoiceId(inv.id)}
-                    >
-                      Open
-                    </button>
-                    {inv.status === 'DRAFT' && (
-                      <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
-                        Send
-                      </button>
-                    )}
-                    {inv.status === 'SENT' && (
-                      <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
-                        Mark paid
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <p data-testid="project-invoices-total">{money(total)}</p>
-        </>
-      ) : (
-        <InvoiceDetail
-          invoiceId={openInvoiceId}
-          onChange={load}
-          onClose={() => setOpenInvoiceId(null)}
-        />
-      )}
+      <ProjectInvoices projectId={project.id} onInvoicesChanged={loadBudget} />
     </section>
   );
 }
