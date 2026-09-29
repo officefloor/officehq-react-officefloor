@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/features/invoices/feature.tsx b/src/main/frontend/features/invoices/feature.tsx
+new file mode 100644
+index 0000000..3a203bb
+--- /dev/null
++++ b/src/main/frontend/features/invoices/feature.tsx
+@@ -0,0 +1,52 @@
++import React, { useEffect, useState } from 'react';
++import type { Feature } from '../../router/routes';
++
++// Invoices feature: one place listing EVERY invoice across all projects, showing which project each
++// one is for and what stage it is at. Read-only; owns its own state and talks to its own
++// /api/all-invoices endpoint. data-testid anchors follow the spec's conventions.
++type AllInvoice = {
++  id: number;
++  projectId: number;
++  projectName: string;
++  amount: number;
++  status: string;
++};
++
++function money(amount: number): string {
++  return `$${Number(amount).toFixed(2)}`;
++}
++
++function InvoicesPage() {
++  const [invoices, setInvoices] = useState<AllInvoice[]>([]);
++
++  async function load() {
++    const res = await fetch('/api/all-invoices');
++    setInvoices(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, []);
++
++  return (
++    <section data-testid="invoices">
++      {invoices.length === 0 ? (
++        <p data-testid="all-invoices-empty">No invoices yet.</p>
++      ) : (
++        <table data-testid="all-invoices-table">
++          <tbody>
++            {invoices.map((inv) => (
++              <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
++                <td data-testid="invoice-project">{inv.projectName}</td>
++                <td data-testid="invoice-amount">{money(inv.amount)}</td>
++                <td data-testid="invoice-status">{inv.status}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
++
++export const feature: Feature = { id: 'invoices', label: 'Invoices', Page: InvoicesPage };
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/AllInvoiceView.java b/src/main/java/net/officefloor/hq/app/invoice/AllInvoiceView.java
+new file mode 100644
+index 0000000..3d12031
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/AllInvoiceView.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++
++/** An invoice as the all-invoices list surfaces it: its project's name and its stage (status). */
++public class AllInvoiceView {
++
++    private final Long id;
++    private final Long projectId;
++    private final String projectName;
++    private final BigDecimal amount;
++    private final String status;
++
++    public AllInvoiceView(Long id, Long projectId, String projectName, BigDecimal amount,
++            String status) {
++        this.id = id;
++        this.projectId = projectId;
++        this.projectName = projectName;
++        this.amount = amount;
++        this.status = status;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public String getProjectName() {
++        return projectName;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getStatus() {
++        return status;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+new file mode 100644
+index 0000000..44425d8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/ListAllInvoices.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.invoice;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.jdbc.core.JdbcTemplate;
++
++/** GET /api/all-invoices — every invoice across all projects, each with its project name and stage. */
++public class ListAllInvoices {
++
++    public void service(JdbcTemplate jdbc, ObjectResponse<List<AllInvoiceView>> response) {
++        List<AllInvoiceView> invoices = jdbc.query(
++                "SELECT i.id, i.project_id, p.name AS project_name, i.amount, i.status "
++                        + "FROM invoices i JOIN projects p ON p.id = i.project_id "
++                        + "ORDER BY i.id",
++                (rs, i) -> new AllInvoiceView(rs.getLong("id"), rs.getLong("project_id"),
++                        rs.getString("project_name"), rs.getBigDecimal("amount"),
++                        rs.getString("status")));
++        response.send(invoices);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/all-invoices.GET.yml b/src/main/resources/officefloor/rest/api/all-invoices.GET.yml
+new file mode 100644
+index 0000000..340e838
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/all-invoices.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.ListAllInvoices
