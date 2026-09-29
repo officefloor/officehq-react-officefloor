@@ -1,0 +1,259 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 00b7fa4..14c3e43 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -4,7 +4,7 @@ import { ProjectTasks } from './ProjectTasks';
+ 
+ // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
+ // A project belongs to a client; the list shows the client's NAME (joined server-side).
+-type Project = { id: number; name: string; clientId: number; clientName: string };
++type Project = { id: number; name: string; clientId: number; clientName: string; archived: boolean };
+ type Client = { id: number; name: string };
+ 
+ export function ProjectsPage() {
+@@ -13,9 +13,10 @@ export function ProjectsPage() {
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
++  const [showArchived, setShowArchived] = useState(false);
+ 
+-  async function loadProjects() {
+-    const res = await fetch('/api/projects');
++  async function loadProjects(includeArchived = showArchived) {
++    const res = await fetch(`/api/projects${includeArchived ? '?includeArchived=true' : ''}`);
+     if (res.ok) {
+       setProjects(await res.json());
+     }
+@@ -47,6 +48,24 @@ export function ProjectsPage() {
+     }
+   }
+ 
++  async function onArchive(id: number) {
++    const res = await fetch('/api/projects/archive', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id }),
++    });
++    if (res.ok) {
++      setOpenProjectId((prev) => (prev === id ? null : prev));
++      await loadProjects();
++    }
++  }
++
++  function onToggleArchived() {
++    const next = !showArchived;
++    setShowArchived(next);
++    void loadProjects(next);
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     const res = await fetch('/api/projects', {
+@@ -87,6 +106,10 @@ export function ProjectsPage() {
+         </button>
+       </form>
+ 
++      <button type="button" data-testid="projects-show-archived" onClick={onToggleArchived}>
++        {showArchived ? 'Hide archived' : 'Show archived'}
++      </button>
++
+       {projects.length === 0 ? (
+         <p data-testid="projects-empty">No projects yet.</p>
+       ) : (
+@@ -111,6 +134,13 @@ export function ProjectsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`project-archive-${p.id}`}
++                    onClick={() => void onArchive(p.id)}
++                  >
++                    Archive
++                  </button>
+                   <button
+                     type="button"
+                     data-testid={`project-delete-${p.id}`}
+diff --git a/src/main/java/net/officefloor/hq/app/ArchiveProject.java b/src/main/java/net/officefloor/hq/app/ArchiveProject.java
+new file mode 100644
+index 0000000..203a254
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ArchiveProject.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app;
++
++/** Request body for archiving a project (POST /api/projects/archive). */
++public class ArchiveProject {
++
++    private long id;
++
++    public long getId() {
++        return id;
++    }
++
++    public void setId(long id) {
++        this.id = id;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/Project.java b/src/main/java/net/officefloor/hq/app/Project.java
+index 13aa130..0f66252 100644
+--- a/src/main/java/net/officefloor/hq/app/Project.java
++++ b/src/main/java/net/officefloor/hq/app/Project.java
+@@ -2,7 +2,8 @@ package net.officefloor.hq.app;
+ 
+ /**
+  * A project the owner does for a client. Serialised as JSON by the /api/projects routes; carries the
+- * client's NAME (joined) so the UI can show it without a second lookup.
++ * client's NAME (joined) so the UI can show it without a second lookup. {@code archived} projects
++ * are hidden from the lists but retained (soft-delete).
+  */
+-public record Project(long id, String name, long clientId, String clientName) {
++public record Project(long id, String name, long clientId, String clientName, boolean archived) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index c4e1c1f..985faca 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -18,22 +18,25 @@ public class ProjectRepository {
+ 
+     private static final org.springframework.jdbc.core.RowMapper<Project> MAPPER =
+             (rs, i) -> new Project(rs.getLong("id"), rs.getString("name"),
+-                    rs.getLong("client_id"), rs.getString("client_name"));
++                    rs.getLong("client_id"), rs.getString("client_name"),
++                    rs.getBoolean("archived"));
+ 
+-    public List<Project> findAll() {
+-        return jdbc.query(
+-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
+-                        + " ORDER BY p.id",
+-                MAPPER);
++    private static final String SELECT =
++            "SELECT p.id, p.name, p.client_id, p.archived, c.name AS client_name"
++                    + " FROM projects p JOIN clients c ON p.client_id = c.id";
++
++    /**
++     * List projects. Archived projects are hidden unless {@code includeArchived} is true — that is
++     * what keeps a tucked-away project off the main list until the toggle reveals it.
++     */
++    public List<Project> findAll(boolean includeArchived) {
++        String where = includeArchived ? "" : " WHERE p.archived = FALSE";
++        return jdbc.query(SELECT + where + " ORDER BY p.id", MAPPER);
+     }
+ 
+-    /** Projects done for one client — reused by the client detail view. */
++    /** Projects done for one client — reused by the client detail view. Archived ones are hidden. */
+     public List<Project> findByClient(long clientId) {
+-        return jdbc.query(
+-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
+-                        + " WHERE p.client_id = ? ORDER BY p.id",
++        return jdbc.query(SELECT + " WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
+                 MAPPER, clientId);
+     }
+ 
+@@ -48,20 +51,21 @@ public class ProjectRepository {
+         }, keys);
+         String clientName = jdbc.queryForObject(
+                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
+-        return new Project(keys.getKey().longValue(), name, clientId, clientName);
++        return new Project(keys.getKey().longValue(), name, clientId, clientName, false);
+     }
+ 
+     /** Look up one project (with joined client name), or null when there is no such row. */
+     public Project findById(long id) {
+-        List<Project> rows = jdbc.query(
+-                "SELECT p.id, p.name, p.client_id, c.name AS client_name"
+-                        + " FROM projects p JOIN clients c ON p.client_id = c.id"
+-                        + " WHERE p.id = ?",
+-                MAPPER, id);
++        List<Project> rows = jdbc.query(SELECT + " WHERE p.id = ?", MAPPER, id);
+         return rows.isEmpty() ? null : rows.get(0);
+     }
+ 
+     public boolean delete(long id) {
+         return jdbc.update("DELETE FROM projects WHERE id = ?", id) > 0;
+     }
++
++    /** Tuck a project away: flag it archived so it drops off the lists but its row is retained. */
++    public boolean archive(long id) {
++        return jdbc.update("UPDATE projects SET archived = TRUE WHERE id = ?", id) > 0;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsArchivePostLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsArchivePostLogic.java
+new file mode 100644
+index 0000000..f76941e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectsArchivePostLogic.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/projects/archive — tuck a project away instead of deleting it. Flags the row archived so
++ * it drops off the main project list and the client's page, but keeps the row (a toggle reveals
++ * archived projects). Records one audit line (PROJECT_ARCHIVED id=&lt;id&gt;) so it is noted.
++ */
++public class ProjectsArchivePostLogic {
++
++    public void service(@RequestBody ArchiveProject body, ProjectRepository repository, Audit audit,
++            ObjectResponse<Project> response) {
++        if (body.getId() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A project id is required.");
++        }
++        Project existing = repository.findById(body.getId());
++        if (existing == null) {
++            throw new HttpException(HttpStatus.NOT_FOUND, "No such project.");
++        }
++        repository.archive(existing.id());
++        audit.record("PROJECT_ARCHIVED id=" + existing.id());
++        response.send(new Project(existing.id(), existing.name(), existing.clientId(),
++                existing.clientName(), true));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+index 5579b88..992a121 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectsGetLogic.java
+@@ -6,14 +6,17 @@ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+  * GET /api/projects — list all projects (each with its client's name). With an optional
+- * {@code ?clientId=<id>} it lists only the projects done for that client.
++ * {@code ?clientId=<id>} it lists only the projects done for that client. Archived projects are
++ * hidden unless {@code ?includeArchived=true} is passed (the "show archived" toggle).
+  */
+ public class ProjectsGetLogic {
+ 
+     public void service(@HttpQueryParameter("clientId") String clientId,
++            @HttpQueryParameter("includeArchived") String includeArchived,
+             ProjectRepository repository, ObjectResponse<List<Project>> response) {
+         if (clientId == null || clientId.isBlank()) {
+-            response.send(repository.findAll());
++            boolean withArchived = includeArchived != null && "true".equalsIgnoreCase(includeArchived.trim());
++            response.send(repository.findAll(withArchived));
+         } else {
+             response.send(repository.findByClient(Long.parseLong(clientId.trim())));
+         }
+diff --git a/src/main/resources/db/migration/V14__projects_archived.sql b/src/main/resources/db/migration/V14__projects_archived.sql
+new file mode 100644
+index 0000000..0d2b198
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__projects_archived.sql
+@@ -0,0 +1,4 @@
++-- Projects can be archived (soft-hidden) rather than deleted: an archived project drops off the
++-- lists but its row (and everything it owns) is retained. Additive: a new versioned migration that
++-- adds a boolean flag defaulting to FALSE so all existing projects stay visible.
++ALTER TABLE projects ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/projects/archive.POST.yml b/src/main/resources/officefloor/rest/api/projects/archive.POST.yml
+new file mode 100644
+index 0000000..b16e717
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ProjectsArchivePostLogic
