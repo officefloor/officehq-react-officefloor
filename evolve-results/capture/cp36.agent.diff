@@ -1,0 +1,116 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 42a66ac..1b3fe48 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -167,27 +167,36 @@ function ClientContacts({ client }: { client: Client }) {
+ 
+ // A client's detail: the projects being done for them. Owns its own project state, scoped to the one
+ // client it is showing. Reuses the project-row-<id>/project-name anchors in a client-scoped table.
++// Shows only the client's ACTIVE projects by default (scope=active); the show-all toggle asks the
++// server for everything (scope=all), so the finished and hidden (archived) ones appear too.
+ function ClientProjects({ client }: { client: Client }) {
+   const [projects, setProjects] = useState<Project[]>([]);
++  const [showAll, setShowAll] = useState(false);
+ 
+   useEffect(() => {
+     async function load() {
+-      const res = await fetch(`/api/clients/${client.id}/projects`);
++      const scope = showAll ? 'all' : 'active';
++      const res = await fetch(`/api/clients/${client.id}/projects?scope=${scope}`);
+       setProjects(await res.json());
+     }
+     void load();
+-  }, [client.id]);
++  }, [client.id, showAll]);
+ 
+   return (
+-    <table data-testid="client-projects-table">
+-      <tbody>
+-        {projects.map((p) => (
+-          <tr key={p.id} data-testid={`project-row-${p.id}`}>
+-            <td data-testid="project-name">{p.name}</td>
+-          </tr>
+-        ))}
+-      </tbody>
+-    </table>
++    <section data-testid="client-projects">
++      <button data-testid="client-projects-show-all" onClick={() => setShowAll((v) => !v)}>
++        {showAll ? 'Show only active' : 'Show finished and hidden too'}
++      </button>
++      <table data-testid="client-projects-table">
++        <tbody>
++          {projects.map((p) => (
++            <tr key={p.id} data-testid={`project-row-${p.id}`}>
++              <td data-testid="project-name">{p.name}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </section>
+   );
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a8c078f..7e27d38 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -70,11 +70,15 @@ public class TestSupportController {
+ 
+     private void seedProjects(Map<String, Object> fixture) {
+         for (Map<String, Object> p : rows(fixture, "projects")) {
+-            // status defaults to ACTIVE so a fixture that omits it gets an active project.
+-            jdbc.update(
+-                    "INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+-                    id(p, "id"), p.get("name"), id(p, "clientId"),
+-                    p.get("status") == null ? "ACTIVE" : p.get("status").toString());
++            // status defaults to ACTIVE so a fixture that omits it gets an active project; archived
++            // defaults to FALSE (the table default) unless the fixture pins it.
++            new Insert("projects")
++                    .set("id", id(p, "id"))
++                    .set("name", p.get("name"))
++                    .set("client_id", id(p, "clientId"))
++                    .set("status", p.get("status") == null ? "ACTIVE" : p.get("status").toString())
++                    .setIfPresent("archived", p.get("archived"))
++                    .run();
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+index 4cafe15..628648c 100644
+--- a/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
++++ b/src/main/java/net/officefloor/hq/app/project/ListClientProjects.java
+@@ -2,18 +2,28 @@ package net.officefloor.hq.app.project;
+ 
+ import java.util.List;
+ import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ 
+-/** GET /api/clients/{id}/projects — every project owned by one client, oldest first. */
++/**
++ * GET /api/clients/{id}/projects?scope=&lt;active|all&gt; — a client's projects, oldest first. By
++ * default (scope absent or {@code active}) only the client's ACTIVE, non-archived projects are
++ * returned; {@code scope=all} also includes the finished and hidden (archived) ones.
++ */
+ public class ListClientProjects {
+ 
+-    public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
++    public void service(@HttpPathParameter("id") String id,
++            @HttpQueryParameter("scope") String scope, JdbcTemplate jdbc,
+             ObjectResponse<List<ProjectView>> response) {
+-        List<ProjectView> projects = jdbc.query(
+-                "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name "
+-                        + "FROM projects p JOIN clients c ON c.id = p.client_id "
+-                        + "WHERE p.client_id = ? AND p.archived = FALSE ORDER BY p.id",
++        boolean all = "all".equalsIgnoreCase(scope);
++        String sql = "SELECT p.id, p.name, p.client_id, p.archived, p.status, c.name AS client_name "
++                + "FROM projects p JOIN clients c ON c.id = p.client_id WHERE p.client_id = ?";
++        if (!all) {
++            sql += " AND p.archived = FALSE AND p.status = 'ACTIVE'";
++        }
++        sql += " ORDER BY p.id";
++        List<ProjectView> projects = jdbc.query(sql,
+                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
+                         rs.getLong("client_id"), rs.getString("client_name"),
+                         rs.getBoolean("archived"), rs.getString("status")),
