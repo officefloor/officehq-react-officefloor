@@ -1,52 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ProjectBudget } from './ProjectBudget';
+import { ProjectForm } from './ProjectForm';
 import { ProjectInvoices } from './ProjectInvoices';
 import { ProjectNotes } from './ProjectNotes';
 import { ProjectTags } from './ProjectTags';
 import { ProjectTasks } from './ProjectTasks';
+import { Client, Project, STATUSES } from './projectModel';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
-type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'FINISHED';
-type Project = {
-  id: number;
-  name: string;
-  clientId: number;
-  clientName: string;
-  archived: boolean;
-  status: ProjectStatus;
-};
-type Client = { id: number; name: string };
 type Tag = { id: number; name: string };
 
-const STATUSES: ProjectStatus[] = ['ACTIVE', 'ON_HOLD', 'FINISHED'];
+// The list is filtered server-side. These three controls are the whole filter state; keeping them
+// in one object means changing any one control re-queries with the others left as they are.
+type Filters = { includeArchived: boolean; tagId: string; status: string };
+const NO_FILTERS: Filters = { includeArchived: false, tagId: '', status: '' };
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [tagFilter, setTagFilter] = useState('');
-  const [name, setName] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('');
 
-  async function loadProjects(
-    includeArchived = showArchived,
-    tagId = tagFilter,
-    status = statusFilter,
-  ) {
+  async function loadProjects(f: Filters) {
     const params = new URLSearchParams();
-    if (includeArchived) {
+    if (f.includeArchived) {
       params.set('includeArchived', 'true');
     }
-    if (tagId) {
-      params.set('tagId', tagId);
+    if (f.tagId) {
+      params.set('tagId', f.tagId);
     }
-    if (status) {
-      params.set('status', status);
+    if (f.status) {
+      params.set('status', f.status);
     }
     const qs = params.toString();
     const res = await fetch(`/api/projects${qs ? `?${qs}` : ''}`);
@@ -58,9 +44,7 @@ export function ProjectsPage() {
   async function loadClients() {
     const res = await fetch('/api/clients');
     if (res.ok) {
-      const list: Client[] = await res.json();
-      setClients(list);
-      setClientId((prev) => prev || (list[0] ? String(list[0].id) : ''));
+      setClients(await res.json());
     }
   }
 
@@ -72,19 +56,20 @@ export function ProjectsPage() {
   }
 
   useEffect(() => {
-    void loadProjects();
+    void loadProjects(filters);
     void loadClients();
     void loadTags();
   }, []);
 
-  function onFilterByTag(tagId: string) {
-    setTagFilter(tagId);
-    void loadProjects(showArchived, tagId);
+  // One entry point for every filter control: patch the filters, then re-query with the result.
+  function applyFilters(patch: Partial<Filters>) {
+    const next = { ...filters, ...patch };
+    setFilters(next);
+    void loadProjects(next);
   }
 
-  function onFilterByStatus(status: string) {
-    setStatusFilter(status);
-    void loadProjects(showArchived, tagFilter, status);
+  function closeIfOpen(id: number) {
+    setOpenProjectId((prev) => (prev === id ? null : prev));
   }
 
   async function onDelete(id: number) {
@@ -95,7 +80,7 @@ export function ProjectsPage() {
     });
     if (res.ok) {
       setProjects((prev) => prev.filter((p) => p.id !== id));
-      setOpenProjectId((prev) => (prev === id ? null : prev));
+      closeIfOpen(id);
     }
   }
 
@@ -106,76 +91,31 @@ export function ProjectsPage() {
       body: JSON.stringify({ id }),
     });
     if (res.ok) {
-      setOpenProjectId((prev) => (prev === id ? null : prev));
-      await loadProjects();
-    }
-  }
-
-  function onToggleArchived() {
-    const next = !showArchived;
-    setShowArchived(next);
-    void loadProjects(next);
-  }
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
-    });
-    if (res.ok) {
-      const created: Project = await res.json();
-      setProjects((prev) => [...prev, created]);
-      setName('');
+      closeIfOpen(id);
+      await loadProjects(filters);
     }
   }
 
   return (
     <section data-testid="projects-page">
       <h1>Jobs</h1>
-      <form data-testid="project-form" onSubmit={onSubmit}>
-        <input
-          data-testid="project-form-name"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <select
-          data-testid="project-form-client"
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-        >
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          data-testid="project-form-status"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <button type="submit" data-testid="project-form-submit">
-          Add job
-        </button>
-      </form>
+      <ProjectForm
+        clients={clients}
+        onCreated={(created) => setProjects((prev) => [...prev, created])}
+      />
 
-      <button type="button" data-testid="projects-show-archived" onClick={onToggleArchived}>
-        {showArchived ? 'Hide archived' : 'Show archived'}
+      <button
+        type="button"
+        data-testid="projects-show-archived"
+        onClick={() => applyFilters({ includeArchived: !filters.includeArchived })}
+      >
+        {filters.includeArchived ? 'Hide archived' : 'Show archived'}
       </button>
 
       <select
         data-testid="project-tag-filter"
-        value={tagFilter}
-        onChange={(e) => onFilterByTag(e.target.value)}
+        value={filters.tagId}
+        onChange={(e) => applyFilters({ tagId: e.target.value })}
       >
         <option value="">All labels</option>
         {tags.map((t) => (
@@ -187,8 +127,8 @@ export function ProjectsPage() {
 
       <select
         data-testid="project-status-filter"
-        value={statusFilter}
-        onChange={(e) => onFilterByStatus(e.target.value)}
+        value={filters.status}
+        onChange={(e) => applyFilters({ status: e.target.value })}
       >
         <option value="">All statuses</option>
         {STATUSES.map((s) => (
