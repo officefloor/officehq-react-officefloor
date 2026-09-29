@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ProjectInvoices } from './ProjectInvoices';
+import { ProjectTasks } from './ProjectTasks';
 
 // Projects feature: owns its own state (CLAUDE.md — features own their state, no global store).
 // A project belongs to a client; the list shows the client's NAME (joined server-side).
@@ -105,7 +106,12 @@ export function ProjectsPage() {
         </table>
       )}
 
-      {openProjectId !== null ? <ProjectInvoices projectId={openProjectId} /> : null}
+      {openProjectId !== null ? (
+        <>
+          <ProjectTasks projectId={openProjectId} />
+          <ProjectInvoices projectId={openProjectId} />
+        </>
+      ) : null}
     </section>
   );
 }
