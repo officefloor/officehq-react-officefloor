@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/features/clients/feature.tsx b/src/main/frontend/features/clients/feature.tsx
+index 7748025..9bbd2ff 100644
+--- a/src/main/frontend/features/clients/feature.tsx
++++ b/src/main/frontend/features/clients/feature.tsx
+@@ -185,6 +185,16 @@ function ClientsPage() {
+     await load();
+   }
+ 
++  // Tuck a client away: archived clients are retained server-side but drop off this list and out of
++  // the search. Reloading after archiving is enough — the /api/clients list excludes them.
++  async function archive(id: number) {
++    await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
++    if (openId === id) {
++      setOpenId(null);
++    }
++    await load();
++  }
++
+   const visible = clients.filter((c) =>
+     c.name.toLowerCase().includes(search.trim().toLowerCase()),
+   );
+@@ -235,6 +245,9 @@ function ClientsPage() {
+                   <button data-testid={`client-open-${c.id}`} onClick={() => setOpenId(c.id)}>
+                     Open
+                   </button>
++                  <button data-testid={`client-archive-${c.id}`} onClick={() => archive(c.id)}>
++                    Archive
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/client/ArchiveClient.java b/src/main/java/net/officefloor/hq/app/client/ArchiveClient.java
+new file mode 100644
+index 0000000..139d7b2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/client/ArchiveClient.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.client;
++
++import net.officefloor.hq.app.Audit;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/clients/{id}/archive — tuck a client away instead of deleting it: flag it archived so it
++ * drops off the client list and out of the client search, but nothing is lost (the row is retained).
++ * Records the fact to the audit file so it can be checked back later.
++ */
++public class ArchiveClient {
++
++    public void service(@HttpPathParameter("id") String id, ClientRepository repository,
++            Audit audit, ObjectResponse<Client> response) {
++        Long clientId = Long.valueOf(id);
++        Client client = repository.findById(clientId)
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such client"));
++        client.setArchived(true);
++        Client saved = repository.save(client);
++        audit.record("CLIENT_ARCHIVED id=" + saved.getId());
++        response.send(saved);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/client/Client.java b/src/main/java/net/officefloor/hq/app/client/Client.java
+index 32e28bb..14bc9b4 100644
+--- a/src/main/java/net/officefloor/hq/app/client/Client.java
++++ b/src/main/java/net/officefloor/hq/app/client/Client.java
+@@ -19,6 +19,8 @@ public class Client {
+ 
+     private String email;
+ 
++    private boolean archived;
++
+     public Long getId() {
+         return id;
+     }
+@@ -42,4 +44,12 @@ public class Client {
+     public void setEmail(String email) {
+         this.email = email;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+index 668ab2a..0ad5aa0 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/client/ClientRepository.java
+@@ -1,7 +1,11 @@
+ package net.officefloor.hq.app.client;
+ 
++import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ /** Data access for {@link Client}. */
+ public interface ClientRepository extends JpaRepository<Client, Long> {
++
++    /** Clients still in play — archived ones are tucked away and excluded. */
++    List<Client> findByArchivedFalse();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/client/ListClients.java b/src/main/java/net/officefloor/hq/app/client/ListClients.java
+index b797374..f13f0fd 100644
+--- a/src/main/java/net/officefloor/hq/app/client/ListClients.java
++++ b/src/main/java/net/officefloor/hq/app/client/ListClients.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app.client;
+ import java.util.List;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/clients — every client in one list. */
++/** GET /api/clients — every client still in play (archived clients are tucked away). */
+ public class ListClients {
+ 
+     public void service(ClientRepository repository, ObjectResponse<List<Client>> response) {
+-        response.send(repository.findAll());
++        response.send(repository.findByArchivedFalse());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V17__clients_archived.sql b/src/main/resources/db/migration/V17__clients_archived.sql
+new file mode 100644
+index 0000000..e758525
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__clients_archived.sql
+@@ -0,0 +1,4 @@
++-- Archive a client instead of deleting it: an archived client is retained but drops off the client
++-- list and out of the client search. Defaults to not archived so existing rows (and normal creates)
++-- stay visible.
++ALTER TABLE clients ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/clients/{id}/archive.POST.yml b/src/main/resources/officefloor/rest/api/clients/{id}/archive.POST.yml
+new file mode 100644
+index 0000000..3c847e5
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{id}/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.client.ArchiveClient
