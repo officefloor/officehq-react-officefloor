@@ -1,7 +1,10 @@
 package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -61,6 +64,29 @@ public class ClientStatementRepository {
         BigDecimal outstandingTotal = invoices.stream()
                 .map(StatementInvoice::due)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ClientStatement(invoices, outstandingTotal);
+        return new ClientStatement(groupByProject(invoices), invoices, outstandingTotal);
+    }
+
+    /**
+     * Group the (id-ordered) invoices under their job, preserving first-seen job order, and give
+     * each job a subtotal — the sum of what is still due across just that job's invoices, so the
+     * per-job subtotals add up to the statement's outstanding total.
+     */
+    private static List<StatementProject> groupByProject(List<StatementInvoice> invoices) {
+        Map<Long, List<StatementInvoice>> byProject = new LinkedHashMap<>();
+        Map<Long, String> names = new LinkedHashMap<>();
+        for (StatementInvoice inv : invoices) {
+            byProject.computeIfAbsent(inv.projectId(), k -> new ArrayList<>()).add(inv);
+            names.putIfAbsent(inv.projectId(), inv.projectName());
+        }
+        List<StatementProject> projects = new ArrayList<>();
+        for (Map.Entry<Long, List<StatementInvoice>> entry : byProject.entrySet()) {
+            BigDecimal subtotal = entry.getValue().stream()
+                    .map(StatementInvoice::due)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            projects.add(new StatementProject(entry.getKey(), names.get(entry.getKey()),
+                    entry.getValue(), subtotal));
+        }
+        return projects;
     }
 }

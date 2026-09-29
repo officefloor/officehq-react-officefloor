@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 
-// A client's statement, shown on demand when a client is opened from the clients list: all of that
-// client's invoices in one place with the total they still owe. Owns its own state (CLAUDE.md —
-// features own their state; clients does not import the invoices feature). Reads from the dedicated
-// GET /api/clients/statement endpoint, which derives each invoice's amount and amount still due.
+// A client's statement, shown on demand when a client is opened from the clients list: the client's
+// invoices grouped by job, each job showing a subtotal, plus the total they still owe across every
+// job. Owns its own state (CLAUDE.md — features own their state; clients does not import the invoices
+// feature). Reads from the dedicated GET /api/clients/statement endpoint, which derives each
+// invoice's amount and amount still due and groups them by job with per-job subtotals.
 type StatementInvoice = {
   id: number;
   projectId: number;
@@ -13,7 +14,18 @@ type StatementInvoice = {
   status: string;
 };
 
-type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
+type StatementProject = {
+  projectId: number;
+  projectName: string;
+  invoices: StatementInvoice[];
+  subtotal: number;
+};
+
+type Statement = {
+  projects: StatementProject[];
+  invoices: StatementInvoice[];
+  outstandingTotal: number;
+};
 
 function money(n: number): string {
   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -36,26 +48,42 @@ export function ClientStatement({ clientId }: { clientId: number }) {
       </button>
       {statement ? (
         <>
-          <table data-testid="client-statement-table">
-            <thead>
-              <tr>
-                <th>Job</th>
-                <th>Amount</th>
-                <th>Due</th>
-                <th>Stage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statement.invoices.map((inv) => (
-                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
-                  <td data-testid="statement-invoice-project">{inv.projectName}</td>
-                  <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
-                  <td data-testid="statement-invoice-due">{money(inv.due)}</td>
-                  <td data-testid="statement-invoice-status">{inv.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {statement.projects.map((project) => (
+            <div
+              key={project.projectId}
+              data-testid={`statement-project-${project.projectId}`}
+            >
+              <h4 data-testid="statement-project-name">{project.projectName}</h4>
+              <table data-testid="client-statement-table">
+                <thead>
+                  <tr>
+                    <th>Job</th>
+                    <th>Amount</th>
+                    <th>Due</th>
+                    <th>Stage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.invoices.map((inv) => (
+                    <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+                      <td data-testid="statement-invoice-project">{inv.projectName}</td>
+                      <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
+                      <td data-testid="statement-invoice-due">{money(inv.due)}</td>
+                      <td data-testid="statement-invoice-status">{inv.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Subtotal</td>
+                    <td colSpan={3} data-testid="statement-project-subtotal">
+                      {money(project.subtotal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ))}
           <p>
             Total owed:{' '}
             <span data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</span>
