@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index fd856b5..e69ab8f 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -19,6 +19,7 @@ function money(amount: number): string {
+ function ProjectDetail({ project }: { project: Project }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
++  const [amountError, setAmountError] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices?projectId=${project.id}`);
+@@ -31,9 +32,12 @@ function ProjectDetail({ project }: { project: Project }) {
+ 
+   async function submit(e: React.FormEvent) {
+     e.preventDefault();
+-    if (amount.trim() === '') {
++    const value = Number(amount);
++    if (amount.trim() === '' || !Number.isFinite(value) || value <= 0) {
++      setAmountError('Amount must be more than zero');
+       return;
+     }
++    setAmountError('');
+     await fetch('/api/invoices', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -64,6 +68,11 @@ function ProjectDetail({ project }: { project: Project }) {
+         <button data-testid="invoice-form-submit" type="submit">
+           Add invoice
+         </button>
++        {amountError && (
++          <p data-testid="invoice-form-amount-error" role="alert">
++            {amountError}
++          </p>
++        )}
+       </form>
+ 
+       <table data-testid="project-invoices-table">
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+index 442a2c4..0a0ec78 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+@@ -15,8 +15,8 @@ public class CreateInvoice {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires a project");
+         }
+         BigDecimal amount = body.getAmount();
+-        if (amount == null || amount.signum() < 0) {
+-            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice requires an amount");
++        if (amount == null || amount.signum() <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice amount must be more than zero");
+         }
+         Invoice invoice = new Invoice();
+         invoice.setProjectId(body.getProjectId());
+diff --git a/src/main/resources/db/migration/V6__invoices_amount_positive.sql b/src/main/resources/db/migration/V6__invoices_amount_positive.sql
+new file mode 100644
+index 0000000..8cabda3
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__invoices_amount_positive.sql
+@@ -0,0 +1,3 @@
++-- An invoice must record a real charge: its amount has to be more than zero.
++-- Enforced at the database as the final backstop behind the form and server validation.
++ALTER TABLE invoices ADD CONSTRAINT invoices_amount_positive CHECK (amount > 0);
