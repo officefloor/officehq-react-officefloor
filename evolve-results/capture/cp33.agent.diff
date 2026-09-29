@@ -1,0 +1,227 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+new file mode 100644
+index 0000000..8562fa1
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -0,0 +1,67 @@
++import React, { useState } from 'react';
++
++// A client's statement, shown on demand when a client is opened from the clients list: all of that
++// client's invoices in one place with the total they still owe. Owns its own state (CLAUDE.md —
++// features own their state; clients does not import the invoices feature). Reads from the dedicated
++// GET /api/clients/statement endpoint, which derives each invoice's amount and amount still due.
++type StatementInvoice = {
++  id: number;
++  projectId: number;
++  projectName: string;
++  amount: number;
++  due: number;
++  status: string;
++};
++
++type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
++
++function money(n: number): string {
++  return `$${Number(n).toFixed(2)}`;
++}
++
++export function ClientStatement({ clientId }: { clientId: number }) {
++  const [statement, setStatement] = useState<Statement | null>(null);
++
++  async function open() {
++    const res = await fetch(`/api/clients/statement?clientId=${clientId}`);
++    if (res.ok) {
++      setStatement(await res.json());
++    }
++  }
++
++  return (
++    <section data-testid="client-statement">
++      <button type="button" data-testid="client-statement-open" onClick={open}>
++        Statement
++      </button>
++      {statement ? (
++        <>
++          <table data-testid="client-statement-table">
++            <thead>
++              <tr>
++                <th>Project</th>
++                <th>Amount</th>
++                <th>Due</th>
++                <th>Stage</th>
++              </tr>
++            </thead>
++            <tbody>
++              {statement.invoices.map((inv) => (
++                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
++                  <td data-testid="statement-invoice-project">{inv.projectName}</td>
++                  <td data-testid="statement-invoice-amount">{money(inv.amount)}</td>
++                  <td data-testid="statement-invoice-due">{money(inv.due)}</td>
++                  <td data-testid="statement-invoice-status">{inv.status}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++          <p>
++            Total owed:{' '}
++            <span data-testid="client-outstanding-total">{money(statement.outstandingTotal)}</span>
++          </p>
++        </>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 65f02d0..a161b67 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
+ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
+ import { ClientSummary } from './ClientSummary';
++import { ClientStatement } from './ClientStatement';
+ 
+ // Clients feature: owns its own state (CLAUDE.md — features own their state, no global store).
+ type Client = { id: number; name: string; email: string };
+@@ -142,6 +143,9 @@ export function ClientsPage() {
+       )}
+ 
+       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
++      {openClientId !== null ? (
++        <ClientStatement key={openClientId} clientId={openClientId} />
++      ) : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatement.java b/src/main/java/net/officefloor/hq/app/ClientStatement.java
+new file mode 100644
+index 0000000..e8d5a59
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientStatement.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * A client's statement: all of that client's invoices in one place, together with the
++ * {@code outstandingTotal} — the sum of what is still due across those invoices. Serialised as JSON
++ * by GET /api/clients/statement?clientId=&lt;id&gt;.
++ */
++public record ClientStatement(List<StatementInvoice> invoices, BigDecimal outstandingTotal) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementGetLogic.java b/src/main/java/net/officefloor/hq/app/ClientStatementGetLogic.java
+new file mode 100644
+index 0000000..b1a9143
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementGetLogic.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/clients/statement?clientId=&lt;id&gt; — a client's statement: all of that client's
++ * invoices in one place, with the total still owed across them.
++ */
++public class ClientStatementGetLogic {
++
++    public void service(@HttpQueryParameter("clientId") String clientId,
++            ClientStatementRepository repository, ObjectResponse<ClientStatement> response) {
++        response.send(repository.forClient(Long.parseLong(clientId.trim())));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java b/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java
+new file mode 100644
+index 0000000..cd0209c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementRepository.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Repository;
++
++/**
++ * Read-only query backing a client's statement: every invoice belonging to the client (across all of
++ * their projects), each with its derived amount, amount still due and status, plus the outstanding
++ * total (the sum of what is still due). Amount, paid and due are derived the same way as
++ * {@link InvoiceRepository} so a statement reads consistently with the rest of the app.
++ */
++@Repository
++public class ClientStatementRepository {
++
++    private final JdbcTemplate jdbc;
++
++    public ClientStatementRepository(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    // An invoice's amount is the sum of its line items (qty * unit_price); zero when it has none.
++    private static final String AMOUNT_SUM =
++            "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li"
++                    + " WHERE li.invoice_id = i.id), 0)";
++
++    // What has been paid against the invoice: the sum of its payments (zero when none).
++    private static final String PAID_SUM =
++            "COALESCE((SELECT SUM(pm.amount) FROM payments pm"
++                    + " WHERE pm.invoice_id = i.id), 0)";
++
++    // The amount still due on the invoice: its amount minus what has been paid.
++    private static final String DUE = "(" + AMOUNT_SUM + " - " + PAID_SUM + ")";
++
++    // Status worked out from payments: DRAFT until issued, SENT once issued but unpaid, PARTIAL once
++    // some (but not all) is paid, PAID once the payments cover the amount.
++    private static final String DERIVED_STATUS =
++            "CASE WHEN i.status = 'DRAFT' THEN 'DRAFT'"
++                    + " WHEN " + AMOUNT_SUM + " > 0 AND " + PAID_SUM + " >= " + AMOUNT_SUM
++                    + " THEN 'PAID'"
++                    + " WHEN " + PAID_SUM + " > 0 THEN 'PARTIAL'"
++                    + " ELSE 'SENT' END";
++
++    public ClientStatement forClient(long clientId) {
++        List<StatementInvoice> invoices = jdbc.query(
++                "SELECT i.id, i.project_id, p.name AS project_name, " + AMOUNT_SUM + " AS amount,"
++                        + " " + DUE + " AS due, " + DERIVED_STATUS + " AS status"
++                        + " FROM invoices i JOIN projects p ON p.id = i.project_id"
++                        + " WHERE p.client_id = ? ORDER BY i.id",
++                (rs, i) -> new StatementInvoice(rs.getLong("id"), rs.getLong("project_id"),
++                        rs.getString("project_name"), rs.getBigDecimal("amount"),
++                        rs.getBigDecimal("due"), rs.getString("status")),
++                clientId);
++        BigDecimal outstandingTotal = invoices.stream()
++                .map(StatementInvoice::due)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        return new ClientStatement(invoices, outstandingTotal);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/StatementInvoice.java b/src/main/java/net/officefloor/hq/app/StatementInvoice.java
+new file mode 100644
+index 0000000..0ead6c9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/StatementInvoice.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * One line of a client's statement: an invoice of theirs (across any of their projects) with its
++ * total {@code amount}, how much is still {@code due} on it, and its current {@code status}.
++ * Serialised as JSON by GET /api/clients/statement.
++ */
++public record StatementInvoice(long id, long projectId, String projectName, BigDecimal amount,
++        BigDecimal due, String status) {
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/statement.GET.yml b/src/main/resources/officefloor/rest/api/clients/statement.GET.yml
+new file mode 100644
+index 0000000..e8d81d2
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/statement.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientStatementGetLogic
