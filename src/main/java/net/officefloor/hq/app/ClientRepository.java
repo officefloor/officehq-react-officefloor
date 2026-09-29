@@ -26,6 +26,22 @@ public class ClientRepository {
                 (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")));
     }
 
+    /**
+     * Clients whose name matches the global search term (case-insensitive substring). Archived
+     * clients stay hidden, matching the plain list. A blank term matches nothing — the global
+     * search only surfaces results once something is typed.
+     */
+    public List<Client> searchByName(String term) {
+        if (term == null || term.isBlank()) {
+            return List.of();
+        }
+        return jdbc.query(
+                "SELECT id, name, email FROM clients"
+                        + " WHERE archived = FALSE AND LOWER(name) LIKE ? ORDER BY id",
+                (rs, i) -> new Client(rs.getLong("id"), rs.getString("name"), rs.getString("email")),
+                "%" + term.trim().toLowerCase() + "%");
+    }
+
     /** Look up one client, or null when there is no such row. */
     public Client findById(long id) {
         List<Client> rows = jdbc.query(

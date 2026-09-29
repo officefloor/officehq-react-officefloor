@@ -92,6 +92,20 @@ public class ProjectRepository {
         return jdbc.query(sql.toString(), MAPPER, args.toArray());
     }
 
+    /**
+     * Projects whose name matches the global search term (case-insensitive substring). Archived
+     * projects stay hidden, matching the plain list. A blank term matches nothing — the global
+     * search only surfaces results once something is typed.
+     */
+    public List<Project> searchByName(String term) {
+        if (term == null || term.isBlank()) {
+            return List.of();
+        }
+        return jdbc.query(
+                SELECT + " WHERE p.archived = FALSE AND LOWER(p.name) LIKE ? ORDER BY p.id",
+                MAPPER, "%" + term.trim().toLowerCase() + "%");
+    }
+
     public Project create(String name, long clientId, String status) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(con -> {
