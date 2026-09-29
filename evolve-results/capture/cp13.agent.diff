@@ -1,0 +1,154 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 29533ad..b98e1a7 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -55,6 +55,11 @@ function ProjectDetail({ project }: { project: Project }) {
+     await load();
+   }
+ 
++  async function send(id: number) {
++    await fetch(`/api/invoices/${id}/send`, { method: 'POST' });
++    await load();
++  }
++
+   async function pay(id: number) {
+     await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
+     await load();
+@@ -99,7 +104,12 @@ function ProjectDetail({ project }: { project: Project }) {
+               <td data-testid="invoice-due">{inv.dueDate}</td>
+               <td data-testid="invoice-status">{inv.status}</td>
+               <td>
+-                {inv.status !== 'PAID' && (
++                {inv.status === 'DRAFT' && (
++                  <button data-testid={`invoice-send-${inv.id}`} onClick={() => send(inv.id)}>
++                    Send
++                  </button>
++                )}
++                {inv.status === 'SENT' && (
+                   <button data-testid={`invoice-pay-${inv.id}`} onClick={() => pay(inv.id)}>
+                     Mark paid
+                   </button>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f746f2b..266328e 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -64,15 +64,28 @@ public class TestSupportController {
+             Object status = in.get("status");
+             Object issuedDate = in.get("issuedDate");
+             Object dueDate = in.get("dueDate");
+-            jdbc.update(
+-                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date)"
+-                            + " VALUES (?, ?, ?, ?, ?, ?)",
++            // Insert only the columns the fixture supplies for the (optional) dates, so the
++            // table's own defaults apply when a fixture omits them (a plain null would trip the
++            // NOT NULL columns). status defaults to DRAFT — a new invoice starts as a draft.
++            StringBuilder cols = new StringBuilder("id, project_id, amount, status");
++            StringBuilder marks = new StringBuilder("?, ?, ?, ?");
++            List<Object> args = new java.util.ArrayList<>(List.of(
+                     ((Number) in.get("id")).longValue(),
+                     ((Number) in.get("projectId")).longValue(),
+                     ((Number) in.get("amount")).doubleValue(),
+-                    status == null ? "UNPAID" : status.toString(),
+-                    issuedDate == null ? null : issuedDate.toString(),
+-                    dueDate == null ? null : dueDate.toString());
++                    status == null ? "DRAFT" : status.toString()));
++            if (issuedDate != null) {
++                cols.append(", issued_date");
++                marks.append(", ?");
++                args.add(issuedDate.toString());
++            }
++            if (dueDate != null) {
++                cols.append(", due_date");
++                marks.append(", ?");
++                args.add(dueDate.toString());
++            }
++            jdbc.update("INSERT INTO invoices (" + cols + ") VALUES (" + marks + ")",
++                    args.toArray());
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+index 70438ae..d4246f6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/CreateInvoice.java
+@@ -22,7 +22,7 @@ public class CreateInvoice {
+         Invoice invoice = new Invoice();
+         invoice.setProjectId(body.getProjectId());
+         invoice.setAmount(amount);
+-        invoice.setStatus("UNPAID");
++        invoice.setStatus("DRAFT");
+         LocalDate today = LocalDate.now();
+         invoice.setIssuedDate(today);
+         invoice.setDueDate(today.plusDays(30));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java
+index c3e2350..e2a39f3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/PayInvoice.java
+@@ -19,6 +19,10 @@ public class PayInvoice {
+         Long invoiceId = Long.valueOf(id);
+         Invoice invoice = repository.findById(invoiceId)
+                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
++        if (!"SENT".equals(invoice.getStatus())) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "An invoice can only be paid once it has been sent");
++        }
+         invoice.setStatus("PAID");
+         Invoice saved = repository.save(invoice);
+         BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/SendInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/SendInvoice.java
+new file mode 100644
+index 0000000..247f34b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoice/SendInvoice.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.invoice;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/invoices/{id}/send — send a draft invoice: flip its status from DRAFT to SENT and
++ * record the fact to the audit file so it can be checked back later. Only a draft can be sent.
++ */
++public class SendInvoice {
++
++    public void service(@HttpPathParameter("id") String id, InvoiceRepository repository,
++            Audit audit, ObjectResponse<InvoiceView> response) {
++        Long invoiceId = Long.valueOf(id);
++        Invoice invoice = repository.findById(invoiceId)
++                .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
++        if (!"DRAFT".equals(invoice.getStatus())) {
++            throw new HttpException(HttpStatus.CONFLICT, "Only a draft invoice can be sent");
++        }
++        invoice.setStatus("SENT");
++        Invoice saved = repository.save(invoice);
++        BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_SENT id=" + saved.getId() + " amount=" + amount.toPlainString());
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
++                saved.getStatus(),
++                saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),
++                saved.getDueDate() == null ? null : saved.getDueDate().toString()));
++    }
++}
+diff --git a/src/main/resources/db/migration/V8__invoices_draft_default.sql b/src/main/resources/db/migration/V8__invoices_draft_default.sql
+new file mode 100644
+index 0000000..262e2d0
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__invoices_draft_default.sql
+@@ -0,0 +1,3 @@
++-- Invoice lifecycle: an invoice starts life as a DRAFT, then is SENT, then PAID. New invoices
++-- default to DRAFT so a freshly created invoice begins in the draft stage before it is sent.
++ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'DRAFT';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{id}/send.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{id}/send.POST.yml
+new file mode 100644
+index 0000000..13a2017
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{id}/send.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoice.SendInvoice
