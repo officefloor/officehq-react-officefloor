@@ -59,6 +59,18 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     }
   }
 
+  async function sendInvoice(id: number) {
+    const res = await fetch('/api/invoices/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      const sent: Invoice = await res.json();
+      setInvoices((prev) => prev.map((inv) => (inv.id === sent.id ? sent : inv)));
+    }
+  }
+
   async function payInvoice(id: number) {
     const res = await fetch('/api/invoices/pay', {
       method: 'POST',
@@ -117,7 +129,16 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td>
-                {inv.status === 'PAID' ? null : (
+                {inv.status === 'DRAFT' ? (
+                  <button
+                    type="button"
+                    data-testid={`invoice-send-${inv.id}`}
+                    onClick={() => void sendInvoice(inv.id)}
+                  >
+                    Send
+                  </button>
+                ) : null}
+                {inv.status === 'SENT' ? (
                   <button
                     type="button"
                     data-testid={`invoice-pay-${inv.id}`}
@@ -125,7 +146,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
                   >
                     Mark paid
                   </button>
-                )}
+                ) : null}
               </td>
             </tr>
           ))}

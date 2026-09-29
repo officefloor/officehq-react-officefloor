@@ -53,7 +53,13 @@ public class InvoiceRepository {
             ps.setBigDecimal(2, amount);
             return ps;
         }, keys);
-        return new Invoice(keys.getKey().longValue(), projectId, amount, "UNPAID", null, null);
+        return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null);
+    }
+
+    /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */
+    public Invoice markSent(long id) {
+        jdbc.update("UPDATE invoices SET status = 'SENT' WHERE id = ?", id);
+        return findById(id);
     }
 
     /** Flip an invoice to PAID and return the updated row (null if no such invoice). */

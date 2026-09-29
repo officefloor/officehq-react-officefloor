@@ -18,12 +18,16 @@ public class InvoicesPayPostLogic {
         if (body.getId() <= 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "An invoice id is required.");
         }
-        Invoice invoice = repository.markPaid(body.getId());
+        Invoice invoice = repository.findById(body.getId());
         if (invoice == null) {
             throw new HttpException(HttpStatus.NOT_FOUND, "No such invoice.");
         }
-        BigDecimal amount = invoice.amount().setScale(2, RoundingMode.HALF_UP);
-        audit.record("INVOICE_PAID id=" + invoice.id() + " amount=" + amount.toPlainString());
-        response.send(invoice);
+        if (!"SENT".equals(invoice.status())) {
+            throw new HttpException(HttpStatus.CONFLICT, "An invoice can only be paid once sent.");
+        }
+        Invoice paid = repository.markPaid(invoice.id());
+        BigDecimal amount = paid.amount().setScale(2, RoundingMode.HALF_UP);
+        audit.record("INVOICE_PAID id=" + paid.id() + " amount=" + amount.toPlainString());
+        response.send(paid);
     }
 }
