@@ -11,4 +11,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     /** Whether a client already uses this email — two clients cannot share one. */
     boolean existsByEmail(String email);
+
+    /** Whether a client OTHER than this one uses this email — for correcting a client's email. */
+    boolean existsByEmailAndIdNot(String email, Long id);
 }

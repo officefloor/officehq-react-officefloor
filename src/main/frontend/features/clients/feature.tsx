@@ -316,10 +316,12 @@ function ClientForm({
 function ClientsTable({
   clients,
   onOpen,
+  onEdit,
   onArchive,
 }: {
   clients: Client[];
   onOpen: (id: number) => void;
+  onEdit: (id: number) => void;
   onArchive: (id: number) => void;
 }) {
   return (
@@ -332,6 +334,9 @@ function ClientsTable({
             <td>
               <button data-testid={`client-open-${c.id}`} onClick={() => onOpen(c.id)}>
                 Open
+              </button>
+              <button data-testid={`client-edit-${c.id}`} onClick={() => onEdit(c.id)}>
+                Edit
               </button>
               <button data-testid={`client-archive-${c.id}`} onClick={() => onArchive(c.id)}>
                 Archive
@@ -350,6 +355,9 @@ function ClientsPage() {
   // substring match on the client name; an empty box shows everyone.
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
+  // Which client (if any) is being corrected: opening the edit form seeds it with that client's
+  // current name and email so the user tweaks rather than retypes.
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // Two clients cannot share an email; the server rejects a duplicate, so surface it and keep the
   // form as-is rather than clearing or reloading (nothing was added).
@@ -366,6 +374,25 @@ function ClientsPage() {
     return null;
   }
 
+  // Correct a client's name or email. The server rejects a duplicate email (against another
+  // client), so surface it and keep the form open; on success reload and close the edit form.
+  async function editClient(
+    id: number,
+    values: { name: string; email: string },
+  ): Promise<string | null> {
+    const res = await fetch(`/api/clients/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+    if (!res.ok) {
+      return 'A client with this email already exists.';
+    }
+    await reload();
+    setEditingId(null);
+    return null;
+  }
+
   // Tuck a client away: archived clients are retained server-side but drop off this list and out of
   // the search. Reloading after archiving is enough — the /api/clients list excludes them.
   async function archive(id: number) {
@@ -373,12 +400,16 @@ function ClientsPage() {
     if (openId === id) {
       setOpenId(null);
     }
+    if (editingId === id) {
+      setEditingId(null);
+    }
     await reload();
   }
 
   const term = search.trim().toLowerCase();
   const visible = clients.filter((c) => c.name.toLowerCase().includes(term));
   const open = clients.find((c) => c.id === openId) ?? null;
+  const editing = clients.find((c) => c.id === editingId) ?? null;
 
   return (
     <section data-testid="clients">
@@ -393,7 +424,22 @@ function ClientsPage() {
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
-        <ClientsTable clients={visible} onOpen={setOpenId} onArchive={archive} />
+        <ClientsTable
+          clients={visible}
+          onOpen={setOpenId}
+          onEdit={setEditingId}
+          onArchive={archive}
+        />
+      )}
+
+      {editing && (
+        <ClientForm
+          key={`edit-${editing.id}`}
+          testid="client-edit-form"
+          submitLabel="Save changes"
+          initial={{ name: editing.name, email: editing.email }}
+          onSubmit={(values) => editClient(editing.id, values)}
+        />
       )}
 
       {open && <ClientSummaryBadges key={`summary-${open.id}`} client={open} />}
