@@ -1,0 +1,130 @@
+diff --git a/src/main/frontend/features/projects/feature.tsx b/src/main/frontend/features/projects/feature.tsx
+index 18337a1..6e916e3 100644
+--- a/src/main/frontend/features/projects/feature.tsx
++++ b/src/main/frontend/features/projects/feature.tsx
+@@ -24,6 +24,7 @@ type Invoice = {
+   status: string;
+   issuedDate: string;
+   dueDate: string;
++  discountPct: number;
+ };
+ type Task = { id: number; projectId: number; title: string; done: boolean };
+ type Tag = { id: number; name: string };
+@@ -84,13 +85,17 @@ function InvoiceDetail({
+   const [paymentAmount, setPaymentAmount] = useState('');
+   const [paymentDate, setPaymentDate] = useState('');
+   const [status, setStatus] = useState('');
++  // The percentage discount taken off this invoice's subtotal (0 unless one is set).
++  const [discountPct, setDiscountPct] = useState(0);
+ 
+   // The status is worked out from the payments recorded against the invoice, so re-read it whenever
+-  // a payment is added rather than flipping it by hand.
++  // a payment is added rather than flipping it by hand. The discount percentage comes back on the
++  // same read.
+   async function loadStatus() {
+     const res = await fetch(`/api/invoices/${invoiceId}`);
+     const inv: Invoice = await res.json();
+     setStatus(inv.status);
++    setDiscountPct(Number(inv.discountPct) || 0);
+   }
+ 
+   async function load() {
+@@ -199,7 +204,11 @@ function InvoiceDetail({
+     onChange();
+   }
+ 
+-  const total = items.reduce((sum, li) => sum + amountOf(li), 0);
++  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
++  // the final total is the subtotal less the discount.
++  const subtotal = items.reduce((sum, li) => sum + amountOf(li), 0);
++  const discount = (subtotal * discountPct) / 100;
++  const total = subtotal - discount;
+ 
+   return (
+     <section data-testid="invoice-detail">
+@@ -251,6 +260,8 @@ function InvoiceDetail({
+         </tbody>
+       </table>
+ 
++      <p data-testid="invoice-subtotal">{money(subtotal)}</p>
++      <p data-testid="invoice-discount">{money(discount)}</p>
+       <p data-testid="invoice-amount">{money(total)}</p>
+ 
+       <form data-testid="lineitem-form" onSubmit={submit}>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 77838ef..3ea85b2 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -113,6 +113,7 @@ public class TestSupportController {
+                     .set("project_id", id(in, "projectId"))
+                     .set("status", in.get("status") == null ? "DRAFT" : in.get("status").toString())
+                     .setIfPresent("amount", asDouble(in.get("amount")))
++                    .setIfPresent("discount_pct", asDouble(in.get("discountPct")))
+                     .setIfPresent("issued_date", asText(in.get("issuedDate")))
+                     .setIfPresent("due_date", asText(in.get("dueDate")))
+                     .run();
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+index 2df3394..90aca8d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/GetInvoice.java
+@@ -16,7 +16,7 @@ public class GetInvoice {
+     public void service(@HttpPathParameter("id") String id, JdbcTemplate jdbc,
+             ObjectResponse<InvoiceView> response) {
+         InvoiceView invoice = jdbc.query(
+-                "SELECT id, project_id, status, issued_date, due_date, "
++                "SELECT id, project_id, status, issued_date, due_date, discount_pct, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+                         + "WHERE li.invoice_id = invoices.id), 0) AS amount, "
+                         + "COALESCE((SELECT SUM(li.qty * li.unit_price) FROM line_items li "
+@@ -29,9 +29,11 @@ public class GetInvoice {
+                     BigDecimal amountDue = rs.getBigDecimal("amount_due");
+                     String status = InvoiceStatus.derive(rs.getString("status"), amount,
+                             amount.subtract(amountDue));
+-                    return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
+-                            amountDue, status, rs.getString("issued_date"),
++                    InvoiceView view = new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
++                            amount, amountDue, status, rs.getString("issued_date"),
+                             rs.getString("due_date"));
++                    view.setDiscountPct(rs.getBigDecimal("discount_pct"));
++                    return view;
+                 },
+                 Long.valueOf(id)).stream().findFirst()
+                 .orElseThrow(() -> new HttpException(HttpStatus.NOT_FOUND, "No such invoice"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java b/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java
+index 799c954..27415d9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/invoice/InvoiceView.java
+@@ -12,6 +12,9 @@ public class InvoiceView {
+     private final String status;
+     private final String issuedDate;
+     private final String dueDate;
++    // The percentage discount taken off the subtotal; 0 unless the invoice carries one. Set after
++    // construction so the existing callers that don't surface a discount stay untouched.
++    private BigDecimal discountPct = BigDecimal.ZERO;
+ 
+     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal amountDue,
+             String status, String issuedDate, String dueDate) {
+@@ -51,4 +54,12 @@ public class InvoiceView {
+     public String getDueDate() {
+         return dueDate;
+     }
++
++    public BigDecimal getDiscountPct() {
++        return discountPct;
++    }
++
++    public void setDiscountPct(BigDecimal discountPct) {
++        this.discountPct = discountPct;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V26__invoices_discount.sql b/src/main/resources/db/migration/V26__invoices_discount.sql
+new file mode 100644
+index 0000000..3445457
+--- /dev/null
++++ b/src/main/resources/db/migration/V26__invoices_discount.sql
+@@ -0,0 +1,5 @@
++-- An invoice can carry a percentage discount taken off its subtotal (the sum of its line items).
++-- The final total is the subtotal less that discount. Additive: a new column on the existing
++-- invoices table. Existing invoices have no discount, so default to 0 (NOT NULL so the column
++-- always has a value to compute with). Stored as a whole/fractional percent (e.g. 10 = 10%).
++ALTER TABLE invoices ADD COLUMN discount_pct DECIMAL(5, 2) NOT NULL DEFAULT 0;
