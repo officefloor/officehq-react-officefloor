@@ -21,7 +21,8 @@ public class InvoiceRepository {
             (rs, i) -> new Invoice(rs.getLong("id"), rs.getLong("project_id"),
                     rs.getBigDecimal("amount"), rs.getString("status"),
                     rs.getString("issued_date"), rs.getString("due_date"),
-                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"));
+                    rs.getBigDecimal("due"), rs.getBigDecimal("discount_pct"),
+                    rs.getBigDecimal("tax_pct"));
 
     // An invoice's amount is the sum of its line items (qty * unit_price); a line-item-less invoice
     // totals zero. Derived here so the amount always reflects the current line items.
@@ -41,9 +42,14 @@ public class InvoiceRepository {
     private static final String DISCOUNTED_AMOUNT =
             "(" + AMOUNT_SUM + " * (100 - i.discount_pct) / 100)";
 
-    // What is still owed on the invoice: its discounted amount minus what has been paid, so the
-    // discount flows through everywhere "owed" is shown.
-    private static final String DUE = "(" + DISCOUNTED_AMOUNT + " - " + PAID_SUM + ")";
+    // Sales tax (tax_pct, V30) is added on top after the discount, so the taxed amount is the
+    // discounted amount times (1 + tax_pct/100). This is what the client actually pays.
+    private static final String TAXED_AMOUNT =
+            "(" + DISCOUNTED_AMOUNT + " * (100 + i.tax_pct) / 100)";
+
+    // What is still owed on the invoice: its taxed (post-discount) amount minus what has been paid,
+    // so the discount and the tax both flow through everywhere "owed" is shown.
+    private static final String DUE = "(" + TAXED_AMOUNT + " - " + PAID_SUM + ")";
 
     // An invoice's status is worked out from its recorded payments, not flipped by hand: it stays
     // DRAFT until issued, reads SENT once issued but unpaid, PARTIAL once some (but not all) of the
@@ -60,7 +66,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProject(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
                         + " FROM invoices i WHERE i.project_id = ? ORDER BY i.id",
                 MAPPER, projectId);
     }
@@ -69,7 +75,7 @@ public class InvoiceRepository {
     public List<Invoice> findByProjectOrderByDueDate(long projectId) {
         return jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
                         + " FROM invoices i WHERE i.project_id = ?"
                         + " ORDER BY i.due_date ASC NULLS LAST, i.id",
                 MAPPER, projectId);
@@ -120,7 +126,7 @@ public class InvoiceRepository {
     public Invoice findById(long id) {
         List<Invoice> found = jdbc.query(
                 "SELECT i.id, i.project_id, " + AMOUNT_SUM + " AS amount, " + DUE + " AS due,"
-                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct"
+                        + " " + DERIVED_STATUS + " AS status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct"
                         + " FROM invoices i WHERE i.id = ?",
                 MAPPER, id);
         return found.isEmpty() ? null : found.get(0);
@@ -136,9 +142,9 @@ public class InvoiceRepository {
             return ps;
         }, keys);
         // A freshly created invoice has no payments yet, so the whole amount is still due, and no
-        // discount yet (discount_pct defaults to 0).
+        // discount or tax yet (discount_pct and tax_pct default to 0).
         return new Invoice(keys.getKey().longValue(), projectId, amount, "DRAFT", null, null,
-                amount, BigDecimal.ZERO);
+                amount, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     /** Flip an invoice from DRAFT to SENT and return the updated row (null if no such invoice). */

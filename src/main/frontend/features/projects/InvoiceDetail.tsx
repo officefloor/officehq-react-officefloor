@@ -45,6 +45,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
   const [paymentDate, setPaymentDate] = useState('');
   const [status, setStatus] = useState('');
   const [discountPct, setDiscountPct] = useState(0);
+  const [taxPct, setTaxPct] = useState(0);
 
   async function load() {
     const res = await fetch(`/api/lineitems?invoiceId=${invoiceId}`);
@@ -62,13 +63,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
 
   // The invoice's status is worked out server-side from the payments recorded against it, so we
   // re-read it whenever the payments change rather than tracking it by hand. The invoice also
-  // carries its discount percentage, which we read here to show the discount and final total.
+  // carries its discount and tax percentages, which we read here to show the discount, the tax and
+  // the final total.
   async function loadStatus() {
     const res = await fetch(`/api/invoices/get?id=${invoiceId}`);
     if (res.ok) {
-      const inv: { status: string; discountPct: number } = await res.json();
+      const inv: { status: string; discountPct: number; taxPct: number } = await res.json();
       setStatus(inv.status);
       setDiscountPct(Number(inv.discountPct));
+      setTaxPct(Number(inv.taxPct));
     }
   }
 
@@ -164,11 +167,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
     }
   }
 
-  // The subtotal is the sum of the line items; the discount is that percentage taken off it, and
-  // the final total is the subtotal minus the discount.
+  // The subtotal is the sum of the line items; the discount is that percentage taken off it. Sales
+  // tax is then added on top, worked out on the discounted amount (subtotal minus discount). The
+  // final total is the discounted amount plus the tax.
   const subtotal = lineItems.reduce((sum, li) => sum + li.qty * Number(li.unitPrice), 0);
   const discount = subtotal * (discountPct / 100);
-  const total = subtotal - discount;
+  const tax = (subtotal - discount) * (taxPct / 100);
+  const total = subtotal - discount + tax;
 
   return (
     <section data-testid="invoice-detail">
@@ -303,6 +308,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: number }) {
       </p>
       <p>
         Discount: <span data-testid="invoice-discount">{money(discount)}</span>
+      </p>
+      <p>
+        Tax: <span data-testid="invoice-tax">{money(tax)}</span>
       </p>
       <p>
         Total: <span data-testid="invoice-amount">{money(total)}</span>

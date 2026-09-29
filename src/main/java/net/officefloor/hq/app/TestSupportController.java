@@ -161,16 +161,19 @@ public class TestSupportController {
             Object issuedDate = inv.get("issuedDate");
             Object dueDate = inv.get("dueDate");
             Object discountPct = inv.get("discountPct");
+            Object taxPct = inv.get("taxPct");
             // Amount is derived from the invoice's line items (V13), so it is not seeded directly;
-            // the column defaults to 0. discount_pct (V29) defaults to 0 when the fixture omits it.
+            // the column defaults to 0. discount_pct (V29) and tax_pct (V30) default to 0 when the
+            // fixture omits them.
             jdbc.update(
                     "INSERT INTO invoices (id, project_id, status, issued_date, due_date,"
-                            + " discount_pct) VALUES (?, ?, ?, ?, ?, ?)",
+                            + " discount_pct, tax_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     id(inv, "id"), id(inv, "projectId"),
                     status == null ? "DRAFT" : status.toString(),
                     issuedDate == null ? null : Date.valueOf(issuedDate.toString()),
                     dueDate == null ? null : Date.valueOf(dueDate.toString()),
-                    discountPct == null ? BigDecimal.ZERO : new BigDecimal(discountPct.toString()));
+                    discountPct == null ? BigDecimal.ZERO : new BigDecimal(discountPct.toString()),
+                    taxPct == null ? BigDecimal.ZERO : new BigDecimal(taxPct.toString()));
             seedLineItems(inv);
         }
     }
