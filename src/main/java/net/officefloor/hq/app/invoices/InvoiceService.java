@@ -74,6 +74,40 @@ public class InvoiceService {
         return jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC", mapper, status.trim());
     }
 
+    /**
+     * One page of the cross-project invoice list. The list is large, so it is served a page at a
+     * time in id order, optionally narrowed to a lifecycle stage. {@code page} is 1-based and
+     * {@code size} is the page size; both are clamped to sane minimums. The returned view carries
+     * the page's rows plus the paging metadata (page served, total pages, total rows).
+     */
+    @Transactional(readOnly = true)
+    public AllInvoicesPageView listAllPaged(String status, int page, int size) {
+        int pageSize = Math.max(1, size);
+        boolean filtered = status != null && !status.isBlank();
+        String stage = filtered ? status.trim() : null;
+
+        String countSql = "SELECT COUNT(*) FROM invoices i"
+                + (filtered ? " WHERE i.status = ?" : "");
+        long total = filtered
+                ? jdbc.queryForObject(countSql, Long.class, stage)
+                : jdbc.queryForObject(countSql, Long.class);
+
+        int pageCount = total == 0 ? 1 : (int) ((total + pageSize - 1) / pageSize);
+        int current = Math.min(Math.max(1, page), pageCount);
+        int offset = (current - 1) * pageSize;
+
+        RowMapper<AllInvoiceView> mapper = (rs, i) -> new AllInvoiceView(rs.getLong("id"),
+                rs.getString("project_name"), rs.getBigDecimal("amount"), rs.getString("status"));
+        String base = "SELECT i.id, i.amount, i.status, p.name AS project_name "
+                + "FROM invoices i JOIN projects p ON i.project_id = p.id ";
+        List<AllInvoiceView> items = filtered
+                ? jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC LIMIT ? OFFSET ?",
+                        mapper, stage, pageSize, offset)
+                : jdbc.query(base + "ORDER BY i.id ASC LIMIT ? OFFSET ?",
+                        mapper, pageSize, offset);
+        return new AllInvoicesPageView(items, current, pageCount, total);
+    }
+
     @Transactional(readOnly = true)
     public List<InvoiceView> listForProject(Long projectId) {
         return jdbc.query(
