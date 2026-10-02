@@ -1,0 +1,263 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+index 623415b..a192279 100644
+--- a/src/main/frontend/features/clients/ClientDetail.tsx
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useState, type FormEvent } from 'react';
++import { ClientStatement } from './ClientStatement';
+ 
+ // Opened from the clients list: a client's detail view lists the projects done for them, scoped to
+ // the client via /api/clients/<id>/projects. Reuses the project-row-<id>/project-name anchors so the
+@@ -20,6 +21,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+   const [email, setEmail] = useState('');
+   const [role, setRole] = useState('');
+   const [emailError, setEmailError] = useState(false);
++  const [statementOpen, setStatementOpen] = useState(false);
+ 
+   async function loadContacts() {
+     const res = await fetch(`/api/clients/${clientId}/contacts`);
+@@ -78,6 +80,15 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
+       </dl>
+ 
++      <button
++        data-testid="client-statement-open"
++        type="button"
++        onClick={() => setStatementOpen(true)}
++      >
++        Statement
++      </button>
++      {statementOpen && <ClientStatement clientId={clientId} />}
++
+       <h2>Projects</h2>
+       <table data-testid="client-projects-table">
+         <thead>
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+new file mode 100644
+index 0000000..d963f19
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -0,0 +1,66 @@
++import { useEffect, useState } from 'react';
++import { formatMoney } from '../../ui/money';
++
++// A statement for a client: all of that client's invoices gathered in one place, with the total
++// they still owe (the sum of what is due across their invoices). Scoped to the client via
++// /api/clients/<id>/statement. Opened on demand from the client detail view.
++type StatementInvoice = {
++  id: number;
++  projectName: string;
++  amount: number;
++  status: string;
++  due: number;
++};
++type Statement = {
++  invoices: StatementInvoice[];
++  outstandingTotal: number;
++};
++
++export function ClientStatement({ clientId }: { clientId: number }) {
++  const [statement, setStatement] = useState<Statement>({ invoices: [], outstandingTotal: 0 });
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch(`/api/clients/${clientId}/statement`);
++      if (res.ok) {
++        setStatement(await res.json());
++      }
++    }
++    void load();
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-statement">
++      <h2>Statement</h2>
++      <table data-testid="client-statement-table">
++        <thead>
++          <tr>
++            <th>Invoice</th>
++            <th>Project</th>
++            <th>Amount</th>
++            <th>Status</th>
++            <th>Due</th>
++          </tr>
++        </thead>
++        <tbody>
++          {statement.invoices.map((invoice) => (
++            <tr key={invoice.id} data-testid={`statement-invoice-row-${invoice.id}`}>
++              <td data-testid="statement-invoice-id">{invoice.id}</td>
++              <td data-testid="statement-invoice-project">{invoice.projectName}</td>
++              <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount)}</td>
++              <td data-testid="statement-invoice-status">{invoice.status}</td>
++              <td data-testid="statement-invoice-due">{formatMoney(invoice.due)}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
++      <p>
++        Total owed:{' '}
++        <strong data-testid="client-outstanding-total">
++          {formatMoney(statement.outstandingTotal)}
++        </strong>
++      </p>
++    </section>
++  );
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 70efc3d..940c5f1 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.clients;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+@@ -87,6 +88,29 @@ public class ClientService {
+         return new ClientCountsView(projects == null ? 0 : projects, contacts == null ? 0 : contacts);
+     }
+ 
++    /**
++     * A statement for a client: every invoice raised across all of the client's projects, gathered
++     * in one place, each with how much is still due (its amount minus whatever has been paid against
++     * it). The outstanding total is the sum of those dues — what the client still owes. Read via SQL
++     * so the clients feature stays self-contained and does not import the invoices feature's types.
++     */
++    @Transactional(readOnly = true)
++    public ClientStatementView statementFor(Long clientId) {
++        List<ClientStatementInvoiceView> invoices = jdbc.query(
++                "SELECT i.id, p.name AS project_name, i.amount, i.status, "
++                        + "i.amount - COALESCE((SELECT SUM(pay.amount) FROM payments pay "
++                        + "WHERE pay.invoice_id = i.id), 0) AS due_amount "
++                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
++                        + "WHERE p.client_id = ? ORDER BY i.id ASC",
++                (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"),
++                        rs.getString("project_name"), rs.getBigDecimal("amount"),
++                        rs.getString("status"), rs.getBigDecimal("due_amount")),
++                clientId);
++        BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        return new ClientStatementView(invoices, outstanding);
++    }
++
+     /** The contacts kept for a client, oldest first. */
+     @Transactional(readOnly = true)
+     public List<ClientContactView> contactsFor(Long clientId) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientStatementInvoiceView.java b/src/main/java/net/officefloor/hq/app/clients/ClientStatementInvoiceView.java
+new file mode 100644
+index 0000000..456f581
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientStatementInvoiceView.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.clients;
++
++import java.math.BigDecimal;
++
++/**
++ * JSON response shape for one line of a client's statement: the invoice id, the NAME of the project
++ * it was raised against, its money amount, its lifecycle stage, and how much is still due on it
++ * (amount minus whatever has been paid against it).
++ */
++public class ClientStatementInvoiceView {
++
++    private final long id;
++    private final String projectName;
++    private final BigDecimal amount;
++    private final String status;
++    private final BigDecimal due;
++
++    public ClientStatementInvoiceView(long id, String projectName, BigDecimal amount, String status,
++            BigDecimal due) {
++        this.id = id;
++        this.projectName = projectName;
++        this.amount = amount;
++        this.status = status;
++        this.due = due;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getProjectName() {
++        return projectName;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getStatus() {
++        return status;
++    }
++
++    public BigDecimal getDue() {
++        return due;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientStatementLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientStatementLogic.java
+new file mode 100644
+index 0000000..750794d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientStatementLogic.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/clients/{clientId}/statement — a statement for a client: all of their invoices gathered
++ * in one place, with the total they still owe.
++ */
++public class ClientStatementLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<ClientStatementView> response) {
++        response.send(clients.statementFor(Long.valueOf(clientId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java b/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java
+new file mode 100644
+index 0000000..91f4ff0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.clients;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * JSON response shape for a client's statement: all of the client's invoices gathered in one place,
++ * plus the outstanding total — the sum of what is still due across those invoices.
++ */
++public class ClientStatementView {
++
++    private final List<ClientStatementInvoiceView> invoices;
++    private final BigDecimal outstandingTotal;
++
++    public ClientStatementView(List<ClientStatementInvoiceView> invoices,
++            BigDecimal outstandingTotal) {
++        this.invoices = invoices;
++        this.outstandingTotal = outstandingTotal;
++    }
++
++    public List<ClientStatementInvoiceView> getInvoices() {
++        return invoices;
++    }
++
++    public BigDecimal getOutstandingTotal() {
++        return outstandingTotal;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml
+new file mode 100644
+index 0000000..74e0745
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.ClientStatementLogic
