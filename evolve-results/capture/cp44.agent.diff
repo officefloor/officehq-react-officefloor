@@ -1,0 +1,172 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index f23e0eb..e487552 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -13,7 +13,7 @@ export function ClientsPage() {
+   const [search, setSearch] = useState('');
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+-  const [emailError, setEmailError] = useState(false);
++  const [emailError, setEmailError] = useState<string | null>(null);
+   const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
+   async function load() {
+@@ -43,18 +43,25 @@ export function ClientsPage() {
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
+     if (!EMAIL_RE.test(email)) {
+-      setEmailError(true);
++      setEmailError('Enter a valid email address.');
+       return;
+     }
+-    setEmailError(false);
++    setEmailError(null);
+     const res = await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ name, email }),
+     });
+     if (res.ok) {
++      // Two clients can't share an email: the server rejects the duplicate and adds no row.
++      const result = (await res.json()) as { emailInUse?: boolean };
++      if (result.emailInUse) {
++        setEmailError('That email is already in use.');
++        return;
++      }
+       setName('');
+       setEmail('');
++      setEmailError(null);
+       await load();
+     }
+   }
+@@ -84,9 +91,7 @@ export function ClientsPage() {
+           onChange={(e) => setEmail(e.target.value)}
+         />
+         {emailError && (
+-          <p data-testid="client-form-email-error">
+-            Enter a valid email address.
+-          </p>
++          <p data-testid="client-form-email-error">{emailError}</p>
+         )}
+         <button data-testid="client-form-submit" type="submit">
+           Add client
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+index d722fc0..086c375 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+@@ -10,4 +10,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     List<Client> findByArchivedFalseOrderByIdAsc();
+ 
+     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
++
++    // Two clients can never share an email — the guard the create path checks before saving.
++    boolean existsByEmail(String email);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index db9c53b..f602707 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -164,6 +164,11 @@ public class ClientService {
+         if (email == null || !EMAIL.matcher(email).matches()) {
+             throw new IllegalArgumentException("A client requires a valid email address");
+         }
++        // Two clients can never share an email (also enforced by the clients_email_unique
++        // constraint); reject the duplicate before saving so the UI can flag it.
++        if (repository.existsByEmail(email)) {
++            throw new DuplicateClientEmailException(email);
++        }
+         Client client = new Client();
+         client.setName(name);
+         client.setEmail(email);
+diff --git a/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
+index 00ec290..9aed824 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
+@@ -2,11 +2,18 @@ package net.officefloor.hq.app.clients;
+ 
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** POST /api/clients — add a client from the JSON body and return the created row. */
++/** POST /api/clients — add a client from the JSON body and return the result. */
+ public class CreateClientLogic {
+ 
+-    public void service(NewClient body, ClientService clients, ObjectResponse<ClientView> response) {
+-        Client saved = clients.create(body.getName(), body.getEmail());
+-        response.send(new ClientView(saved.getId(), saved.getName(), saved.getEmail()));
++    public void service(NewClient body, ClientService clients,
++            ObjectResponse<CreateClientResult> response) {
++        try {
++            Client saved = clients.create(body.getName(), body.getEmail());
++            response.send(CreateClientResult
++                    .created(new ClientView(saved.getId(), saved.getName(), saved.getEmail())));
++        } catch (DuplicateClientEmailException e) {
++            // Email already in use: no row added; the UI surfaces the email error.
++            response.send(CreateClientResult.emailInUse());
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/CreateClientResult.java b/src/main/java/net/officefloor/hq/app/clients/CreateClientResult.java
+new file mode 100644
+index 0000000..9306c6a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/CreateClientResult.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.clients;
++
++/**
++ * JSON response shape for creating a client. Either the row was created ({@code client} set), or it
++ * was rejected because another client already uses that email ({@code emailInUse} true) — the UI
++ * branches on this to surface the duplicate-email error without adding a row.
++ */
++public class CreateClientResult {
++
++    private final ClientView client;
++    private final boolean emailInUse;
++
++    private CreateClientResult(ClientView client, boolean emailInUse) {
++        this.client = client;
++        this.emailInUse = emailInUse;
++    }
++
++    public static CreateClientResult created(ClientView client) {
++        return new CreateClientResult(client, false);
++    }
++
++    public static CreateClientResult emailInUse() {
++        return new CreateClientResult(null, true);
++    }
++
++    public ClientView getClient() {
++        return client;
++    }
++
++    public boolean isEmailInUse() {
++        return emailInUse;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/DuplicateClientEmailException.java b/src/main/java/net/officefloor/hq/app/clients/DuplicateClientEmailException.java
+new file mode 100644
+index 0000000..6570c0c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/DuplicateClientEmailException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.clients;
++
++/** Raised when creating a client whose email is already used by another client. */
++public class DuplicateClientEmailException extends RuntimeException {
++
++    public DuplicateClientEmailException(String email) {
++        super("A client already uses email " + email);
++    }
++}
+diff --git a/src/main/resources/db/migration/V31__clients_email_unique.sql b/src/main/resources/db/migration/V31__clients_email_unique.sql
+new file mode 100644
+index 0000000..0590455
+--- /dev/null
++++ b/src/main/resources/db/migration/V31__clients_email_unique.sql
+@@ -0,0 +1,5 @@
++-- A client's email is their unique handle: two clients can never share one. Enforce it in the
++-- schema so a duplicate can never be persisted regardless of entry point (mirrors the service and
++-- front-end guards).
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_unique UNIQUE (email);
