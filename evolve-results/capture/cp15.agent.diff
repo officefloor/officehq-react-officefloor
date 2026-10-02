@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 5e70e7f..7cf6c03 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -17,6 +17,7 @@ function formatAmount(amount: number): string {
+ 
+ export function AllInvoicesPage() {
+   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
++  const [statusFilter, setStatusFilter] = useState('');
+ 
+   useEffect(() => {
+     async function load() {
+@@ -26,11 +27,33 @@ export function AllInvoicesPage() {
+     void load();
+   }, []);
+ 
++  // Distinct stages present, so the filter offers exactly the stages the list can show.
++  const statuses = Array.from(new Set(invoices.map((inv) => inv.status))).sort();
++  const visible = statusFilter
++    ? invoices.filter((inv) => inv.status === statusFilter)
++    : invoices;
++
+   return (
+     <section data-testid="invoices-section">
+       <h1>Invoices</h1>
+ 
+-      {invoices.length === 0 ? (
++      <label>
++        Stage
++        <select
++          data-testid="invoice-status-filter"
++          value={statusFilter}
++          onChange={(e) => setStatusFilter(e.target.value)}
++        >
++          <option value="">All</option>
++          {statuses.map((status) => (
++            <option key={status} value={status}>
++              {status}
++            </option>
++          ))}
++        </select>
++      </label>
++
++      {visible.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+         <table data-testid="all-invoices-table">
+@@ -42,7 +65,7 @@ export function AllInvoicesPage() {
+             </tr>
+           </thead>
+           <tbody>
+-            {invoices.map((inv) => (
++            {visible.map((inv) => (
+               <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+                 <td data-testid="invoice-project">{inv.projectName}</td>
+                 <td data-testid="invoice-amount">{formatAmount(inv.amount)}</td>
