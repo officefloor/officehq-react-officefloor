@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ClientSummary } from './ClientSummary';
+import { ClientStatement } from './ClientStatement';
 import { ClientProjects } from './ClientProjects';
 import { ClientContacts } from './ClientContacts';
 
@@ -136,6 +137,7 @@ export function ClientsPage() {
       )}
 
       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
+      {openClientId !== null ? <ClientStatement clientId={openClientId} /> : null}
       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
     </section>
