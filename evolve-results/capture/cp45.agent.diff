@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 12c47a1..97aa371 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -20,6 +20,12 @@ export function ClientsPage() {
+   const [search, setSearch] = useState('');
+   const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
++  // The client currently being corrected from the list, plus the edited field values.
++  const [editingClientId, setEditingClientId] = useState<number | null>(null);
++  const [editName, setEditName] = useState('');
++  const [editEmail, setEditEmail] = useState('');
++  const [editError, setEditError] = useState('');
++
+   async function load() {
+     const res = await fetch('/api/clients');
+     setClients(await res.json());
+@@ -65,6 +71,42 @@ export function ClientsPage() {
+     await load();
+   }
+ 
++  // Open the inline edit form for a client, pre-filled with its current name and email.
++  function onEdit(c: Client) {
++    setEditingClientId(c.id);
++    setEditName(c.name);
++    setEditEmail(c.email);
++    setEditError('');
++  }
++
++  // Save the corrected name and email for the client being edited.
++  async function onEditSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    if (editingClientId === null) return;
++
++    if (!EMAIL.test(editEmail.trim())) {
++      setEditError('A proper email address is required');
++      return;
++    }
++    setEditError('');
++
++    const res = await fetch(`/api/clients/${editingClientId}`, {
++      method: 'PUT',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name: editName, email: editEmail.trim() }),
++    });
++    if (!res.ok) {
++      setEditError(
++        res.status === 409
++          ? 'A client with this email already exists'
++          : 'A proper email address is required',
++      );
++      return;
++    }
++    setEditingClientId(null);
++    await load();
++  }
++
+   // Case-insensitive filter on the client name; an empty box shows every client.
+   const q = search.trim().toLowerCase();
+   const shown = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
+@@ -127,6 +169,13 @@ export function ClientsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`client-edit-${c.id}`}
++                    onClick={() => onEdit(c)}
++                  >
++                    Edit
++                  </button>
+                   <button
+                     type="button"
+                     data-testid={`client-archive-${c.id}`}
+@@ -141,6 +190,31 @@ export function ClientsPage() {
+         </table>
+       )}
+ 
++      {editingClientId !== null && (
++        <form data-testid="client-edit-form" onSubmit={onEditSubmit}>
++          <input
++            data-testid="client-edit-form-name"
++            placeholder="Name"
++            value={editName}
++            onChange={(e) => setEditName(e.target.value)}
++          />
++          <input
++            data-testid="client-edit-form-email"
++            placeholder="Email"
++            value={editEmail}
++            onChange={(e) => setEditEmail(e.target.value)}
++          />
++          {editError && (
++            <p data-testid="client-edit-form-error" role="alert">
++              {editError}
++            </p>
++          )}
++          <button type="submit" data-testid="client-edit-form-submit">
++            Save client
++          </button>
++        </form>
++      )}
++
+       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientStatement clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index 414250d..5176395 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -17,4 +17,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** Whether any client already holds this email (case-insensitive) — emails must be unique. */
+     boolean existsByEmailIgnoreCase(String email);
++
++    /** Whether a DIFFERENT client already holds this email — for validating an edit of this client. */
++    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/UpdateClientLogic.java b/src/main/java/net/officefloor/hq/app/UpdateClientLogic.java
+new file mode 100644
+index 0000000..37a41dc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/UpdateClientLogic.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app;
++
++import java.util.regex.Pattern;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * PUT /api/clients/{clientId} — correct a client's name and email from the list, appends one audit
++ * record (CLIENT_UPDATED id=&lt;id&gt;) so there is a record it happened, and echoes back the saved
++ * client. An unknown client is rejected with 400 and nothing is written. The email must carry a
++ * proper shape (blank or malformed is rejected with 400, mirroring the UI and schema checks in V2),
++ * and must not already belong to ANOTHER client (rejected with 409, schema check in V28) — the
++ * client may of course keep its own email.
++ */
++public class UpdateClientLogic {
++
++    /** Basic email shape: something, '@', something, '.', something — no whitespace. */
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
++    public void service(@HttpPathParameter("clientId") String clientId,
++            @RequestBody NewClient newClient, ClientRepository clients, Audit audit,
++            ObjectResponse<Client> response) {
++        Long id = Long.valueOf(clientId);
++        Client client = clients.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing client is required"));
++        String email = newClient.getEmail();
++        if (email == null || !EMAIL.matcher(email.trim()).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A proper email address is required");
++        }
++        String trimmed = email.trim();
++        if (clients.existsByEmailIgnoreCaseAndIdNot(trimmed, id)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A client with this email already exists");
++        }
++        client.setName(newClient.getName());
++        client.setEmail(trimmed);
++        Client saved = clients.save(client);
++        audit.record("CLIENT_UPDATED id=" + id);
++        response.send(saved);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}.PUT.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}.PUT.yml
+new file mode 100644
+index 0000000..5f2c235
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}.PUT.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.UpdateClientLogic
