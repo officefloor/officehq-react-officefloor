@@ -298,6 +298,45 @@ public class InvoiceService {
         return listPayments(invoiceId);
     }
 
+    /**
+     * Record one lump payment a client made and split it across several of their invoices. Each
+     * share is saved as its own payment row against its invoice (so each invoice's balance stays
+     * correct on its own), and the shares all carry one shared reference so they can be recognised as
+     * coming from the same lump sum. Shares of zero or less are ignored. Returns the payments created.
+     */
+    @Transactional
+    public List<PaymentView> recordSplitPayment(String date, List<PaymentAllocation> allocations) {
+        if (date == null || date.isBlank()) {
+            throw new IllegalArgumentException("A payment requires a date");
+        }
+        if (allocations == null || allocations.isEmpty()) {
+            throw new IllegalArgumentException("A payment requires at least one allocation");
+        }
+        LocalDate paidDate = LocalDate.parse(date);
+        String batchRef = java.util.UUID.randomUUID().toString();
+        List<PaymentView> created = new java.util.ArrayList<>();
+        for (PaymentAllocation allocation : allocations) {
+            if (allocation.getInvoiceId() == null) {
+                throw new IllegalArgumentException("An allocation requires an invoice");
+            }
+            BigDecimal amount = allocation.getAmount();
+            // A blank or non-positive share just means this invoice gets nothing from the lump sum.
+            if (amount == null || amount.signum() <= 0) {
+                continue;
+            }
+            Payment payment = new Payment();
+            payment.setInvoiceId(allocation.getInvoiceId());
+            payment.setAmount(amount);
+            payment.setPaidDate(paidDate);
+            payment.setBatchRef(batchRef);
+            Payment saved = paymentRepository.save(payment);
+            audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount=" + amount.setScale(2));
+            created.add(new PaymentView(saved.getId(), saved.getInvoiceId(), saved.getAmount(),
+                    saved.getPaidDate().toString()));
+        }
+        return created;
+    }
+
     /** One invoice, with its status worked out from the payments recorded against it. */
     @Transactional(readOnly = true)
     public InvoiceView get(Long invoiceId) {

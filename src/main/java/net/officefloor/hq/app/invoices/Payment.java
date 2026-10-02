@@ -29,6 +29,10 @@ public class Payment {
     @Column(name = "paid_date")
     private LocalDate paidDate;
 
+    // Shares split from one lump payment carry the same reference; a standalone payment leaves it null.
+    @Column(name = "batch_ref")
+    private String batchRef;
+
     public Long getId() {
         return id;
     }
@@ -59,5 +63,13 @@ public class Payment {
 
     public void setPaidDate(LocalDate paidDate) {
         this.paidDate = paidDate;
+    }
+
+    public String getBatchRef() {
+        return batchRef;
+    }
+
+    public void setBatchRef(String batchRef) {
+        this.batchRef = batchRef;
     }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ClientStatement } from './ClientStatement';
+import { formatMoney } from '../../ui/money';
 
 // Opened from the clients list: a client's detail view lists the projects done for them, scoped to
 // the client via /api/clients/<id>/projects. Reuses the project-row-<id>/project-name anchors so the
@@ -8,6 +9,8 @@ import { ClientStatement } from './ClientStatement';
 type Project = { id: number; name: string };
 type Contact = { id: number; name: string; email: string; role: string; primary: boolean };
 type Counts = { projects: number; contacts: number };
+// An open invoice the client still owes on — a candidate to put part of a lump payment against.
+type OpenInvoice = { id: number; projectName: string; amount: number; due: number };
 
 // A contact must carry a proper email address too, same guard as clients: a single non-whitespace
 // local part, an @, and a dotted domain.
@@ -22,6 +25,13 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   const [role, setRole] = useState('');
   const [emailError, setEmailError] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  // Recording a lump payment split across the client's open invoices: whether the form is open, the
+  // lump sum, the date it was paid, the open invoices to split across, and each invoice's share.
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [openInvoices, setOpenInvoices] = useState<OpenInvoice[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [allocations, setAllocations] = useState<Record<number, string>>({});
   // By default a client's page shows only their ACTIVE projects — the work still in play. Flipping
   // this reveals the finished and hidden (archived) ones too, by asking the server for them all.
   const [showAll, setShowAll] = useState(false);
@@ -93,6 +103,36 @@ export function ClientDetail({ clientId }: { clientId: number }) {
     }
   }
 
+  // Open the lump-payment form, loading the client's open invoices (those with something still due)
+  // from their statement so each can be given a share of the payment.
+  async function onOpenPayment() {
+    setPaymentOpen(true);
+    const res = await fetch(`/api/clients/${clientId}/statement`);
+    if (res.ok) {
+      const statement = (await res.json()) as { invoices: OpenInvoice[] };
+      setOpenInvoices(statement.invoices.filter((invoice) => Number(invoice.due) > 0));
+    }
+  }
+
+  // Split the lump payment across the invoices: send each invoice's share, then close the form.
+  async function onRecordPayment(event: FormEvent) {
+    event.preventDefault();
+    const splits = openInvoices
+      .map((invoice) => ({ invoiceId: invoice.id, amount: Number(allocations[invoice.id] ?? '') }))
+      .filter((split) => split.amount > 0);
+    const res = await fetch(`/api/clients/${clientId}/payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: Number(paymentAmount), date: paymentDate, allocations: splits }),
+    });
+    if (res.ok) {
+      setPaymentOpen(false);
+      setPaymentAmount('');
+      setPaymentDate('');
+      setAllocations({});
+    }
+  }
+
   return (
     <section data-testid="client-detail">
       <dl data-testid="client-counts">
@@ -110,6 +150,62 @@ export function ClientDetail({ clientId }: { clientId: number }) {
         Statement
       </button>
       {statementOpen && <ClientStatement clientId={clientId} />}
+
+      <button
+        data-testid="client-record-payment"
+        type="button"
+        onClick={() => void onOpenPayment()}
+      >
+        Record payment
+      </button>
+      {paymentOpen && (
+        <form data-testid="payment-form" onSubmit={onRecordPayment}>
+          <input
+            data-testid="payment-form-amount"
+            placeholder="Amount"
+            value={paymentAmount}
+            onChange={(e) => setPaymentAmount(e.target.value)}
+          />
+          <input
+            data-testid="payment-form-date"
+            placeholder="Date"
+            value={paymentDate}
+            onChange={(e) => setPaymentDate(e.target.value)}
+          />
+          <table data-testid="payment-alloc-table">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Job</th>
+                <th>Left to pay</th>
+                <th>Apply</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openInvoices.map((invoice) => (
+                <tr key={invoice.id} data-testid={`payment-alloc-row-${invoice.id}`}>
+                  <td>{invoice.id}</td>
+                  <td>{invoice.projectName}</td>
+                  <td>{formatMoney(invoice.due)}</td>
+                  <td>
+                    <input
+                      data-testid={`payment-alloc-${invoice.id}`}
+                      placeholder="0"
+                      value={allocations[invoice.id] ?? ''}
+                      onChange={(e) =>
+                        setAllocations((prev) => ({ ...prev, [invoice.id]: e.target.value }))
+                      }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button data-testid="payment-form-submit" type="submit">
+            Record payment
+          </button>
+        </form>
+      )}
 
       <h2>Jobs</h2>
       <button
