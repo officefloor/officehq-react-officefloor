@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/features/projects/ProjectTasks.tsx b/src/main/frontend/features/projects/ProjectTasks.tsx
+index 2e4e6aa..88be1e0 100644
+--- a/src/main/frontend/features/projects/ProjectTasks.tsx
++++ b/src/main/frontend/features/projects/ProjectTasks.tsx
+@@ -5,11 +5,14 @@ import React, { useEffect, useState } from 'react';
+ // data loading (no global store); composed, not branched.
+ type Task = { id: number; projectId: number; title: string; done: boolean };
+ 
++type Filter = 'ALL' | 'OPEN' | 'DONE';
++
+ export function ProjectTasks({ projectId }: { projectId: number }) {
+   const [tasks, setTasks] = useState<Task[]>([]);
++  const [filter, setFilter] = useState<Filter>('ALL');
+ 
+-  async function load() {
+-    const res = await fetch(`/api/projects/${projectId}/tasks`);
++  async function load(status: Filter = filter) {
++    const res = await fetch(`/api/projects/${projectId}/tasks?status=${status}`);
+     setTasks(await res.json());
+   }
+ 
+@@ -17,6 +20,11 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
+     void load();
+   }, [projectId]);
+ 
++  async function onFilter(status: Filter) {
++    setFilter(status);
++    await load(status);
++  }
++
+   async function toggle(taskId: number) {
+     const res = await fetch(`/api/tasks/${taskId}/toggle`, { method: 'POST' });
+     if (!res.ok) {
+@@ -29,6 +37,16 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
+     <section data-testid="project-tasks">
+       <h2>Tasks</h2>
+ 
++      <select
++        data-testid="task-filter"
++        value={filter}
++        onChange={(e) => void onFilter(e.target.value as Filter)}
++      >
++        <option value="ALL">All</option>
++        <option value="OPEN">Open</option>
++        <option value="DONE">Done</option>
++      </select>
++
+       <table data-testid="project-tasks-table">
+         <thead>
+           <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/ListTasksLogic.java b/src/main/java/net/officefloor/hq/app/ListTasksLogic.java
+index 77cfae0..23b5e57 100644
+--- a/src/main/java/net/officefloor/hq/app/ListTasksLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListTasksLogic.java
+@@ -3,15 +3,29 @@ package net.officefloor.hq.app;
+ import java.util.List;
+ import java.util.stream.Collectors;
+ import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/projects/{projectId}/tasks — a project's checklist of tasks, oldest first. */
++/**
++ * GET /api/projects/{projectId}/tasks — a project's checklist of tasks, oldest first. Returns every
++ * task by default; {@code ?status=OPEN} narrows to the not-yet-done tasks and {@code ?status=DONE}
++ * to the finished ones.
++ */
+ public class ListTasksLogic {
+ 
+-    public void service(@HttpPathParameter("projectId") String projectId, TaskRepository tasks,
++    public void service(@HttpPathParameter("projectId") String projectId,
++            @HttpQueryParameter("status") String status, TaskRepository tasks,
+             ObjectResponse<List<TaskView>> response) {
+         Long id = Long.valueOf(projectId);
+-        List<TaskView> views = tasks.findByProjectIdOrderByIdAsc(id).stream()
++        List<Task> found;
++        if ("OPEN".equals(status)) {
++            found = tasks.findByProjectIdAndDoneOrderByIdAsc(id, false);
++        } else if ("DONE".equals(status)) {
++            found = tasks.findByProjectIdAndDoneOrderByIdAsc(id, true);
++        } else {
++            found = tasks.findByProjectIdOrderByIdAsc(id);
++        }
++        List<TaskView> views = found.stream()
+                 .map(t -> new TaskView(t.getId(), t.getProjectId(), t.getTitle(), t.isDone()))
+                 .collect(Collectors.toList());
+         response.send(views);
+diff --git a/src/main/java/net/officefloor/hq/app/TaskRepository.java b/src/main/java/net/officefloor/hq/app/TaskRepository.java
+index 3f95d26..01f4ed2 100644
+--- a/src/main/java/net/officefloor/hq/app/TaskRepository.java
++++ b/src/main/java/net/officefloor/hq/app/TaskRepository.java
+@@ -8,4 +8,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
+ 
+     /** A project's tasks, oldest first, so the checklist is stable across loads. */
+     List<Task> findByProjectIdOrderByIdAsc(Long projectId);
++
++    /** A project's tasks in one state (done = true/false), oldest first. */
++    List<Task> findByProjectIdAndDoneOrderByIdAsc(Long projectId, boolean done);
+ }
