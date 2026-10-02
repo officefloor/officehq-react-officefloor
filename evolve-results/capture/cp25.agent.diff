@@ -1,0 +1,266 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index d367ff3..ccdef4c 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -5,7 +5,13 @@ import { ProjectTasks } from './ProjectTasks';
+ // The projects feature owns its own state, data loading and layout (no global store). It lists every
+ // project with its client's NAME (a cross-entity join surfaced in the UI) and adds a new project by
+ // name + chosen client. The client select's option values are client ids.
+-type Project = { id: number; name: string; clientId: number; clientName: string };
++type Project = {
++  id: number;
++  name: string;
++  clientId: number;
++  clientName: string;
++  archived: boolean;
++};
+ type Client = { id: number; name: string; email: string };
+ 
+ export function ProjectsPage() {
+@@ -14,6 +20,7 @@ export function ProjectsPage() {
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
++  const [showArchived, setShowArchived] = useState(false);
+ 
+   async function load() {
+     const [pRes, cRes] = await Promise.all([fetch('/api/projects'), fetch('/api/clients')]);
+@@ -36,6 +43,19 @@ export function ProjectsPage() {
+     await load();
+   }
+ 
++  // Archiving tucks a project away: it drops off the list unless archived ones are revealed, and is
++  // retained (the server keeps the row, just flagged). Delete still removes a project outright.
++  async function archive(projectId: number) {
++    const res = await fetch(`/api/projects/${projectId}/archive`, { method: 'POST' });
++    if (!res.ok) {
++      return;
++    }
++    if (openProjectId === projectId) {
++      setOpenProjectId(null);
++    }
++    await load();
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     const res = await fetch('/api/projects', {
+@@ -79,9 +99,20 @@ export function ProjectsPage() {
+         </button>
+       </form>
+ 
+-      {projects.length === 0 ? (
+-        <p data-testid="projects-empty">No projects yet.</p>
+-      ) : (
++      <button
++        type="button"
++        data-testid="projects-show-archived"
++        aria-pressed={showArchived}
++        onClick={() => setShowArchived((s) => !s)}
++      >
++        {showArchived ? 'Hide archived' : 'Show archived'}
++      </button>
++
++      {(() => {
++        const visible = showArchived ? projects : projects.filter((p) => !p.archived);
++        return visible.length === 0 ? (
++          <p data-testid="projects-empty">No projects yet.</p>
++        ) : (
+         <table data-testid="projects-table">
+           <thead>
+             <tr>
+@@ -90,7 +121,7 @@ export function ProjectsPage() {
+             </tr>
+           </thead>
+           <tbody>
+-            {projects.map((p) => (
++            {visible.map((p) => (
+               <tr key={p.id} data-testid={`project-row-${p.id}`}>
+                 <td data-testid="project-name">{p.name}</td>
+                 <td data-testid="project-client">{p.clientName}</td>
+@@ -102,6 +133,13 @@ export function ProjectsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`project-archive-${p.id}`}
++                    onClick={() => void archive(p.id)}
++                  >
++                    Archive
++                  </button>
+                   <button
+                     type="button"
+                     data-testid={`project-delete-${p.id}`}
+@@ -114,7 +152,8 @@ export function ProjectsPage() {
+             ))}
+           </tbody>
+         </table>
+-      )}
++        );
++      })()}
+ 
+       {openProjectId !== null ? (
+         <>
+diff --git a/src/main/java/net/officefloor/hq/app/ArchiveProjectLogic.java b/src/main/java/net/officefloor/hq/app/ArchiveProjectLogic.java
+new file mode 100644
+index 0000000..37f8f4c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ArchiveProjectLogic.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/projects/{projectId}/archive — tuck a project away rather than deleting it. Sets the
++ * project's archived flag so it drops off the project list and the client's list while being
++ * retained, appends one audit record (PROJECT_ARCHIVED id=&lt;id&gt;) so there is a record it
++ * happened, and echoes back the saved project. An unknown project is rejected with 400 and nothing
++ * is written.
++ */
++public class ArchiveProjectLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId,
++            ProjectRepository projects, ClientRepository clients, Audit audit,
++            ObjectResponse<ProjectView> response) {
++        Long id = Long.valueOf(projectId);
++        Project project = projects.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing project is required"));
++        project.setArchived(true);
++        Project saved = projects.save(project);
++        String clientName = clients.findById(saved.getClientId()).map(Client::getName).orElse(null);
++        audit.record("PROJECT_ARCHIVED id=" + id);
++        response.send(new ProjectView(saved.getId(), saved.getName(), saved.getClientId(),
++                clientName, saved.isArchived()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java b/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java
+index 744e801..d968e3a 100644
+--- a/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java
+@@ -13,8 +13,9 @@ public class ListClientProjectsLogic {
+             ObjectResponse<List<ProjectView>> response) {
+         Long id = Long.valueOf(clientId);
+         String clientName = clients.findById(id).map(Client::getName).orElse(null);
+-        List<ProjectView> views = projects.findByClientIdOrderByIdAsc(id).stream()
+-                .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(), clientName))
++        List<ProjectView> views = projects.findByClientIdAndArchivedFalseOrderByIdAsc(id).stream()
++                .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(), clientName,
++                        p.isArchived()))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+index d92a654..6ee8754 100644
+--- a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+@@ -15,7 +15,7 @@ public class ListProjectsLogic {
+                 .collect(Collectors.toMap(Client::getId, Client::getName));
+         List<ProjectView> views = projects.findAllByOrderByIdAsc().stream()
+                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
+-                        clientNames.get(p.getClientId())))
++                        clientNames.get(p.getClientId()), p.isArchived()))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/Project.java b/src/main/java/net/officefloor/hq/app/Project.java
+index 966b1a6..c4966fe 100644
+--- a/src/main/java/net/officefloor/hq/app/Project.java
++++ b/src/main/java/net/officefloor/hq/app/Project.java
+@@ -21,12 +21,15 @@ public class Project {
+     @Column(name = "client_id")
+     private Long clientId;
+ 
++    private boolean archived;
++
+     public Project() {
+     }
+ 
+     public Project(String name, Long clientId) {
+         this.name = name;
+         this.clientId = clientId;
++        this.archived = false;
+     }
+ 
+     public Long getId() {
+@@ -52,4 +55,12 @@ public class Project {
+     public void setClientId(Long clientId) {
+         this.clientId = clientId;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 91f59d9..08c975a 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -12,6 +12,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+     /** The projects done for one client, oldest first, so the list is stable across loads. */
+     List<Project> findByClientIdOrderByIdAsc(Long clientId);
+ 
++    /** The active (not archived) projects for one client — archived ones drop off the client's list. */
++    List<Project> findByClientIdAndArchivedFalseOrderByIdAsc(Long clientId);
++
+     /** How many projects one client has — for the client's at-a-glance counts. */
+     long countByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectView.java b/src/main/java/net/officefloor/hq/app/ProjectView.java
+index 3a7bec1..42d01b3 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectView.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectView.java
+@@ -10,12 +10,18 @@ public class ProjectView {
+     private final String name;
+     private final Long clientId;
+     private final String clientName;
++    private final boolean archived;
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName) {
++        this(id, name, clientId, clientName, false);
++    }
++
++    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived) {
+         this.id = id;
+         this.name = name;
+         this.clientId = clientId;
+         this.clientName = clientName;
++        this.archived = archived;
+     }
+ 
+     public Long getId() {
+@@ -33,4 +39,8 @@ public class ProjectView {
+     public String getClientName() {
+         return clientName;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V15__project_archived.sql b/src/main/resources/db/migration/V15__project_archived.sql
+new file mode 100644
+index 0000000..8894808
+--- /dev/null
++++ b/src/main/resources/db/migration/V15__project_archived.sql
+@@ -0,0 +1,4 @@
++-- Archiving a project: rather than deleting it, the owner can tuck a project away so it drops off
++-- their lists while being retained. Additive metadata flag on the existing project table (V3);
++-- existing rows default to not archived.
++ALTER TABLE project ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/archive.POST.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/archive.POST.yml
+new file mode 100644
+index 0000000..84ba5be
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ArchiveProjectLogic
