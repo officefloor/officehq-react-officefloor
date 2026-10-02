@@ -1,0 +1,118 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index a12a13b..90fcfe5 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -5,7 +5,7 @@ import { formatMoney } from '../../ui/money';
+ // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
+ // owns its own state and reads the single /api/dashboard aggregate; it does not import other
+ // features.
+-type Summary = { clients: number; projects: number; outstanding: number };
++type Summary = { clients: number; projects: number; outstanding: number; overdue: number };
+ 
+ export function DashboardPage() {
+   const [summary, setSummary] = useState<Summary | null>(null);
+@@ -23,6 +23,7 @@ export function DashboardPage() {
+   const clients = summary?.clients ?? 0;
+   const projects = summary?.projects ?? 0;
+   const outstanding = summary?.outstanding ?? 0;
++  const overdue = summary?.overdue ?? 0;
+ 
+   return (
+     <section data-testid="dashboard-page">
+@@ -42,6 +43,11 @@ export function DashboardPage() {
+         <span>Outstanding</span>
+         <strong data-testid="dashboard-outstanding-total">{formatMoney(outstanding)}</strong>
+       </div>
++
++      <div data-testid="dashboard-overdue">
++        <span>Overdue invoices</span>
++        <strong data-testid="dashboard-overdue-count">{overdue}</strong>
++      </div>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1189853..b1ef006 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -46,6 +46,7 @@ public class TestSupportController {
+         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE dashboard_settings");
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+     }
+ 
+@@ -53,6 +54,13 @@ public class TestSupportController {
+     @PostMapping("/seed")
+     @SuppressWarnings("unchecked")
+     public void seed(@RequestBody Map<String, Object> fixture) {
++        // The dashboard measures invoice "overdue" against a fixed reference date; store it when the
++        // fixture supplies one so the home-screen count is deterministic.
++        Object asOf = fixture.get("asOf");
++        if (asOf != null) {
++            jdbc.update("INSERT INTO dashboard_settings (id, as_of) VALUES (1, ?)", asOf.toString());
++        }
++
+         List<Map<String, Object>> clients =
+                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
+         long maxClientId = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index d6daa03..2028cc3 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -28,6 +28,12 @@ public class DashboardService {
+         BigDecimal outstanding = jdbc.queryForObject(
+                 "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                 BigDecimal.class);
+-        return new DashboardView(clients, projects, outstanding);
++        // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
++        // reference date (as_of); with no reference seeded it falls back to the current date.
++        long overdue = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
++                        + "COALESCE((SELECT as_of FROM dashboard_settings WHERE id = 1), CURRENT_DATE)",
++                Long.class);
++        return new DashboardView(clients, projects, outstanding, overdue);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+index 4decba2..5fc30f6 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+@@ -8,11 +8,13 @@ public class DashboardView {
+     private final long clients;
+     private final long projects;
+     private final BigDecimal outstanding;
++    private final long overdue;
+ 
+-    public DashboardView(long clients, long projects, BigDecimal outstanding) {
++    public DashboardView(long clients, long projects, BigDecimal outstanding, long overdue) {
+         this.clients = clients;
+         this.projects = projects;
+         this.outstanding = outstanding;
++        this.overdue = overdue;
+     }
+ 
+     public long getClients() {
+@@ -26,4 +28,8 @@ public class DashboardView {
+     public BigDecimal getOutstanding() {
+         return outstanding;
+     }
++
++    public long getOverdue() {
++        return overdue;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V27__dashboard_as_of.sql b/src/main/resources/db/migration/V27__dashboard_as_of.sql
+new file mode 100644
+index 0000000..33522a1
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__dashboard_as_of.sql
+@@ -0,0 +1,7 @@
++-- The home dashboard reports how many SENT invoices are overdue. "Overdue" is measured against a
++-- fixed reference date (as_of) so the count stays deterministic in tests. This single-row settings
++-- table holds that date; when no row is present the dashboard falls back to the current date.
++CREATE TABLE dashboard_settings (
++    id    INT  NOT NULL PRIMARY KEY,
++    as_of DATE
++);
