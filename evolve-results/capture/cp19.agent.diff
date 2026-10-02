@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/features/clients/ClientSummary.tsx b/src/main/frontend/features/clients/ClientSummary.tsx
+new file mode 100644
+index 0000000..82ce55c
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientSummary.tsx
+@@ -0,0 +1,34 @@
++import React, { useEffect, useState } from 'react';
++
++// A client's at-a-glance counts, rendered inside the clients feature when a client is opened: how
++// many projects and contacts that client has. Owns its own state and data loading (no global store);
++// composed, not branched.
++type Summary = { projectsCount: number; contactsCount: number };
++
++export function ClientSummary({ clientId }: { clientId: number }) {
++  const [summary, setSummary] = useState<Summary>({ projectsCount: 0, contactsCount: 0 });
++
++  useEffect(() => {
++    let active = true;
++    async function load() {
++      const res = await fetch(`/api/clients/${clientId}/summary`);
++      const data = await res.json();
++      if (active) {
++        setSummary(data);
++      }
++    }
++    void load();
++    return () => {
++      active = false;
++    };
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-summary">
++      <span data-testid="client-projects-label">Projects</span>
++      <span data-testid="client-projects-count">{summary.projectsCount}</span>
++      <span data-testid="client-contacts-label">Contacts</span>
++      <span data-testid="client-contacts-count">{summary.contactsCount}</span>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 4a73e70..1521918 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { ClientSummary } from './ClientSummary';
+ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
+ 
+@@ -121,6 +122,7 @@ export function ClientsPage() {
+         </table>
+       )}
+ 
++      {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientSummaryLogic.java b/src/main/java/net/officefloor/hq/app/ClientSummaryLogic.java
+new file mode 100644
+index 0000000..4e08099
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientSummaryLogic.java
+@@ -0,0 +1,17 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/{clientId}/summary — how many projects and contacts one client has. */
++public class ClientSummaryLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId,
++            ProjectRepository projects, ContactRepository contacts,
++            ObjectResponse<ClientSummaryView> response) {
++        Long id = Long.valueOf(clientId);
++        long projectsCount = projects.countByClientId(id);
++        long contactsCount = contacts.countByClientId(id);
++        response.send(new ClientSummaryView(projectsCount, contactsCount));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientSummaryView.java b/src/main/java/net/officefloor/hq/app/ClientSummaryView.java
+new file mode 100644
+index 0000000..52cd983
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientSummaryView.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app;
++
++/** A client's at-a-glance counts: how many projects and contacts that client has. */
++public class ClientSummaryView {
++
++    private final long projectsCount;
++    private final long contactsCount;
++
++    public ClientSummaryView(long projectsCount, long contactsCount) {
++        this.projectsCount = projectsCount;
++        this.contactsCount = contactsCount;
++    }
++
++    public long getProjectsCount() {
++        return projectsCount;
++    }
++
++    public long getContactsCount() {
++        return contactsCount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ContactRepository.java b/src/main/java/net/officefloor/hq/app/ContactRepository.java
+index 559d188..1a3341b 100644
+--- a/src/main/java/net/officefloor/hq/app/ContactRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ContactRepository.java
+@@ -8,4 +8,7 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
+ 
+     /** The contacts for one client, oldest first, so the list is stable across loads. */
+     List<Contact> findByClientIdOrderByIdAsc(Long clientId);
++
++    /** How many contacts one client has — for the client's at-a-glance counts. */
++    long countByClientId(Long clientId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 030e6df..91f59d9 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -11,4 +11,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** The projects done for one client, oldest first, so the list is stable across loads. */
+     List<Project> findByClientIdOrderByIdAsc(Long clientId);
++
++    /** How many projects one client has — for the client's at-a-glance counts. */
++    long countByClientId(Long clientId);
+ }
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/summary.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/summary.GET.yml
+new file mode 100644
+index 0000000..a245291
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/summary.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientSummaryLogic
