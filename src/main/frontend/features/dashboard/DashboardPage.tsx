@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 
 // The dashboard feature owns its own state and data loading (no global store). It is a read-only home
 // summary: how many clients and projects there are, and how much money is still owed (the sum of
-// every UNPAID invoice across all projects, served pre-computed by /api/dashboard).
+// every SENT invoice across all projects — drafts and paid invoices are excluded, served
+// pre-computed by /api/dashboard).
 type Summary = {
   clientsCount: number;
   projectsCount: number;

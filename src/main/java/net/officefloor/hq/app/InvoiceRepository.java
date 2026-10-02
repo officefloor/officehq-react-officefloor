@@ -15,6 +15,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     /** A project's invoices, earliest due date first (id as a stable tie-breaker). */
     List<Invoice> findByProjectIdOrderByDueDateAscIdAsc(Long projectId);
 
-    /** Every invoice with the given status (e.g. UNPAID), oldest first — used to total what is owed. */
+    /** Every invoice with the given status (e.g. SENT), oldest first — used to total what is owed. */
     List<Invoice> findByStatusOrderByIdAsc(String status);
 }
