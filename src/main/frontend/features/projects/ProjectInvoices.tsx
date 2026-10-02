@@ -20,7 +20,10 @@ type Invoice = {
 };
 
 function formatAmount(amount: number): string {
-  return `$${Number(amount).toFixed(2)}`;
+  return `$${Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function ProjectInvoices({ projectId }: { projectId: number }) {
