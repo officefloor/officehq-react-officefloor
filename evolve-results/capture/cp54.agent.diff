@@ -1,0 +1,257 @@
+diff --git a/src/main/frontend/features/projects/InvoiceNotes.tsx b/src/main/frontend/features/projects/InvoiceNotes.tsx
+new file mode 100644
+index 0000000..5817b4c
+--- /dev/null
++++ b/src/main/frontend/features/projects/InvoiceNotes.tsx
+@@ -0,0 +1,70 @@
++import React, { useEffect, useState } from 'react';
++
++// An invoice's notes, rendered inside the opened invoice within the projects feature. Lists the
++// notes newest first and lets the owner write another, which the server stamps "now" so it lands on
++// top. Mirrors the project's notes surface for invoices. Owns its own state and data loading (no
++// global store); composed, not branched.
++type Note = {
++  id: number;
++  targetType: string;
++  targetId: number;
++  text: string;
++  at: string;
++};
++
++export function InvoiceNotes({ invoiceId }: { invoiceId: number }) {
++  const [notes, setNotes] = useState<Note[]>([]);
++  const [text, setText] = useState('');
++
++  async function load() {
++    const res = await fetch(`/api/invoices/${invoiceId}/notes`);
++    setNotes(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, [invoiceId]);
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    if (!text.trim()) {
++      return;
++    }
++    const res = await fetch(`/api/invoices/${invoiceId}/notes`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ text }),
++    });
++    if (!res.ok) {
++      return;
++    }
++    setText('');
++    await load();
++  }
++
++  return (
++    <section data-testid="invoice-notes">
++      <h2>Notes</h2>
++
++      <form data-testid="note-form" onSubmit={onSubmit}>
++        <input
++          data-testid="note-form-text"
++          placeholder="Write a note"
++          value={text}
++          onChange={(e) => setText(e.target.value)}
++        />
++        <button type="submit" data-testid="note-form-submit">
++          Add note
++        </button>
++      </form>
++
++      <ul data-testid="invoice-notes-list">
++        {notes.map((n) => (
++          <li key={n.id} data-testid={`note-row-${n.id}`}>
++            <span data-testid="note-text">{n.text}</span>
++          </li>
++        ))}
++      </ul>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index bcf5b5e..e51fe20 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -1,5 +1,6 @@
+ import React, { useEffect, useState } from 'react';
+ import { InvoiceLineItems } from './InvoiceLineItems';
++import { InvoiceNotes } from './InvoiceNotes';
+ import { InvoicePayments } from './InvoicePayments';
+ 
+ // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
+@@ -28,7 +29,15 @@ function formatAmount(amount: number): string {
+   })}`;
+ }
+ 
+-export function ProjectInvoices({ projectId }: { projectId: number }) {
++export function ProjectInvoices({
++  projectId,
++  onOpenChange,
++}: {
++  projectId: number;
++  // Lets the page react to an invoice being opened/closed (e.g. the project's own notes step aside
++  // for the opened invoice's notes). Fired with the opened invoice id, or null when none is open.
++  onOpenChange?: (invoiceId: number | null) => void;
++}) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+   const [amount, setAmount] = useState('');
+   const [error, setError] = useState('');
+@@ -64,6 +73,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     if (openInvoiceId !== null) {
+       void loadInvoice(openInvoiceId);
+     }
++    onOpenChange?.(openInvoiceId);
+   }, [openInvoiceId]);
+ 
+   async function sortByDue() {
+@@ -130,6 +140,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+           invoiceId={openInvoiceId}
+           onRecorded={() => void loadInvoice(openInvoiceId)}
+         />
++        <InvoiceNotes invoiceId={openInvoiceId} />
+       </section>
+     );
+   }
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 60bb065..c306cff 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -35,6 +35,9 @@ export function ProjectsPage() {
+   const [code, setCode] = useState('');
+   const [codeError, setCodeError] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
++  // While an invoice is opened, its own notes take over the notes surface, so the project's notes
++  // step aside (they share the note-* testids and would otherwise be a second notes surface).
++  const [invoiceOpen, setInvoiceOpen] = useState(false);
+   const [showArchived, setShowArchived] = useState(false);
+   const [filterTagId, setFilterTagId] = useState('');
+   const [filterStatus, setFilterStatus] = useState('');
+@@ -269,9 +272,9 @@ export function ProjectsPage() {
+         <>
+           <ProjectBudget projectId={openProjectId} />
+           <ProjectTags projectId={openProjectId} />
+-          <ProjectNotes projectId={openProjectId} />
++          {!invoiceOpen ? <ProjectNotes projectId={openProjectId} /> : null}
+           <ProjectTasks projectId={openProjectId} />
+-          <ProjectInvoices projectId={openProjectId} />
++          <ProjectInvoices projectId={openProjectId} onOpenChange={(id) => setInvoiceOpen(id !== null)} />
+         </>
+       ) : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/CreateInvoiceNoteLogic.java b/src/main/java/net/officefloor/hq/app/CreateInvoiceNoteLogic.java
+new file mode 100644
+index 0000000..4572e6d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/CreateInvoiceNoteLogic.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.time.Instant;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/{invoiceId}/notes — write a note against an invoice, stamped with the current
++ * time so it sorts to the top of the invoice's notes. A missing/blank text is rejected with 400 and
++ * nothing is written.
++ */
++public class CreateInvoiceNoteLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            @RequestBody NewNote newNote, NoteRepository notes, ObjectResponse<NoteView> response) {
++        Long id = Long.valueOf(invoiceId);
++        String text = newNote.getText();
++        if (text == null || text.isBlank()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A note text is required");
++        }
++        Note saved = notes.save(new Note("invoice", id, text.trim(), Instant.now()));
++        response.send(new NoteView(saved.getId(), saved.getTargetType(), saved.getTargetId(),
++                saved.getText(), saved.getAt().toString()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ListInvoiceNotesLogic.java b/src/main/java/net/officefloor/hq/app/ListInvoiceNotesLogic.java
+new file mode 100644
+index 0000000..f664ceb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ListInvoiceNotesLogic.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import java.util.stream.Collectors;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/invoices/{invoiceId}/notes — an invoice's notes, newest first, so the latest note is at
++ * the top of the list. Notes are the generic {@code note} rows with target_type "invoice".
++ */
++public class ListInvoiceNotesLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId, NoteRepository notes,
++            ObjectResponse<List<NoteView>> response) {
++        Long id = Long.valueOf(invoiceId);
++        List<NoteView> views = notes.findByTargetTypeAndTargetIdOrderByAtDescIdDesc("invoice", id)
++                .stream()
++                .map(n -> new NoteView(n.getId(), n.getTargetType(), n.getTargetId(), n.getText(),
++                        n.getAt().toString()))
++                .collect(Collectors.toList());
++        response.send(views);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 755a964..eecd4f8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -49,6 +49,17 @@ public class TestSupportController {
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+     }
+ 
++    /**
++     * Parse a seeded timestamp, tolerating both a full ISO-8601 instant ({@code 2026-02-01T09:00:00Z})
++     * and a bare date ({@code 2026-02-01}, taken at the start of the day in UTC).
++     */
++    private static java.time.Instant parseInstant(String value) {
++        if (value.length() == 10) {
++            return java.time.LocalDate.parse(value).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
++        }
++        return java.time.Instant.parse(value);
++    }
++
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+     @PostMapping("/seed")
+     @SuppressWarnings("unchecked")
+@@ -100,7 +111,7 @@ public class TestSupportController {
+                     "INSERT INTO note (id, target_type, target_id, body, at) VALUES (?, ?, ?, ?, ?)",
+                     noteId, note.get("targetType"),
+                     ((Number) note.get("targetId")).longValue(), note.get("text"),
+-                    java.sql.Timestamp.from(java.time.Instant.parse(note.get("at").toString())));
++                    java.sql.Timestamp.from(parseInstant(note.get("at").toString())));
+         }
+         if (maxNoteId > 0) {
+             // Seeding explicit ids does not advance H2's IDENTITY sequence, so a note created later
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.GET.yml
+new file mode 100644
+index 0000000..e0aba02
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ListInvoiceNotesLogic
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.POST.yml
+new file mode 100644
+index 0000000..8bb6f15
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/notes.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.CreateInvoiceNoteLogic
