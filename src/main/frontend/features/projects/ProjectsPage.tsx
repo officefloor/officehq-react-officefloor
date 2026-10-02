@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ProjectDetail } from './ProjectDetail';
 
 // This arm's convention: the page component owns the feature's state, data loading and layout.
 // A project belongs to a client; the list shows the client's NAME, and the form's client picker is
@@ -11,6 +12,7 @@ export function ProjectsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
 
   async function loadProjects() {
     const res = await fetch('/api/projects');
@@ -81,6 +83,7 @@ export function ProjectsPage() {
             <tr>
               <th>Name</th>
               <th>Client</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -88,11 +91,22 @@ export function ProjectsPage() {
               <tr key={project.id} data-testid={`project-row-${project.id}`}>
                 <td data-testid="project-name">{project.name}</td>
                 <td data-testid="project-client">{project.clientName}</td>
+                <td>
+                  <button
+                    data-testid={`project-open-${project.id}`}
+                    type="button"
+                    onClick={() => setOpenProjectId(project.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openProjectId !== null && <ProjectDetail projectId={openProjectId} />}
     </section>
   );
 }
