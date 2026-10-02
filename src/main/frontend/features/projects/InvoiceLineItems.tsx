@@ -28,6 +28,11 @@ export function InvoiceLineItems({
   const [qty, setQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDescription, setEditDescription] = useState('');
+  const [editQty, setEditQty] = useState('');
+  const [editUnitPrice, setEditUnitPrice] = useState('');
+  const [editError, setEditError] = useState('');
 
   async function load() {
     const res = await fetch(`/api/invoices/${invoiceId}/lineitems`);
@@ -58,6 +63,52 @@ export function InvoiceLineItems({
     setDescription('');
     setQty('');
     setUnitPrice('');
+    await load();
+  }
+
+  function startEdit(li: LineItem) {
+    setEditingId(li.id);
+    setEditDescription(li.description);
+    setEditQty(String(li.quantity));
+    setEditUnitPrice(String(li.unitPrice));
+    setEditError('');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError('');
+  }
+
+  async function saveEdit(lineItemId: number) {
+    const quantity = Number(editQty);
+    const price = Number(editUnitPrice);
+    if (!editDescription.trim() || !(quantity > 0) || !(price >= 0)) {
+      setEditError('A description, a quantity and a price are required');
+      return;
+    }
+    setEditError('');
+    const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: editDescription, quantity, unitPrice: price }),
+    });
+    if (!res.ok) {
+      return;
+    }
+    setEditingId(null);
+    await load();
+  }
+
+  async function remove(lineItemId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      return;
+    }
+    if (editingId === lineItemId) {
+      setEditingId(null);
+    }
     await load();
   }
 
@@ -107,24 +158,95 @@ export function InvoiceLineItems({
             <th>How many</th>
             <th>Price each</th>
             <th>Line total</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          {lineItems.map((li) => (
-            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
-              <td data-testid="lineitem-description">{li.description}</td>
-              <td data-testid="lineitem-qty">{li.quantity}</td>
-              <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
-              <td data-testid="lineitem-total">
-                {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
-              </td>
-            </tr>
-          ))}
+          {lineItems.map((li) =>
+            editingId === li.id ? (
+              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                <td>
+                  <input
+                    data-testid="lineitem-edit-description"
+                    placeholder="Description"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                  />
+                </td>
+                <td>
+                  <input
+                    data-testid="lineitem-edit-qty"
+                    placeholder="How many"
+                    value={editQty}
+                    onChange={(e) => setEditQty(e.target.value)}
+                  />
+                </td>
+                <td>
+                  <input
+                    data-testid="lineitem-edit-unitprice"
+                    placeholder="Price each"
+                    value={editUnitPrice}
+                    onChange={(e) => setEditUnitPrice(e.target.value)}
+                  />
+                </td>
+                <td data-testid="lineitem-total">
+                  {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-save-${li.id}`}
+                    onClick={() => void saveEdit(li.id)}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-cancel-${li.id}`}
+                    onClick={cancelEdit}
+                  >
+                    Cancel
+                  </button>
+                  {editError ? (
+                    <p data-testid="lineitem-edit-error" role="alert">
+                      {editError}
+                    </p>
+                  ) : null}
+                </td>
+              </tr>
+            ) : (
+              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                <td data-testid="lineitem-description">{li.description}</td>
+                <td data-testid="lineitem-qty">{li.quantity}</td>
+                <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
+                <td data-testid="lineitem-total">
+                  {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-edit-${li.id}`}
+                    onClick={() => startEdit(li)}
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`lineitem-remove-${li.id}`}
+                    onClick={() => void remove(li.id)}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ),
+          )}
         </tbody>
         <tfoot>
           <tr>
             <td colSpan={3}>Total</td>
             <td data-testid="invoice-amount">{formatAmount(total)}</td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
