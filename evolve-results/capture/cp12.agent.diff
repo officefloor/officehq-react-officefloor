@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 03b591b..0f61eb8 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -49,6 +49,14 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+     }
+   }
+ 
++  // Sort this project's invoices by due date (earliest due first) via the by-due endpoint.
++  async function onSortByDue() {
++    const res = await fetch(`/api/projects/${projectId}/invoices/by-due`);
++    if (res.ok) {
++      setInvoices(await res.json());
++    }
++  }
++
+   async function onPay(invoiceId: number) {
+     const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
+     if (res.ok) {
+@@ -79,6 +87,10 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         </button>
+       </form>
+ 
++      <button data-testid="invoice-sort-due" type="button" onClick={onSortByDue}>
++        Sort by due date
++      </button>
++
+       <table data-testid="project-invoices-table">
+         <thead>
+           <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index afd69a0..62d1aa4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -38,6 +38,17 @@ public class InvoiceService {
+                 projectId);
+     }
+ 
++    @Transactional(readOnly = true)
++    public List<InvoiceView> listForProjectByDueDate(Long projectId) {
++        return jdbc.query(
++                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY due_date ASC, id ASC",
++                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
++                        rs.getBigDecimal("amount"), rs.getString("status"),
++                        rs.getDate("issued_date").toLocalDate().toString(),
++                        rs.getDate("due_date").toLocalDate().toString()),
++                projectId);
++    }
++
+     @Transactional
+     public InvoiceView create(Long projectId, BigDecimal amount) {
+         if (projectId == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoicesByDueLogic.java b/src/main/java/net/officefloor/hq/app/invoices/InvoicesByDueLogic.java
+new file mode 100644
+index 0000000..4e423e3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoicesByDueLogic.java
+@@ -0,0 +1,17 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/projects/{projectId}/invoices/by-due — list a project's invoices ordered by due date,
++ * earliest due first.
++ */
++public class InvoicesByDueLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId, InvoiceService invoices,
++            ObjectResponse<List<InvoiceView>> response) {
++        response.send(invoices.listForProjectByDueDate(Long.valueOf(projectId)));
++    }
++}
+diff --git a/src/main/resources/db/migration/V11__invoices_due_date_index.sql b/src/main/resources/db/migration/V11__invoices_due_date_index.sql
+new file mode 100644
+index 0000000..7c3c6c7
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__invoices_due_date_index.sql
+@@ -0,0 +1,3 @@
++-- A project's invoices can now be sorted by their due date (earliest due first). Index the due_date
++-- column so that ordered lookup stays quick as the invoices table grows.
++CREATE INDEX idx_invoices_due_date ON invoices (due_date);
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/invoices/by-due.GET.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/invoices/by-due.GET.yml
+new file mode 100644
+index 0000000..23a3788
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/invoices/by-due.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoices.InvoicesByDueLogic

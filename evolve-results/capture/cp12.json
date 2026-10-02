@@ -1,0 +1,222 @@
+{
+  "checkpoint": 12,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp12_invoice_sort_due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Let me sort a project's invoices by their due date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nLet me sort a project's invoices by their due date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "1c430608061e70c3c304832229f67ebbaa0e0a24",
+  "reset_sha": "",
+  "preagent_sha": "dacc6d790d620bebfd2d17ae004a84b4ecbb855e",
+  "prev_sha": "dacc6d790d620bebfd2d17ae004a84b4ecbb855e",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5896579999999999,
+    "input_tokens": 32,
+    "output_tokens": 5139,
+    "cache_read_tokens": 431058,
+    "cache_creation_tokens": 24433,
+    "num_turns": 25,
+    "duration_ms": 96304,
+    "duration_api_ms": 77299,
+    "model": "claude-opus-4-8",
+    "session_id": "c7931277-707c-48e4-a0d9-1d242fd18899",
+    "stop_reason": "success",
+    "result_text": "The test passes. Let me verify I didn't leave the pre-existing `invoice-row` / `invoice-due` testids untouched (they were) and confirm the final ProjectDetail state is clean.\n\nThe change is complete and the test passes. Here's a summary of the full-stack change I implemented for **\"Sort a project's invoices by their due date\"**:\n\n- **Database** (`V11__invoices_due_date_index.sql`): new additive Flyway migration adding an index on `invoices(due_date)` to keep the ordered lookup fast.\n- **Server**:\n  - `InvoiceService.listForProjectByDueDate(...)` \u2014 new query ordering by `due_date ASC, id ASC`.\n  - `InvoicesByDueLogic` \u2014 new OfficeFloor logic class.\n  - `rest/api/projects/{projectId}/invoices/by-due.GET.yml` \u2014 new endpoint wiring (one file per endpoint, under `/api/`).\n- **Front-end** (`ProjectDetail.tsx`): added a `data-testid=\"invoice-sort-due\"` button that fetches the by-due endpoint and re-renders the invoice rows earliest-due-first. Existing `invoice-row-*` / `invoice-due` testids are untouched.\n\nAll changes are additive and local; no scaffolding, migrations, or the spec were edited.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5896579999999999,
+        "num_turns": 25,
+        "duration_ms": 96304,
+        "duration_api_ms": 77299,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp12.agent.jsonl",
+  "agent_diff_file": "cp12.agent.diff",
+  "build_log_file": "cp12.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 19,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 621,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 339,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 212,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 211,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 270,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 321,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 398,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 355,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 387,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 250,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 194,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 354,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 215,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 264,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
