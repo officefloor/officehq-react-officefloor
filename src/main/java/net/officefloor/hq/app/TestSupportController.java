@@ -39,6 +39,8 @@ public class TestSupportController {
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
@@ -104,6 +106,27 @@ public class TestSupportController {
         }
         if (maxTaskId > 0) {
             jdbc.execute("ALTER TABLE tasks ALTER COLUMN id RESTART WITH " + (maxTaskId + 1));
+        }
+
+        List<Map<String, Object>> tags =
+                (List<Map<String, Object>>) fixture.getOrDefault("tags", List.of());
+        long maxTagId = 0;
+        for (Map<String, Object> tag : tags) {
+            long id = ((Number) tag.get("id")).longValue();
+            jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)", id, tag.get("name"));
+            maxTagId = Math.max(maxTagId, id);
+        }
+        if (maxTagId > 0) {
+            jdbc.execute("ALTER TABLE tags ALTER COLUMN id RESTART WITH " + (maxTagId + 1));
+        }
+
+        List<Map<String, Object>> projectTags =
+                (List<Map<String, Object>>) fixture.getOrDefault("projectTags", List.of());
+        for (Map<String, Object> projectTag : projectTags) {
+            long projectId = ((Number) projectTag.get("projectId")).longValue();
+            long tagId = ((Number) projectTag.get("tagId")).longValue();
+            jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
+                    projectId, tagId);
         }
 
         List<Map<String, Object>> invoices =
