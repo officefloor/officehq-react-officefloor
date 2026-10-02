@@ -74,8 +74,10 @@ public class TestSupportController {
         List<Map<String, Object>> clients =
                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
         for (Map<String, Object> client : clients) {
-            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
-                    ((Number) client.get("id")).longValue(), client.get("name"), client.get("email"));
+            boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
+            jdbc.update("INSERT INTO client (id, name, email, archived) VALUES (?, ?, ?, ?)",
+                    ((Number) client.get("id")).longValue(), client.get("name"), client.get("email"),
+                    archived);
         }
         List<Map<String, Object>> projects =
                 (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());

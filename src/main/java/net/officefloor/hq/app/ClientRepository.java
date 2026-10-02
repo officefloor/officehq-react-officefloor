@@ -12,6 +12,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     /** The active (not archived) clients, oldest first — archived ones drop off the list. */
     List<Client> findByArchivedFalseOrderByIdAsc();
 
+    /** The archived (tucked-away) clients, oldest first — for the "show archived" view. */
+    List<Client> findByArchivedTrueOrderByIdAsc();
+
     /** Active clients whose name contains the query (case-insensitive), oldest first — for search. */
     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
 

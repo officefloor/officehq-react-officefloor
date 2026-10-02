@@ -24,6 +24,10 @@ export function ClientsPage() {
   // Per-client outstanding totals, keyed by client id, for the "owes" ordering.
   const [outstanding, setOutstanding] = useState<Record<number, number>>({});
   const [openClientId, setOpenClientId] = useState<number | null>(null);
+  // Whether the archived (tucked-away) clients are being shown instead of the active list.
+  const [showArchived, setShowArchived] = useState(false);
+  // The archived clients, for the "show archived" view where they can be brought back.
+  const [archivedClients, setArchivedClients] = useState<Client[]>([]);
 
   // The client currently being corrected from the list, plus the edited field values.
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
@@ -34,6 +38,8 @@ export function ClientsPage() {
   async function load() {
     const res = await fetch('/api/clients');
     setClients(await res.json());
+    const arch = await fetch('/api/clients/archived');
+    setArchivedClients(await arch.json());
     const owed = await fetch('/api/clients/outstanding');
     const rows: { id: number; outstanding: number }[] = await owed.json();
     setOutstanding(Object.fromEntries(rows.map((r) => [r.id, Number(r.outstanding)])));
@@ -76,6 +82,12 @@ export function ClientsPage() {
   // Tuck a client away: archive it so it drops off this list and the search while being retained.
   async function onArchive(id: number) {
     await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
+    await load();
+  }
+
+  // Bring a tucked-away client back: clear its archived flag so it returns to the main list.
+  async function onRestore(id: number) {
+    await fetch(`/api/clients/${id}/restore`, { method: 'POST' });
     await load();
   }
 
@@ -168,7 +180,46 @@ export function ClientsPage() {
         <option value="outstanding">Amount owed</option>
       </select>
 
-      {shown.length === 0 ? (
+      <button
+        type="button"
+        data-testid="clients-show-archived"
+        onClick={() => setShowArchived((v) => !v)}
+      >
+        {showArchived ? 'Show active' : 'Show archived'}
+      </button>
+
+      {showArchived ? (
+        archivedClients.length === 0 ? (
+          <p data-testid="clients-archived-empty">No archived clients.</p>
+        ) : (
+          <table data-testid="clients-archived-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {archivedClients.map((c) => (
+                <tr key={c.id} data-testid={`client-row-${c.id}`}>
+                  <td data-testid="client-name">{c.name}</td>
+                  <td data-testid="client-email">{c.email}</td>
+                  <td>
+                    <button
+                      type="button"
+                      data-testid={`client-restore-${c.id}`}
+                      onClick={() => void onRestore(c.id)}
+                    >
+                      Restore
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      ) : shown.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
       ) : (
         <table data-testid="clients-table">
