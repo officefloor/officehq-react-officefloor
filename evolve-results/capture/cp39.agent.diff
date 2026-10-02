@@ -1,0 +1,271 @@
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 8ad0072..0f37797 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -2,27 +2,43 @@ import { useEffect, useState } from 'react';
+ import { formatMoney } from '../../ui/money';
+ 
+ // One place listing every invoice across all projects. Each row shows the invoice's project NAME
+-// and its lifecycle stage (DRAFT -> SENT -> PAID). This feature owns its own state and data loading
+-// and does not import other features.
++// and its lifecycle stage (DRAFT -> SENT -> PAID). The list is large, so it is shown a page at a
++// time (ten per page) with next/previous controls. This feature owns its own state and data
++// loading and does not import other features.
+ type AllInvoice = { id: number; projectName: string; amount: number; status: string };
++type InvoicePage = { items: AllInvoice[]; page: number; pageCount: number; total: number };
+ 
+ // Lifecycle stages an invoice can be narrowed to; empty value means "all stages".
+ const STAGES = ['DRAFT', 'SENT', 'PAID'];
++const PAGE_SIZE = 10;
+ 
+ export function AllInvoicesPage() {
+   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
+   const [status, setStatus] = useState('');
++  const [page, setPage] = useState(1);
++  const [pageCount, setPageCount] = useState(1);
+ 
+   useEffect(() => {
+     async function load() {
+-      const query = status ? `?status=${encodeURIComponent(status)}` : '';
+-      const res = await fetch(`/api/invoices${query}`);
++      const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE) });
++      if (status) {
++        params.set('status', status);
++      }
++      const res = await fetch(`/api/invoices?${params.toString()}`);
+       if (res.ok) {
+-        setInvoices(await res.json());
++        const body: InvoicePage = await res.json();
++        setInvoices(body.items);
++        setPageCount(body.pageCount);
+       }
+     }
+     void load();
+-  }, [status]);
++  }, [status, page]);
++
++  // Changing the stage filter re-scopes the list, so start again at the first page.
++  function changeStatus(next: string) {
++    setStatus(next);
++    setPage(1);
++  }
+ 
+   return (
+     <section data-testid="all-invoices-page">
+@@ -33,7 +49,7 @@ export function AllInvoicesPage() {
+         <select
+           data-testid="invoice-status-filter"
+           value={status}
+-          onChange={(e) => setStatus(e.target.value)}
++          onChange={(e) => changeStatus(e.target.value)}
+         >
+           <option value="">All stages</option>
+           {STAGES.map((stage) => (
+@@ -47,24 +63,46 @@ export function AllInvoicesPage() {
+       {invoices.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+-        <table data-testid="all-invoices-table">
+-          <thead>
+-            <tr>
+-              <th>Project</th>
+-              <th>Amount</th>
+-              <th>Stage</th>
+-            </tr>
+-          </thead>
+-          <tbody>
+-            {invoices.map((invoice) => (
+-              <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+-                <td data-testid="invoice-project">{invoice.projectName}</td>
+-                <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
+-                <td data-testid="invoice-status">{invoice.status}</td>
++        <>
++          <table data-testid="all-invoices-table">
++            <thead>
++              <tr>
++                <th>Project</th>
++                <th>Amount</th>
++                <th>Stage</th>
+               </tr>
+-            ))}
+-          </tbody>
+-        </table>
++            </thead>
++            <tbody>
++              {invoices.map((invoice) => (
++                <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
++                  <td data-testid="invoice-project">{invoice.projectName}</td>
++                  <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
++                  <td data-testid="invoice-status">{invoice.status}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++
++          <nav data-testid="invoice-pagination">
++            <button
++              type="button"
++              data-testid="invoice-page-prev"
++              disabled={page <= 1}
++              onClick={() => setPage((p) => Math.max(1, p - 1))}
++            >
++              Previous
++            </button>
++            <span data-testid="invoice-page-label">{page}</span>
++            <button
++              type="button"
++              data-testid="invoice-page-next"
++              disabled={page >= pageCount}
++              onClick={() => setPage((p) => p + 1)}
++            >
++              Next
++            </button>
++          </nav>
++        </>
+       )}
+     </section>
+   );
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
+index 1b9fa26..30a11bb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
+@@ -1,17 +1,32 @@
+ package net.officefloor.hq.app.invoices;
+ 
+-import java.util.List;
+ import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+- * GET /api/invoices — list every invoice across all projects, with its project name and stage.
+- * Optionally narrowed to a single lifecycle stage via the {@code status} query parameter.
++ * GET /api/invoices — list every invoice across all projects, with its project name and stage,
++ * served a PAGE at a time. Optionally narrowed to a single lifecycle stage via the {@code status}
++ * query parameter. The 1-based {@code page} and the {@code size} query parameters choose the page;
++ * both are optional and default to the first page of ten.
+  */
+ public class AllInvoicesLogic {
+ 
+-    public void service(@HttpQueryParameter("status") String status, InvoiceService invoices,
+-            ObjectResponse<List<AllInvoiceView>> response) {
+-        response.send(invoices.listAll(status));
++    private static final int DEFAULT_SIZE = 10;
++
++    public void service(@HttpQueryParameter("status") String status,
++            @HttpQueryParameter("page") String page, @HttpQueryParameter("size") String size,
++            InvoiceService invoices, ObjectResponse<AllInvoicesPageView> response) {
++        response.send(invoices.listAllPaged(status, parse(page, 1), parse(size, DEFAULT_SIZE)));
++    }
++
++    private static int parse(String value, int fallback) {
++        if (value == null || value.isBlank()) {
++            return fallback;
++        }
++        try {
++            return Integer.parseInt(value.trim());
++        } catch (NumberFormatException e) {
++            return fallback;
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesPageView.java b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesPageView.java
+new file mode 100644
+index 0000000..6be3691
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesPageView.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++
++/**
++ * JSON response shape for one PAGE of the cross-project "all invoices" list. The list is large, so
++ * it is served a page at a time: {@code items} holds the rows for the requested page, {@code page}
++ * is the 1-based page number served, {@code pageCount} is how many pages exist in total (at least
++ * one, so an empty list still reports page 1 of 1), and {@code total} is the full row count.
++ */
++public class AllInvoicesPageView {
++
++    private final List<AllInvoiceView> items;
++    private final int page;
++    private final int pageCount;
++    private final long total;
++
++    public AllInvoicesPageView(List<AllInvoiceView> items, int page, int pageCount, long total) {
++        this.items = items;
++        this.page = page;
++        this.pageCount = pageCount;
++        this.total = total;
++    }
++
++    public List<AllInvoiceView> getItems() {
++        return items;
++    }
++
++    public int getPage() {
++        return page;
++    }
++
++    public int getPageCount() {
++        return pageCount;
++    }
++
++    public long getTotal() {
++        return total;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 56b8d5b..7f2e6f1 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -74,6 +74,40 @@ public class InvoiceService {
+         return jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC", mapper, status.trim());
+     }
+ 
++    /**
++     * One page of the cross-project invoice list. The list is large, so it is served a page at a
++     * time in id order, optionally narrowed to a lifecycle stage. {@code page} is 1-based and
++     * {@code size} is the page size; both are clamped to sane minimums. The returned view carries
++     * the page's rows plus the paging metadata (page served, total pages, total rows).
++     */
++    @Transactional(readOnly = true)
++    public AllInvoicesPageView listAllPaged(String status, int page, int size) {
++        int pageSize = Math.max(1, size);
++        boolean filtered = status != null && !status.isBlank();
++        String stage = filtered ? status.trim() : null;
++
++        String countSql = "SELECT COUNT(*) FROM invoices i"
++                + (filtered ? " WHERE i.status = ?" : "");
++        long total = filtered
++                ? jdbc.queryForObject(countSql, Long.class, stage)
++                : jdbc.queryForObject(countSql, Long.class);
++
++        int pageCount = total == 0 ? 1 : (int) ((total + pageSize - 1) / pageSize);
++        int current = Math.min(Math.max(1, page), pageCount);
++        int offset = (current - 1) * pageSize;
++
++        RowMapper<AllInvoiceView> mapper = (rs, i) -> new AllInvoiceView(rs.getLong("id"),
++                rs.getString("project_name"), rs.getBigDecimal("amount"), rs.getString("status"));
++        String base = "SELECT i.id, i.amount, i.status, p.name AS project_name "
++                + "FROM invoices i JOIN projects p ON i.project_id = p.id ";
++        List<AllInvoiceView> items = filtered
++                ? jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC LIMIT ? OFFSET ?",
++                        mapper, stage, pageSize, offset)
++                : jdbc.query(base + "ORDER BY i.id ASC LIMIT ? OFFSET ?",
++                        mapper, pageSize, offset);
++        return new AllInvoicesPageView(items, current, pageCount, total);
++    }
++
+     @Transactional(readOnly = true)
+     public List<InvoiceView> listForProject(Long projectId) {
+         return jdbc.query(
+diff --git a/src/main/resources/db/migration/V28__invoices_status_id_index.sql b/src/main/resources/db/migration/V28__invoices_status_id_index.sql
+new file mode 100644
+index 0000000..80d32ee
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__invoices_status_id_index.sql
+@@ -0,0 +1,4 @@
++-- The all-invoices list is now shown a page at a time: rows are selected in id order, optionally
++-- narrowed to a lifecycle stage, with LIMIT/OFFSET. Index (status, id) so a filtered page stays a
++-- cheap ordered range scan as the invoices table grows.
++CREATE INDEX idx_invoices_status_id ON invoices (status, id);
