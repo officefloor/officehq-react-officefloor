@@ -1,0 +1,202 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+new file mode 100644
+index 0000000..aa78ed5
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -0,0 +1,40 @@
++import { useEffect, useState } from 'react';
++
++// Opened from the clients list: a client's detail view lists the projects done for them, scoped to
++// the client via /api/clients/<id>/projects. Reuses the project-row-<id>/project-name anchors so the
++// listing reads the same way wherever projects appear.
++type Project = { id: number; name: string };
++
++export function ClientDetail({ clientId }: { clientId: number }) {
++  const [projects, setProjects] = useState<Project[]>([]);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch(`/api/clients/${clientId}/projects`);
++      if (res.ok) {
++        setProjects(await res.json());
++      }
++    }
++    void load();
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-detail">
++      <h2>Projects</h2>
++      <table data-testid="client-projects-table">
++        <thead>
++          <tr>
++            <th>Name</th>
++          </tr>
++        </thead>
++        <tbody>
++          {projects.map((project) => (
++            <tr key={project.id} data-testid={`project-row-${project.id}`}>
++              <td data-testid="project-name">{project.name}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index fb0c77f..3463145 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useState, type FormEvent } from 'react';
++import { ClientDetail } from './ClientDetail';
+ 
+ // This arm's convention: the page component owns the feature's state, data loading and layout.
+ type Client = { id: number; name: string; email: string };
+@@ -13,6 +14,7 @@ export function ClientsPage() {
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState(false);
++  const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
+   async function load() {
+     const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
+@@ -87,6 +89,7 @@ export function ClientsPage() {
+             <tr>
+               <th>Name</th>
+               <th>Email</th>
++              <th></th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -94,11 +97,22 @@ export function ClientsPage() {
+               <tr key={client.id} data-testid={`client-row-${client.id}`}>
+                 <td data-testid="client-name">{client.name}</td>
+                 <td data-testid="client-email">{client.email}</td>
++                <td>
++                  <button
++                    data-testid={`client-open-${client.id}`}
++                    type="button"
++                    onClick={() => setOpenClientId(client.id)}
++                  >
++                    Open
++                  </button>
++                </td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       )}
++
++      {openClientId !== null && <ClientDetail clientId={openClientId} />}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientProjectView.java b/src/main/java/net/officefloor/hq/app/clients/ClientProjectView.java
+new file mode 100644
+index 0000000..6365c3e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientProjectView.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.clients;
++
++/** JSON response shape for a project a client owns (what the client detail view renders). */
++public class ClientProjectView {
++
++    private final long id;
++    private final String name;
++
++    public ClientProjectView(long id, String name) {
++        this.id = id;
++        this.name = name;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java
+new file mode 100644
+index 0000000..8846dad
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/{clientId}/projects — list the projects done for a client. */
++public class ClientProjectsLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<List<ClientProjectView>> response) {
++        response.send(clients.projectsFor(Long.valueOf(clientId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 359c67b..43826b4 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.clients;
+ 
+ import java.util.List;
+ import java.util.regex.Pattern;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -13,9 +14,11 @@ public class ClientService {
+     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
+     private final ClientRepository repository;
++    private final JdbcTemplate jdbc;
+ 
+-    public ClientService(ClientRepository repository) {
++    public ClientService(ClientRepository repository, JdbcTemplate jdbc) {
+         this.repository = repository;
++        this.jdbc = jdbc;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -32,6 +35,18 @@ public class ClientService {
+         return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+     }
+ 
++    /**
++     * The projects done for a client, oldest first. Reads the {@code projects} table via SQL so the
++     * clients feature stays self-contained and does not import the projects feature's Java types.
++     */
++    @Transactional(readOnly = true)
++    public List<ClientProjectView> projectsFor(Long clientId) {
++        return jdbc.query(
++                "SELECT id, name FROM projects WHERE client_id = ? ORDER BY id ASC",
++                (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
++                clientId);
++    }
++
+     @Transactional
+     public Client create(String name, String email) {
+         if (email == null || !EMAIL.matcher(email).matches()) {
+diff --git a/src/main/resources/db/migration/V7__projects_client_id_index.sql b/src/main/resources/db/migration/V7__projects_client_id_index.sql
+new file mode 100644
+index 0000000..7913943
+--- /dev/null
++++ b/src/main/resources/db/migration/V7__projects_client_id_index.sql
+@@ -0,0 +1,2 @@
++-- Opening a client lists the projects done for them, keyed by client_id. Index that lookup.
++CREATE INDEX idx_projects_client_id ON projects (client_id);
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml
+new file mode 100644
+index 0000000..7cc0879
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.ClientProjectsLogic
