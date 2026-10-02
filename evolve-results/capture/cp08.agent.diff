@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+new file mode 100644
+index 0000000..ac0a351
+--- /dev/null
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -0,0 +1,45 @@
++import React, { useEffect, useState } from 'react';
++
++// The dashboard feature owns its own state and data loading (no global store). It is a read-only home
++// summary: how many clients and projects there are, and how much money is still owed (the sum of
++// every UNPAID invoice across all projects, served pre-computed by /api/dashboard).
++type Summary = {
++  clientsCount: number;
++  projectsCount: number;
++  outstandingTotal: number;
++};
++
++function formatAmount(amount: number): string {
++  return Number(amount).toFixed(2);
++}
++
++export function DashboardPage() {
++  const [summary, setSummary] = useState<Summary | null>(null);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch('/api/dashboard');
++      setSummary(await res.json());
++    }
++    void load();
++  }, []);
++
++  return (
++    <section data-testid="dashboard-section">
++      <h1>Dashboard</h1>
++
++      <dl>
++        <dt>Clients</dt>
++        <dd data-testid="dashboard-clients-count">{summary ? summary.clientsCount : ''}</dd>
++
++        <dt>Projects</dt>
++        <dd data-testid="dashboard-projects-count">{summary ? summary.projectsCount : ''}</dd>
++
++        <dt>Outstanding</dt>
++        <dd data-testid="dashboard-outstanding-total">
++          {summary ? formatAmount(summary.outstandingTotal) : ''}
++        </dd>
++      </dl>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/dashboard/route.tsx b/src/main/frontend/features/dashboard/route.tsx
+new file mode 100644
+index 0000000..634bf75
+--- /dev/null
++++ b/src/main/frontend/features/dashboard/route.tsx
+@@ -0,0 +1,9 @@
++import type { AppRoute } from '../../router/routes';
++import { DashboardPage } from './DashboardPage';
++
++// Feature route declaration — pure data, auto-discovered by router/routes.ts.
++export const route: AppRoute = {
++  id: 'dashboard',
++  label: 'Dashboard',
++  component: DashboardPage,
++};
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardLogic.java b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+new file mode 100644
+index 0000000..6cbd8fb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/dashboard — the home summary: the number of clients and projects, and the outstanding
++ * total (the sum of every UNPAID invoice's amount across all projects — the money still owed).
++ */
++public class DashboardLogic {
++
++    public void service(ClientRepository clients, ProjectRepository projects,
++            InvoiceRepository invoices, ObjectResponse<DashboardView> response) {
++        long clientsCount = clients.count();
++        long projectsCount = projects.count();
++        BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("UNPAID").stream()
++                .map(Invoice::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        response.send(new DashboardView(clientsCount, projectsCount, outstandingTotal));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardView.java b/src/main/java/net/officefloor/hq/app/DashboardView.java
+new file mode 100644
+index 0000000..dbddd22
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardView.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/** The home dashboard summary: how many clients and projects there are, and the total still owed. */
++public class DashboardView {
++
++    private final long clientsCount;
++    private final long projectsCount;
++    private final BigDecimal outstandingTotal;
++
++    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
++        this.clientsCount = clientsCount;
++        this.projectsCount = projectsCount;
++        this.outstandingTotal = outstandingTotal;
++    }
++
++    public long getClientsCount() {
++        return clientsCount;
++    }
++
++    public long getProjectsCount() {
++        return projectsCount;
++    }
++
++    public BigDecimal getOutstandingTotal() {
++        return outstandingTotal;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index e528d2c..34431d5 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -8,4 +8,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     /** A project's invoices, oldest first, so the list is stable across loads. */
+     List<Invoice> findByProjectIdOrderByIdAsc(Long projectId);
++
++    /** Every invoice with the given status (e.g. UNPAID), oldest first — used to total what is owed. */
++    List<Invoice> findByStatusOrderByIdAsc(String status);
+ }
+diff --git a/src/main/resources/officefloor/rest/api/dashboard.GET.yml b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+new file mode 100644
+index 0000000..1e7572b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/dashboard.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.DashboardLogic
