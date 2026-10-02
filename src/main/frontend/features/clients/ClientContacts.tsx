@@ -5,11 +5,16 @@ import React, { useEffect, useState } from 'react';
 // (no global store); composed, not branched.
 type Contact = { id: number; clientId: number; name: string; email: string; role: string };
 
+// A proper email: something, '@', something, '.', something — no whitespace. Matches the server
+// (CreateContactLogic) and schema (V12) checks so the three layers agree on what is acceptable.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function ClientContacts({ clientId }: { clientId: number }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/contacts`);
@@ -22,12 +27,22 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Every contact needs a proper email — block the save and surface the error if it is missing or
+    // malformed, so no row is created.
+    if (!EMAIL.test(email.trim())) {
+      setEmailError('A proper email address is required');
+      return;
+    }
+    setEmailError('');
+
     const res = await fetch(`/api/clients/${clientId}/contacts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, role }),
+      body: JSON.stringify({ name, email: email.trim(), role }),
     });
     if (!res.ok) {
+      setEmailError('A proper email address is required');
       return;
     }
     setName('');
@@ -53,6 +68,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="contact-form-email-error" role="alert">
+            {emailError}
+          </p>
+        )}
         <input
           data-testid="contact-form-role"
           placeholder="Role"
