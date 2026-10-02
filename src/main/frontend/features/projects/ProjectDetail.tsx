@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
 // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
 // /api/projects/<id>/invoices. Money renders with exactly two decimals.
-type Invoice = { id: number; projectId: number; amount: number };
+type Invoice = { id: number; projectId: number; amount: number; status: string };
 
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -33,6 +33,13 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     }
   }
 
+  async function onPay(invoiceId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
+    if (res.ok) {
+      await load();
+    }
+  }
+
   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
   return (
@@ -55,12 +62,26 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           {invoices.map((invoice) => (
             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
               <td data-testid="invoice-amount">{Number(invoice.amount).toFixed(2)}</td>
+              <td data-testid="invoice-status">{invoice.status}</td>
+              <td>
+                {invoice.status !== 'PAID' && (
+                  <button
+                    data-testid={`invoice-pay-${invoice.id}`}
+                    type="button"
+                    onClick={() => onPay(invoice.id)}
+                  >
+                    Mark paid
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

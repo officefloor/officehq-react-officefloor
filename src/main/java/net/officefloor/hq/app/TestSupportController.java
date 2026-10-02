@@ -80,8 +80,9 @@ public class TestSupportController {
             long id = ((Number) invoice.get("id")).longValue();
             long projectId = ((Number) invoice.get("projectId")).longValue();
             double amount = ((Number) invoice.get("amount")).doubleValue();
-            jdbc.update("INSERT INTO invoices (id, project_id, amount) VALUES (?, ?, ?)",
-                    id, projectId, amount);
+            String status = (String) invoice.getOrDefault("status", "UNPAID");
+            jdbc.update("INSERT INTO invoices (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
+                    id, projectId, amount, status);
             maxInvoiceId = Math.max(maxInvoiceId, id);
         }
         if (maxInvoiceId > 0) {
