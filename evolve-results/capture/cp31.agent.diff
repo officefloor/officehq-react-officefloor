@@ -1,0 +1,149 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index ec0a590..ca5785e 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -14,6 +14,8 @@ type Invoice = {
+   status: string;
+   issuedDate: string;
+   dueDate: string;
++  // How much is still left to pay: the invoice amount minus any payments recorded against it.
++  dueAmount: number;
+ };
+ 
+ type Task = {
+@@ -192,6 +194,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         <thead>
+           <tr>
+             <th>Amount</th>
++            <th>Left to pay</th>
+             <th>Issued</th>
+             <th>Due</th>
+             <th>Status</th>
+@@ -202,6 +205,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+           {invoices.map((invoice) => (
+             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+               <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
++              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount)}</td>
+               <td data-testid="invoice-issued">{invoice.issuedDate}</td>
+               <td data-testid="invoice-due">{invoice.dueDate}</td>
+               <td data-testid="invoice-status">{invoice.status}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c2ade00..807bc76 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -18,6 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class InvoiceService {
+ 
++    // An invoice's amount minus whatever has been paid against it is what is still left to pay.
++    private static final String DUE_AWARE_SELECT =
++            "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, "
++                    + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
++                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
++
++    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> new InvoiceView(
++            rs.getLong("id"), rs.getLong("project_id"), rs.getBigDecimal("amount"),
++            rs.getString("status"), rs.getDate("issued_date").toLocalDate().toString(),
++            rs.getDate("due_date").toLocalDate().toString(), rs.getBigDecimal("due_amount"));
++
+     private final InvoiceRepository repository;
+     private final LineItemRepository lineItemRepository;
+     private final PaymentRepository paymentRepository;
+@@ -49,23 +60,15 @@ public class InvoiceService {
+     @Transactional(readOnly = true)
+     public List<InvoiceView> listForProject(Long projectId) {
+         return jdbc.query(
+-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY id ASC",
+-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getString("status"),
+-                        rs.getDate("issued_date").toLocalDate().toString(),
+-                        rs.getDate("due_date").toLocalDate().toString()),
+-                projectId);
++                DUE_AWARE_SELECT + "WHERE i.project_id = ? ORDER BY i.id ASC",
++                INVOICE_MAPPER, projectId);
+     }
+ 
+     @Transactional(readOnly = true)
+     public List<InvoiceView> listForProjectByDueDate(Long projectId) {
+         return jdbc.query(
+-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY due_date ASC, id ASC",
+-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getString("status"),
+-                        rs.getDate("issued_date").toLocalDate().toString(),
+-                        rs.getDate("due_date").toLocalDate().toString()),
+-                projectId);
++                DUE_AWARE_SELECT + "WHERE i.project_id = ? ORDER BY i.due_date ASC, i.id ASC",
++                INVOICE_MAPPER, projectId);
+     }
+ 
+     @Transactional
+@@ -87,8 +90,10 @@ public class InvoiceService {
+         invoice.setIssuedDate(issued);
+         invoice.setDueDate(issued.plusDays(30));
+         Invoice saved = repository.save(invoice);
++        // A brand-new invoice has had nothing paid against it yet, so the whole amount is due.
+         return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
+-                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString());
++                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString(),
++                saved.getAmount());
+     }
+ 
+     @Transactional
+@@ -218,12 +223,6 @@ public class InvoiceService {
+     }
+ 
+     private InvoiceView find(Long invoiceId) {
+-        return jdbc.queryForObject(
+-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
+-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getString("status"),
+-                        rs.getDate("issued_date").toLocalDate().toString(),
+-                        rs.getDate("due_date").toLocalDate().toString()),
+-                invoiceId);
++        return jdbc.queryForObject(DUE_AWARE_SELECT + "WHERE i.id = ?", INVOICE_MAPPER, invoiceId);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+index 66d6004..4334465 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+@@ -4,8 +4,9 @@ import java.math.BigDecimal;
+ 
+ /**
+  * JSON response shape for an invoice (what the UI renders): id, owning project, money amount,
+- * payment status (UNPAID until marked paid), and the two dates it carries — when it was issued
+- * (sent out) and when payment is due (ISO {@code yyyy-MM-dd} strings).
++ * payment status (UNPAID until marked paid), the two dates it carries — when it was issued
++ * (sent out) and when payment is due (ISO {@code yyyy-MM-dd} strings) — and the amount still
++ * left to pay (the money amount minus any payments recorded against it).
+  */
+ public class InvoiceView {
+ 
+@@ -15,15 +16,17 @@ public class InvoiceView {
+     private final String status;
+     private final String issuedDate;
+     private final String dueDate;
++    private final BigDecimal dueAmount;
+ 
+     public InvoiceView(long id, long projectId, BigDecimal amount, String status,
+-            String issuedDate, String dueDate) {
++            String issuedDate, String dueDate, BigDecimal dueAmount) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
+         this.status = status;
+         this.issuedDate = issuedDate;
+         this.dueDate = dueDate;
++        this.dueAmount = dueAmount;
+     }
+ 
+     public long getId() {
+@@ -49,4 +52,8 @@ public class InvoiceView {
+     public String getDueDate() {
+         return dueDate;
+     }
++
++    public BigDecimal getDueAmount() {
++        return dueAmount;
++    }
+ }
