@@ -53,6 +53,12 @@ export function ClientsPage() {
     await load();
   }
 
+  // Tuck a client away: archive it so it drops off this list and the search while being retained.
+  async function onArchive(id: number) {
+    await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
+    await load();
+  }
+
   // Case-insensitive filter on the client name; an empty box shows every client.
   const q = search.trim().toLowerCase();
   const shown = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
@@ -114,6 +120,13 @@ export function ClientsPage() {
                     onClick={() => setOpenClientId(c.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`client-archive-${c.id}`}
+                    onClick={() => void onArchive(c.id)}
+                  >
+                    Archive
                   </button>
                 </td>
               </tr>

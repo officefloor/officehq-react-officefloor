@@ -8,4 +8,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     /** All clients, oldest first, so the list is stable across loads. */
     List<Client> findAllByOrderByIdAsc();
+
+    /** The active (not archived) clients, oldest first — archived ones drop off the list. */
+    List<Client> findByArchivedFalseOrderByIdAsc();
 }
