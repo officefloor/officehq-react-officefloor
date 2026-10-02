@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoices;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,9 +30,11 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public List<InvoiceView> listForProject(Long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status FROM invoices WHERE project_id = ? ORDER BY id ASC",
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY id ASC",
                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getBigDecimal("amount"), rs.getString("status")),
+                        rs.getBigDecimal("amount"), rs.getString("status"),
+                        rs.getDate("issued_date").toLocalDate().toString(),
+                        rs.getDate("due_date").toLocalDate().toString()),
                 projectId);
     }
 
@@ -49,9 +52,13 @@ public class InvoiceService {
         Invoice invoice = new Invoice();
         invoice.setProjectId(projectId);
         invoice.setAmount(amount);
+        // A new invoice goes out today and is due 30 days later.
+        LocalDate issued = LocalDate.now();
+        invoice.setIssuedDate(issued);
+        invoice.setDueDate(issued.plusDays(30));
         Invoice saved = repository.save(invoice);
         return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
-                saved.getStatus());
+                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString());
     }
 
     @Transactional
@@ -61,9 +68,11 @@ public class InvoiceService {
         }
         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", invoiceId);
         InvoiceView invoice = jdbc.queryForObject(
-                "SELECT id, project_id, amount, status FROM invoices WHERE id = ?",
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getBigDecimal("amount"), rs.getString("status")),
+                        rs.getBigDecimal("amount"), rs.getString("status"),
+                        rs.getDate("issued_date").toLocalDate().toString(),
+                        rs.getDate("due_date").toLocalDate().toString()),
                 invoiceId);
         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
                 + invoice.getAmount().setScale(2));

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.invoices;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -24,6 +25,14 @@ public class Invoice {
 
     /** Payment status; defaults to UNPAID until the invoice is marked paid. */
     private String status = "UNPAID";
+
+    /** The date the invoice was issued (sent out). */
+    @Column(name = "issued_date")
+    private LocalDate issuedDate;
+
+    /** The date payment is due. */
+    @Column(name = "due_date")
+    private LocalDate dueDate;
 
     public Long getId() {
         return id;
@@ -55,5 +64,21 @@ public class Invoice {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public LocalDate getIssuedDate() {
+        return issuedDate;
+    }
+
+    public void setIssuedDate(LocalDate issuedDate) {
+        this.issuedDate = issuedDate;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
+    }
+
+    public void setDueDate(LocalDate dueDate) {
+        this.dueDate = dueDate;
     }
 }

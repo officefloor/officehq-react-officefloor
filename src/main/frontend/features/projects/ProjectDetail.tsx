@@ -4,7 +4,14 @@ import { formatMoney } from '../../ui/money';
 // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
 // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
 // /api/projects/<id>/invoices. Money renders with exactly two decimals.
-type Invoice = { id: number; projectId: number; amount: number; status: string };
+type Invoice = {
+  id: number;
+  projectId: number;
+  amount: number;
+  status: string;
+  issuedDate: string;
+  dueDate: string;
+};
 
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -76,6 +83,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Issued</th>
+            <th>Due</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -84,6 +93,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           {invoices.map((invoice) => (
             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
               <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
+              <td data-testid="invoice-issued">{invoice.issuedDate}</td>
+              <td data-testid="invoice-due">{invoice.dueDate}</td>
               <td data-testid="invoice-status">{invoice.status}</td>
               <td>
                 {invoice.status !== 'PAID' && (

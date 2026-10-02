@@ -1,5 +1,6 @@
 package net.officefloor.hq.app;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -81,8 +82,11 @@ public class TestSupportController {
             long projectId = ((Number) invoice.get("projectId")).longValue();
             double amount = ((Number) invoice.get("amount")).doubleValue();
             String status = (String) invoice.getOrDefault("status", "UNPAID");
-            jdbc.update("INSERT INTO invoices (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
-                    id, projectId, amount, status);
+            Object issuedDate = invoice.getOrDefault("issuedDate", LocalDate.now().toString());
+            Object dueDate = invoice.getOrDefault("dueDate", LocalDate.now().toString());
+            jdbc.update(
+                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?)",
+                    id, projectId, amount, status, issuedDate, dueDate);
             maxInvoiceId = Math.max(maxInvoiceId, id);
         }
         if (maxInvoiceId > 0) {
