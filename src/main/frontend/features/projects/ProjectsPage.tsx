@@ -99,12 +99,12 @@ export function ProjectsPage() {
 
   return (
     <section data-testid="projects-section">
-      <h1>Projects</h1>
+      <h1>Jobs</h1>
 
       <form data-testid="project-form" onSubmit={onSubmit}>
         <input
           data-testid="project-form-name"
-          placeholder="Project name"
+          placeholder="Job name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -138,7 +138,7 @@ export function ProjectsPage() {
           onChange={(e) => setBudget(e.target.value)}
         />
         <button type="submit" data-testid="project-form-submit">
-          Add project
+          Add job
         </button>
       </form>
 
@@ -186,7 +186,7 @@ export function ProjectsPage() {
           ? byTag.filter((p) => p.status === filterStatus)
           : byTag;
         return visible.length === 0 ? (
-          <p data-testid="projects-empty">No projects yet.</p>
+          <p data-testid="projects-empty">No jobs yet.</p>
         ) : (
         <table data-testid="projects-table">
           <thead>

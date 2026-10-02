@@ -38,7 +38,7 @@ export function DashboardPage() {
         <dt>Clients</dt>
         <dd data-testid="dashboard-clients-count">{summary ? summary.clientsCount : ''}</dd>
 
-        <dt>Projects</dt>
+        <dt>Jobs</dt>
         <dd data-testid="dashboard-projects-count">{summary ? summary.projectsCount : ''}</dd>
 
         <dt>Outstanding</dt>

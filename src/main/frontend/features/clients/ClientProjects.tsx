@@ -41,7 +41,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
 
   return (
     <section data-testid="client-detail">
-      <h2>Projects</h2>
+      <h2>Jobs</h2>
 
       <button
         type="button"
