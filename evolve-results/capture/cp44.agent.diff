@@ -1,0 +1,69 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 45ea3a1..12c47a1 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -46,7 +46,12 @@ export function ClientsPage() {
+       body: JSON.stringify({ name, email: email.trim() }),
+     });
+     if (!res.ok) {
+-      setEmailError('A proper email address is required');
++      // A 409 means the email is already taken by another client; anything else is a bad address.
++      setEmailError(
++        res.status === 409
++          ? 'A client with this email already exists'
++          : 'A proper email address is required',
++      );
+       return;
+     }
+     setName('');
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index bf538d4..414250d 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -14,4 +14,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** Active clients whose name contains the query (case-insensitive), oldest first — for search. */
+     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
++
++    /** Whether any client already holds this email (case-insensitive) — emails must be unique. */
++    boolean existsByEmailIgnoreCase(String email);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/CreateClientLogic.java b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+index 52ed816..7dd6856 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+@@ -9,7 +9,8 @@ import org.springframework.web.bind.annotation.RequestBody;
+ /**
+  * POST /api/clients — add a client from the submitted name + email, echo back the saved row.
+  * A client must carry a proper email: a blank or malformed address is rejected with 400 and never
+- * persisted (mirrors the UI validation and the schema check in V2).
++ * persisted (mirrors the UI validation and the schema check in V2). An email already in use by
++ * another client is rejected with 409 so two clients can never share one (schema check in V28).
+  */
+ public class CreateClientLogic {
+ 
+@@ -22,7 +23,12 @@ public class CreateClientLogic {
+         if (email == null || !EMAIL.matcher(email.trim()).matches()) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A proper email address is required");
+         }
+-        Client saved = clients.save(new Client(newClient.getName(), email.trim()));
++        String trimmed = email.trim();
++        if (clients.existsByEmailIgnoreCase(trimmed)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A client with this email already exists");
++        }
++        Client saved = clients.save(new Client(newClient.getName(), trimmed));
+         response.send(saved);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V28__client_email_unique.sql b/src/main/resources/db/migration/V28__client_email_unique.sql
+new file mode 100644
+index 0000000..f4a9f1b
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__client_email_unique.sql
+@@ -0,0 +1,5 @@
++-- Two clients cannot share an email: enforce uniqueness at the schema level so a duplicate address
++-- can never be persisted (defence-in-depth behind the server and UI checks). email is already
++-- NOT NULL (V1) and format-checked (V2); this adds the uniqueness guarantee.
++ALTER TABLE client
++    ADD CONSTRAINT client_email_unique UNIQUE (email);
