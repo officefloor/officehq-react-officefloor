@@ -62,14 +62,17 @@ public class ClientService {
     }
 
     /**
-     * The projects done for a client, oldest first. Reads the {@code projects} table via SQL so the
-     * clients feature stays self-contained and does not import the projects feature's Java types.
+     * The projects done for a client, oldest first. By default only ACTIVE, non-archived projects —
+     * the work still in play — are returned; pass {@code includeAll} to also surface the finished and
+     * archived (hidden) ones (how the client page's "show all" toggle reveals them). Reads the
+     * {@code projects} table via SQL so the clients feature stays self-contained and does not import
+     * the projects feature's Java types.
      */
     @Transactional(readOnly = true)
-    public List<ClientProjectView> projectsFor(Long clientId) {
+    public List<ClientProjectView> projectsFor(Long clientId, boolean includeAll) {
+        String filter = includeAll ? "" : " AND status = 'ACTIVE' AND archived = FALSE";
         return jdbc.query(
-                "SELECT id, name FROM projects WHERE client_id = ? AND archived = FALSE "
-                        + "ORDER BY id ASC",
+                "SELECT id, name FROM projects WHERE client_id = ?" + filter + " ORDER BY id ASC",
                 (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
                 clientId);
     }

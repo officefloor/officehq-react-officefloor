@@ -22,6 +22,9 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   const [role, setRole] = useState('');
   const [emailError, setEmailError] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  // By default a client's page shows only their ACTIVE projects — the work still in play. Flipping
+  // this reveals the finished and hidden (archived) ones too, by asking the server for them all.
+  const [showAll, setShowAll] = useState(false);
 
   async function loadContacts() {
     const res = await fetch(`/api/clients/${clientId}/contacts`);
@@ -40,12 +43,17 @@ export function ClientDetail({ clientId }: { clientId: number }) {
 
   useEffect(() => {
     async function load() {
-      const res = await fetch(`/api/clients/${clientId}/projects`);
+      const res = await fetch(
+        `/api/clients/${clientId}/projects${showAll ? '?all=true' : ''}`,
+      );
       if (res.ok) {
         setProjects(await res.json());
       }
     }
     void load();
+  }, [clientId, showAll]);
+
+  useEffect(() => {
     void loadContacts();
     void loadCounts();
   }, [clientId]);
@@ -90,6 +98,14 @@ export function ClientDetail({ clientId }: { clientId: number }) {
       {statementOpen && <ClientStatement clientId={clientId} />}
 
       <h2>Projects</h2>
+      <button
+        data-testid="client-projects-show-all"
+        type="button"
+        aria-pressed={showAll}
+        onClick={() => setShowAll((v) => !v)}
+      >
+        {showAll ? 'Show active only' : 'Show finished and hidden'}
+      </button>
       <table data-testid="client-projects-table">
         <thead>
           <tr>
