@@ -76,9 +76,10 @@ public class TestSupportController {
             long clientId = ((Number) project.get("clientId")).longValue();
             String status = (String) project.getOrDefault("status", "ACTIVE");
             boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
+            double budget = ((Number) project.getOrDefault("budget", 0)).doubleValue();
             jdbc.update(
-                    "INSERT INTO projects (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
-                    id, project.get("name"), clientId, status, archived);
+                    "INSERT INTO projects (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",
+                    id, project.get("name"), clientId, status, archived, budget);
             maxProjectId = Math.max(maxProjectId, id);
         }
         if (maxProjectId > 0) {

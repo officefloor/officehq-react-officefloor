@@ -33,6 +33,22 @@ public class ProjectService {
     }
 
     /**
+     * A project's budget position: the budget set on it, how much has been invoiced against it (the
+     * sum of its invoice amounts, read via SQL so the feature stays self-contained), and what is left
+     * (budget minus invoiced). The invoiced sum reads the {@code invoices} table directly rather than
+     * importing the invoices feature's Java types.
+     */
+    @Transactional(readOnly = true)
+    public ProjectBudgetView budgetFor(Long projectId) {
+        java.math.BigDecimal budget = jdbc.queryForObject(
+                "SELECT budget FROM projects WHERE id = ?", java.math.BigDecimal.class, projectId);
+        java.math.BigDecimal invoiced = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE project_id = ?",
+                java.math.BigDecimal.class, projectId);
+        return new ProjectBudgetView(budget, invoiced, budget.subtract(invoiced));
+    }
+
+    /**
      * List projects with their client's name. Archived projects are tucked away: they are omitted
      * unless {@code includeArchived} is true (how the UI's "show archived" toggle reveals them).
      */

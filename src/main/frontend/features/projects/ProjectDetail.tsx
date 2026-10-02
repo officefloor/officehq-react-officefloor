@@ -25,8 +25,17 @@ type Task = {
   done: boolean;
 };
 
+// A project's budget position: the budget set on it, how much has been invoiced against it, and what
+// is left (budget minus invoiced).
+type Budget = {
+  budget: number;
+  invoiced: number;
+  remaining: number;
+};
+
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [budget, setBudget] = useState<Budget | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   // Which tasks to show: all of them, just the open ones, or just the finished ones.
   const [taskFilter, setTaskFilter] = useState('');
@@ -38,6 +47,10 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     const res = await fetch(`/api/projects/${projectId}/invoices`);
     if (res.ok) {
       setInvoices(await res.json());
+    }
+    const budgetRes = await fetch(`/api/projects/${projectId}/budget`);
+    if (budgetRes.ok) {
+      setBudget(await budgetRes.json());
     }
   }
 
@@ -104,6 +117,17 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
   return (
     <section data-testid="project-detail">
+      {budget && (
+        <dl data-testid="project-budget-summary">
+          <dt>Budget</dt>
+          <dd data-testid="project-budget">{formatMoney(budget.budget)}</dd>
+          <dt>Invoiced</dt>
+          <dd data-testid="project-invoiced">{formatMoney(budget.invoiced)}</dd>
+          <dt>Remaining</dt>
+          <dd data-testid="project-remaining">{formatMoney(budget.remaining)}</dd>
+        </dl>
+      )}
+
       <ProjectTags projectId={projectId} />
 
       <ProjectNotes projectId={projectId} />
