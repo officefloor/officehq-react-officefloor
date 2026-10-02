@@ -1,0 +1,126 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+index 2bd7fec..d2bc4f1 100644
+--- a/src/main/frontend/features/clients/ClientDetail.tsx
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -96,7 +96,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+   return (
+     <section data-testid="client-detail">
+       <dl data-testid="client-counts">
+-        <dt>Projects</dt>
++        <dt>Jobs</dt>
+         <dd data-testid="client-projects-count">{counts.projects}</dd>
+         <dt>Contacts</dt>
+         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
+@@ -111,7 +111,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+       </button>
+       {statementOpen && <ClientStatement clientId={clientId} />}
+ 
+-      <h2>Projects</h2>
++      <h2>Jobs</h2>
+       <button
+         data-testid="client-projects-show-all"
+         type="button"
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index d963f19..1d4a6e2 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -36,7 +36,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+         <thead>
+           <tr>
+             <th>Invoice</th>
+-            <th>Project</th>
++            <th>Job</th>
+             <th>Amount</th>
+             <th>Status</th>
+             <th>Due</th>
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 90fcfe5..6e1f5a7 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -35,7 +35,7 @@ export function DashboardPage() {
+       </div>
+ 
+       <div data-testid="dashboard-projects">
+-        <span>Projects</span>
++        <span>Jobs</span>
+         <strong data-testid="dashboard-projects-count">{projects}</strong>
+       </div>
+ 
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 0f37797..25deeb6 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -67,7 +67,7 @@ export function AllInvoicesPage() {
+           <table data-testid="all-invoices-table">
+             <thead>
+               <tr>
+-                <th>Project</th>
++                <th>Job</th>
+                 <th>Amount</th>
+                 <th>Stage</th>
+               </tr>
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 5e4d7e3..f25525a 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -117,7 +117,7 @@ export function ProjectsPage() {
+ 
+   return (
+     <section data-testid="projects-page">
+-      <h1>Projects</h1>
++      <h1>Jobs</h1>
+ 
+       <form data-testid="project-form" onSubmit={onSubmit}>
+         <input
+@@ -150,7 +150,7 @@ export function ProjectsPage() {
+           ))}
+         </select>
+         <button data-testid="project-form-submit" type="submit">
+-          Add project
++          Add job
+         </button>
+       </form>
+ 
+@@ -189,7 +189,7 @@ export function ProjectsPage() {
+       </select>
+ 
+       {projects.length === 0 ? (
+-        <p data-testid="projects-empty">No projects yet.</p>
++        <p data-testid="projects-empty">No jobs yet.</p>
+       ) : (
+         <table data-testid="projects-table">
+           <thead>
+diff --git a/src/main/frontend/features/projects/route.tsx b/src/main/frontend/features/projects/route.tsx
+index 4af382f..58b3468 100644
+--- a/src/main/frontend/features/projects/route.tsx
++++ b/src/main/frontend/features/projects/route.tsx
+@@ -3,6 +3,6 @@ import { ProjectsPage } from './ProjectsPage';
+ 
+ export const route: AppRoute = {
+   id: 'projects',
+-  label: 'Projects',
++  label: 'Jobs',
+   Component: ProjectsPage,
+ };
+diff --git a/src/main/frontend/features/search/GlobalSearch.tsx b/src/main/frontend/features/search/GlobalSearch.tsx
+index 4ab8e0a..8c2dcc1 100644
+--- a/src/main/frontend/features/search/GlobalSearch.tsx
++++ b/src/main/frontend/features/search/GlobalSearch.tsx
+@@ -29,7 +29,7 @@ export function GlobalSearch() {
+     <section data-testid="search-page">
+       <input
+         data-testid="global-search"
+-        placeholder="Search clients and projects"
++        placeholder="Search clients and jobs"
+         value={query}
+         onChange={(e) => setQuery(e.target.value)}
+       />
+@@ -45,7 +45,7 @@ export function GlobalSearch() {
+       </div>
+ 
+       <div data-testid="search-projects">
+-        <h2>Projects</h2>
++        <h2>Jobs</h2>
+         {results.projects.map((project) => (
+           <div key={project.id} data-testid={`project-row-${project.id}`}>
+             <span data-testid="project-name">{project.name}</span>
