@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index e09526d..03b591b 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -4,7 +4,14 @@ import { formatMoney } from '../../ui/money';
+ // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
+ // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
+ // /api/projects/<id>/invoices. Money renders with exactly two decimals.
+-type Invoice = { id: number; projectId: number; amount: number; status: string };
++type Invoice = {
++  id: number;
++  projectId: number;
++  amount: number;
++  status: string;
++  issuedDate: string;
++  dueDate: string;
++};
+ 
+ export function ProjectDetail({ projectId }: { projectId: number }) {
+   const [invoices, setInvoices] = useState<Invoice[]>([]);
+@@ -76,6 +83,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         <thead>
+           <tr>
+             <th>Amount</th>
++            <th>Issued</th>
++            <th>Due</th>
+             <th>Status</th>
+             <th></th>
+           </tr>
+@@ -84,6 +93,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+           {invoices.map((invoice) => (
+             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+               <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
++              <td data-testid="invoice-issued">{invoice.issuedDate}</td>
++              <td data-testid="invoice-due">{invoice.dueDate}</td>
+               <td data-testid="invoice-status">{invoice.status}</td>
+               <td>
+                 {invoice.status !== 'PAID' && (
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 11b1aff..4e460f5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import org.springframework.context.annotation.Profile;
+@@ -81,8 +82,11 @@ public class TestSupportController {
+             long projectId = ((Number) invoice.get("projectId")).longValue();
+             double amount = ((Number) invoice.get("amount")).doubleValue();
+             String status = (String) invoice.getOrDefault("status", "UNPAID");
+-            jdbc.update("INSERT INTO invoices (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
+-                    id, projectId, amount, status);
++            Object issuedDate = invoice.getOrDefault("issuedDate", LocalDate.now().toString());
++            Object dueDate = invoice.getOrDefault("dueDate", LocalDate.now().toString());
++            jdbc.update(
++                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?)",
++                    id, projectId, amount, status, issuedDate, dueDate);
+             maxInvoiceId = Math.max(maxInvoiceId, id);
+         }
+         if (maxInvoiceId > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index bc1debb..ee639c9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.GeneratedValue;
+@@ -25,6 +26,14 @@ public class Invoice {
+     /** Payment status; defaults to UNPAID until the invoice is marked paid. */
+     private String status = "UNPAID";
+ 
++    /** The date the invoice was issued (sent out). */
++    @Column(name = "issued_date")
++    private LocalDate issuedDate;
++
++    /** The date payment is due. */
++    @Column(name = "due_date")
++    private LocalDate dueDate;
++
+     public Long getId() {
+         return id;
+     }
+@@ -56,4 +65,20 @@ public class Invoice {
+     public void setStatus(String status) {
+         this.status = status;
+     }
++
++    public LocalDate getIssuedDate() {
++        return issuedDate;
++    }
++
++    public void setIssuedDate(LocalDate issuedDate) {
++        this.issuedDate = issuedDate;
++    }
++
++    public LocalDate getDueDate() {
++        return dueDate;
++    }
++
++    public void setDueDate(LocalDate dueDate) {
++        this.dueDate = dueDate;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 56c4c70..afd69a0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -29,9 +30,11 @@ public class InvoiceService {
+     @Transactional(readOnly = true)
+     public List<InvoiceView> listForProject(Long projectId) {
+         return jdbc.query(
+-                "SELECT id, project_id, amount, status FROM invoices WHERE project_id = ? ORDER BY id ASC",
++                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY id ASC",
+                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getString("status")),
++                        rs.getBigDecimal("amount"), rs.getString("status"),
++                        rs.getDate("issued_date").toLocalDate().toString(),
++                        rs.getDate("due_date").toLocalDate().toString()),
+                 projectId);
+     }
+ 
+@@ -49,9 +52,13 @@ public class InvoiceService {
+         Invoice invoice = new Invoice();
+         invoice.setProjectId(projectId);
+         invoice.setAmount(amount);
++        // A new invoice goes out today and is due 30 days later.
++        LocalDate issued = LocalDate.now();
++        invoice.setIssuedDate(issued);
++        invoice.setDueDate(issued.plusDays(30));
+         Invoice saved = repository.save(invoice);
+         return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
+-                saved.getStatus());
++                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString());
+     }
+ 
+     @Transactional
+@@ -61,9 +68,11 @@ public class InvoiceService {
+         }
+         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", invoiceId);
+         InvoiceView invoice = jdbc.queryForObject(
+-                "SELECT id, project_id, amount, status FROM invoices WHERE id = ?",
++                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
+                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+-                        rs.getBigDecimal("amount"), rs.getString("status")),
++                        rs.getBigDecimal("amount"), rs.getString("status"),
++                        rs.getDate("issued_date").toLocalDate().toString(),
++                        rs.getDate("due_date").toLocalDate().toString()),
+                 invoiceId);
+         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
+                 + invoice.getAmount().setScale(2));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+index 25703ab..66d6004 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+@@ -3,8 +3,9 @@ package net.officefloor.hq.app.invoices;
+ import java.math.BigDecimal;
+ 
+ /**
+- * JSON response shape for an invoice (what the UI renders): id, owning project, money amount, and
+- * payment status (UNPAID until marked paid).
++ * JSON response shape for an invoice (what the UI renders): id, owning project, money amount,
++ * payment status (UNPAID until marked paid), and the two dates it carries — when it was issued
++ * (sent out) and when payment is due (ISO {@code yyyy-MM-dd} strings).
+  */
+ public class InvoiceView {
+ 
+@@ -12,12 +13,17 @@ public class InvoiceView {
+     private final long projectId;
+     private final BigDecimal amount;
+     private final String status;
++    private final String issuedDate;
++    private final String dueDate;
+ 
+-    public InvoiceView(long id, long projectId, BigDecimal amount, String status) {
++    public InvoiceView(long id, long projectId, BigDecimal amount, String status,
++            String issuedDate, String dueDate) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
+         this.status = status;
++        this.issuedDate = issuedDate;
++        this.dueDate = dueDate;
+     }
+ 
+     public long getId() {
+@@ -35,4 +41,12 @@ public class InvoiceView {
+     public String getStatus() {
+         return status;
+     }
++
++    public String getIssuedDate() {
++        return issuedDate;
++    }
++
++    public String getDueDate() {
++        return dueDate;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V10__invoice_dates.sql b/src/main/resources/db/migration/V10__invoice_dates.sql
+new file mode 100644
+index 0000000..30a9b43
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__invoice_dates.sql
+@@ -0,0 +1,4 @@
++-- Invoices now carry two dates: when the invoice was issued (sent out) and when payment is due.
++-- Existing rows get today's date as a sensible default; both are required going forward.
++ALTER TABLE invoices ADD COLUMN issued_date DATE NOT NULL DEFAULT CURRENT_DATE;
++ALTER TABLE invoices ADD COLUMN due_date DATE NOT NULL DEFAULT CURRENT_DATE;
