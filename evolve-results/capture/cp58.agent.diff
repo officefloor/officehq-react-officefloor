@@ -1,0 +1,223 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 399b60c..9ee298c 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -16,6 +16,8 @@ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [search, setSearch] = useState('');
+   const [sort, setSort] = useState<Sort>('name');
++  // Whether the list is showing the archived (tucked-away) clients instead of the main list.
++  const [showArchived, setShowArchived] = useState(false);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState<string | null>(null);
+@@ -28,18 +30,30 @@ export function ClientsPage() {
+   const [editEmailError, setEditEmailError] = useState<string | null>(null);
+ 
+   async function load() {
+-    const res = await fetch(
+-      `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`,
+-    );
++    // The archived view lists the tucked-away clients so they can be brought back; the default view
++    // lists the clients still in play, filtered and ordered the way the controls ask for.
++    const url = showArchived
++      ? '/api/clients?archived=true'
++      : `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`;
++    const res = await fetch(url);
+     if (res.ok) {
+       setClients(await res.json());
+     }
+   }
+ 
+-  // Reload whenever the search term or chosen sort changes — the server filters and orders the list.
++  // Reload whenever the search term, chosen sort, or archived toggle changes — the server filters
++  // and orders the list.
+   useEffect(() => {
+     void load();
+-  }, [search, sort]);
++  }, [search, sort, showArchived]);
++
++  // Bring an archived client back onto the main list, then reload the (now narrower) archived view.
++  async function onRestore(id: number) {
++    const res = await fetch(`/api/clients/${id}/restore`, { method: 'POST' });
++    if (res.ok) {
++      await load();
++    }
++  }
+ 
+   // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
+   // detail pane if it was open on the archived client, then reload the (now narrower) list.
+@@ -135,6 +149,14 @@ export function ClientsPage() {
+         <option value="outstanding">Amount owed</option>
+       </select>
+ 
++      <button
++        data-testid="clients-show-archived"
++        type="button"
++        onClick={() => setShowArchived((on) => !on)}
++      >
++        {showArchived ? 'Hide archived' : 'Show archived'}
++      </button>
++
+       <form data-testid="client-form" onSubmit={onSubmit}>
+         <input
+           data-testid="client-form-name"
+@@ -158,6 +180,33 @@ export function ClientsPage() {
+ 
+       {clients.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
++      ) : showArchived ? (
++        <table data-testid="clients-archived-table">
++          <thead>
++            <tr>
++              <th>Name</th>
++              <th>Email</th>
++              <th></th>
++            </tr>
++          </thead>
++          <tbody>
++            {clients.map((client) => (
++              <tr key={client.id} data-testid={`client-row-${client.id}`}>
++                <td data-testid="client-name">{client.name}</td>
++                <td data-testid="client-email">{client.email}</td>
++                <td>
++                  <button
++                    data-testid={`client-restore-${client.id}`}
++                    type="button"
++                    onClick={() => void onRestore(client.id)}
++                  >
++                    Restore
++                  </button>
++                </td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
+       ) : (
+         <table data-testid="clients-table">
+           <thead>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d3d9736..312aab8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -77,9 +77,12 @@ public class TestSupportController {
+         long maxClientId = 0;
+         for (Map<String, Object> client : clients) {
+             long id = ((Number) client.get("id")).longValue();
++            // Archived clients are tucked away: honour the fixture flag so a spec can seed a client
++            // that starts off the main list (and can then be restored back onto it).
++            boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
+             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
+-            jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
+-                    id, client.get("name"), client.get("email"));
++            jdbc.update("INSERT INTO clients (id, name, email, archived) VALUES (?, ?, ?, ?)",
++                    id, client.get("name"), client.get("email"), archived);
+             maxClientId = Math.max(maxClientId, id);
+         }
+         if (maxClientId > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+index f24edfd..ca65a68 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+@@ -9,6 +9,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+     // Archived clients are tucked away, so the list and search only surface the non-archived ones.
+     List<Client> findByArchivedFalseOrderByIdAsc();
+ 
++    // The clients tucked away — surfaced on the "show archived" view so they can be brought back.
++    List<Client> findByArchivedTrueOrderByIdAsc();
++
+     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+ 
+     // Two clients can never share an email — the guard the create path checks before saving.
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index ca98c9b..006a36a 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -92,6 +92,29 @@ public class ClientService {
+         return owed;
+     }
+ 
++    /** The clients tucked away (archived), oldest first — the "show archived" view's contents. */
++    @Transactional(readOnly = true)
++    public List<ClientView> listArchived() {
++        return repository.findByArchivedTrueOrderByIdAsc().stream()
++                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
++                .toList();
++    }
++
++    /**
++     * Bring an archived client back: clear the flag so they return to the main list and search.
++     * Records an audit entry so the action can be checked later, and returns the clients that remain
++     * archived.
++     */
++    @Transactional
++    public List<ClientView> restore(Long id) {
++        if (id == null) {
++            throw new IllegalArgumentException("A client id is required to restore");
++        }
++        jdbc.update("UPDATE clients SET archived = FALSE WHERE id = ?", id);
++        audit.record("CLIENT_RESTORED id=" + id);
++        return listArchived();
++    }
++
+     /**
+      * Archive a client: keep the row (and everything hanging off it) but flag it so it drops off the
+      * list and search. Records an audit entry so the action can be checked later, and returns the
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+index fb846a8..c8b95af 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+@@ -6,12 +6,18 @@ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+  * GET /api/clients — list clients, optionally filtered by a case-insensitive name search ({@code q})
+- * and ordered by {@code sort}: {@code name} (A–Z) or {@code outstanding} (most owed first).
++ * and ordered by {@code sort}: {@code name} (A–Z) or {@code outstanding} (most owed first). Pass
++ * {@code archived=true} to instead list the clients tucked away (the "show archived" view).
+  */
+ public class ClientsLogic {
+ 
+     public void service(@HttpQueryParameter("q") String q, @HttpQueryParameter("sort") String sort,
+-            ClientService clients, ObjectResponse<List<ClientView>> response) {
+-        response.send(clients.listSorted(q, sort));
++            @HttpQueryParameter("archived") String archived, ClientService clients,
++            ObjectResponse<List<ClientView>> response) {
++        if ("true".equals(archived)) {
++            response.send(clients.listArchived());
++        } else {
++            response.send(clients.listSorted(q, sort));
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/RestoreClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/RestoreClientLogic.java
+new file mode 100644
+index 0000000..00a6238
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/RestoreClientLogic.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/clients/{clientId}/restore — bring a client back from the archive. Clears the archived
++ * flag so the client returns to the main list and search; the action is recorded in the audit log.
++ * The clients that remain archived are returned.
++ */
++public class RestoreClientLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<List<ClientView>> response) {
++        response.send(clients.restore(Long.valueOf(clientId)));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/restore.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/restore.POST.yml
+new file mode 100644
+index 0000000..e341427
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/restore.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.RestoreClientLogic
