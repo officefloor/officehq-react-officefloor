@@ -32,7 +32,11 @@ public class TestSupportController {
     @PostMapping("/reset")
     public void reset() {
         audit.clear();
+        // Disable FK checks so a referenced parent (clients) can be truncated alongside its child.
+        jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+        jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -41,17 +45,31 @@ public class TestSupportController {
     public void seed(@RequestBody Map<String, Object> fixture) {
         List<Map<String, Object>> clients =
                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
-        long maxId = 0;
+        long maxClientId = 0;
         for (Map<String, Object> client : clients) {
             long id = ((Number) client.get("id")).longValue();
             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
             jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
                     id, client.get("name"), client.get("email"));
-            maxId = Math.max(maxId, id);
+            maxClientId = Math.max(maxClientId, id);
         }
-        if (maxId > 0) {
+        if (maxClientId > 0) {
             // Advance the identity so app-generated ids don't collide with seeded rows.
-            jdbc.execute("ALTER TABLE clients ALTER COLUMN id RESTART WITH " + (maxId + 1));
+            jdbc.execute("ALTER TABLE clients ALTER COLUMN id RESTART WITH " + (maxClientId + 1));
+        }
+
+        List<Map<String, Object>> projects =
+                (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
+        long maxProjectId = 0;
+        for (Map<String, Object> project : projects) {
+            long id = ((Number) project.get("id")).longValue();
+            long clientId = ((Number) project.get("clientId")).longValue();
+            jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
+                    id, project.get("name"), clientId);
+            maxProjectId = Math.max(maxProjectId, id);
+        }
+        if (maxProjectId > 0) {
+            jdbc.execute("ALTER TABLE projects ALTER COLUMN id RESTART WITH " + (maxProjectId + 1));
         }
     }
 }
