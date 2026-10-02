@@ -25,6 +25,9 @@ public class Contact {
 
     private String role;
 
+    @Column(name = "is_primary")
+    private boolean primary;
+
     public Contact() {
     }
 
@@ -73,5 +76,13 @@ public class Contact {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isPrimary() {
+        return primary;
+    }
+
+    public void setPrimary(boolean primary) {
+        this.primary = primary;
     }
 }

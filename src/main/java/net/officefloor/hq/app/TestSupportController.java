@@ -121,11 +121,13 @@ public class TestSupportController {
         List<Map<String, Object>> contacts =
                 (List<Map<String, Object>>) fixture.getOrDefault("contacts", List.of());
         for (Map<String, Object> contact : contacts) {
+            boolean primary = Boolean.TRUE.equals(contact.getOrDefault("primary", Boolean.FALSE));
             jdbc.update(
-                    "INSERT INTO contact (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO contact (id, client_id, name, email, role, is_primary) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)",
                     ((Number) contact.get("id")).longValue(),
                     ((Number) contact.get("clientId")).longValue(), contact.get("name"),
-                    contact.get("email"), contact.get("role"));
+                    contact.get("email"), contact.get("role"), primary);
         }
         List<Map<String, Object>> invoices =
                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());

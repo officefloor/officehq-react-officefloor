@@ -31,6 +31,6 @@ public class CreateContactLogic {
         Contact saved = contacts.save(new Contact(id, newContact.getName(), email.trim(),
                 newContact.getRole()));
         response.send(new ContactView(saved.getId(), saved.getClientId(), saved.getName(),
-                saved.getEmail(), saved.getRole()));
+                saved.getEmail(), saved.getRole(), saved.isPrimary()));
     }
 }

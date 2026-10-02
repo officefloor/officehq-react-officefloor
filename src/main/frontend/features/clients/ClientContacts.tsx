@@ -3,7 +3,14 @@ import React, { useEffect, useState } from 'react';
 // A client's contacts, rendered inside the clients feature when a client is opened. Lists the
 // client's contacts (name, email, role) and adds a new one. Owns its own state and data loading
 // (no global store); composed, not branched.
-type Contact = { id: number; clientId: number; name: string; email: string; role: string };
+type Contact = {
+  id: number;
+  clientId: number;
+  name: string;
+  email: string;
+  role: string;
+  primary: boolean;
+};
 
 // A proper email: something, '@', something, '.', something — no whitespace. Matches the server
 // (CreateContactLogic) and schema (V12) checks so the three layers agree on what is acceptable.
@@ -51,9 +58,21 @@ export function ClientContacts({ clientId }: { clientId: number }) {
     await load();
   }
 
+  // Make a contact the client's main (primary) contact; the server clears the flag on the others.
+  async function onMakePrimary(id: number) {
+    await fetch(`/api/contacts/${id}/primary`, { method: 'POST' });
+    await load();
+  }
+
+  const primary = contacts.find((c) => c.primary);
+
   return (
     <section data-testid="client-contacts">
       <h2>Contacts</h2>
+
+      <p>
+        Main contact: <span data-testid="client-primary-contact">{primary ? primary.name : ''}</span>
+      </p>
 
       <form data-testid="contact-form" onSubmit={onSubmit}>
         <input
@@ -90,6 +109,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             <th>Name</th>
             <th>Email</th>
             <th>Role</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -98,6 +118,16 @@ export function ClientContacts({ clientId }: { clientId: number }) {
               <td data-testid="contact-name">{c.name}</td>
               <td data-testid="contact-email">{c.email}</td>
               <td data-testid="contact-role">{c.role}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid={`contact-primary-${c.id}`}
+                  disabled={c.primary}
+                  onClick={() => void onMakePrimary(c.id)}
+                >
+                  {c.primary ? 'Main contact' : 'Make main contact'}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

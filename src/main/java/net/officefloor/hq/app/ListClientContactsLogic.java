@@ -13,7 +13,7 @@ public class ListClientContactsLogic {
         Long id = Long.valueOf(clientId);
         List<ContactView> views = contacts.findByClientIdOrderByIdAsc(id).stream()
                 .map(c -> new ContactView(c.getId(), c.getClientId(), c.getName(), c.getEmail(),
-                        c.getRole()))
+                        c.getRole(), c.isPrimary()))
                 .collect(Collectors.toList());
         response.send(views);
     }
