@@ -1,0 +1,188 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 3463145..f23e0eb 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -28,6 +28,18 @@ export function ClientsPage() {
+     void load();
+   }, [search]);
+ 
++  // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
++  // detail pane if it was open on the archived client, then reload the (now narrower) list.
++  async function onArchive(id: number) {
++    const res = await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
++    if (res.ok) {
++      if (openClientId === id) {
++        setOpenClientId(null);
++      }
++      await load();
++    }
++  }
++
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
+     if (!EMAIL_RE.test(email)) {
+@@ -105,6 +117,13 @@ export function ClientsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    data-testid={`client-archive-${client.id}`}
++                    type="button"
++                    onClick={() => void onArchive(client.id)}
++                  >
++                    Archive
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java
+new file mode 100644
+index 0000000..207582a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/clients/{clientId}/archive — tuck a client away rather than deleting it. The row is kept
++ * but flagged archived so it drops off the list and the search; the action is recorded in the audit
++ * log. The remaining (non-archived) clients are returned.
++ */
++public class ArchiveClientLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<List<ClientView>> response) {
++        List<ClientView> views = clients.archive(Long.valueOf(clientId)).stream()
++                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
++                .toList();
++        response.send(views);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 03e2c86..fff6e48 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -19,6 +19,9 @@ public class Client {
+ 
+     private String email;
+ 
++    // Archived clients are tucked away: the row is kept but drops off the list and search.
++    private boolean archived;
++
+     public Long getId() {
+         return id;
+     }
+@@ -42,4 +45,12 @@ public class Client {
+     public void setEmail(String email) {
+         this.email = email;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+index 3b47a73..d722fc0 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+@@ -6,7 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ /** Data access for {@link Client}. */
+ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+-    List<Client> findAllByOrderByIdAsc();
++    // Archived clients are tucked away, so the list and search only surface the non-archived ones.
++    List<Client> findByArchivedFalseOrderByIdAsc();
+ 
+-    List<Client> findByNameContainingIgnoreCaseOrderByIdAsc(String name);
++    List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index d87c425..70efc3d 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.clients;
+ 
+ import java.util.List;
+ import java.util.regex.Pattern;
++import net.officefloor.hq.app.Audit;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -16,25 +17,47 @@ public class ClientService {
+     private final ClientRepository repository;
+     private final ContactRepository contacts;
+     private final JdbcTemplate jdbc;
++    private final Audit audit;
+ 
+-    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc) {
++    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc,
++            Audit audit) {
+         this.repository = repository;
+         this.contacts = contacts;
+         this.jdbc = jdbc;
++        this.audit = audit;
+     }
+ 
++    /** List the clients still in play. Archived clients are tucked away and omitted. */
+     @Transactional(readOnly = true)
+     public List<Client> list() {
+-        return repository.findAllByOrderByIdAsc();
++        return repository.findByArchivedFalseOrderByIdAsc();
+     }
+ 
+-    /** Clients whose name contains {@code query} (case-insensitive); all clients when blank. */
++    /**
++     * Clients whose name contains {@code query} (case-insensitive); all clients when blank. Archived
++     * clients are tucked away, so they drop off the search too.
++     */
+     @Transactional(readOnly = true)
+     public List<Client> search(String query) {
+         if (query == null || query.isBlank()) {
+             return list();
+         }
+-        return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
++        return repository.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query.trim());
++    }
++
++    /**
++     * Archive a client: keep the row (and everything hanging off it) but flag it so it drops off the
++     * list and search. Records an audit entry so the action can be checked later, and returns the
++     * clients that remain visible.
++     */
++    @Transactional
++    public List<Client> archive(Long id) {
++        if (id == null) {
++            throw new IllegalArgumentException("A client id is required to archive");
++        }
++        jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id);
++        audit.record("CLIENT_ARCHIVED id=" + id);
++        return list();
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V22__clients_archived.sql b/src/main/resources/db/migration/V22__clients_archived.sql
+new file mode 100644
+index 0000000..ed96c9d
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__clients_archived.sql
+@@ -0,0 +1,4 @@
++-- Clients are archived, not deleted: a flag tucks a client away so it drops off the list and the
++-- search while the row (and everything hanging off it) is retained. Defaults FALSE so every existing
++-- client stays visible; archiving flips it to TRUE.
++ALTER TABLE clients ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml
+new file mode 100644
+index 0000000..1b1b17a
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.ArchiveClientLogic
