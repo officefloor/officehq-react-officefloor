@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 type Invoice = { id: number; projectId: number; amount: number; status: string };
 
 function formatAmount(amount: number): string {
-  return Number(amount).toFixed(2);
+  return `$${Number(amount).toFixed(2)}`;
 }
 
 export function ProjectInvoices({ projectId }: { projectId: number }) {

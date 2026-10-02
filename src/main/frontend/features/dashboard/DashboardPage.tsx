@@ -10,7 +10,7 @@ type Summary = {
 };
 
 function formatAmount(amount: number): string {
-  return Number(amount).toFixed(2);
+  return `$${Number(amount).toFixed(2)}`;
 }
 
 export function DashboardPage() {
