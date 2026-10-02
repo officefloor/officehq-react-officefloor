@@ -1,0 +1,307 @@
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index f9c08ee..55820be 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -28,6 +28,11 @@ export function InvoiceLineItems({
+   const [qty, setQty] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
+   const [error, setError] = useState('');
++  const [editingId, setEditingId] = useState<number | null>(null);
++  const [editDescription, setEditDescription] = useState('');
++  const [editQty, setEditQty] = useState('');
++  const [editUnitPrice, setEditUnitPrice] = useState('');
++  const [editError, setEditError] = useState('');
+ 
+   async function load() {
+     const res = await fetch(`/api/invoices/${invoiceId}/lineitems`);
+@@ -61,6 +66,52 @@ export function InvoiceLineItems({
+     await load();
+   }
+ 
++  function startEdit(li: LineItem) {
++    setEditingId(li.id);
++    setEditDescription(li.description);
++    setEditQty(String(li.quantity));
++    setEditUnitPrice(String(li.unitPrice));
++    setEditError('');
++  }
++
++  function cancelEdit() {
++    setEditingId(null);
++    setEditError('');
++  }
++
++  async function saveEdit(lineItemId: number) {
++    const quantity = Number(editQty);
++    const price = Number(editUnitPrice);
++    if (!editDescription.trim() || !(quantity > 0) || !(price >= 0)) {
++      setEditError('A description, a quantity and a price are required');
++      return;
++    }
++    setEditError('');
++    const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
++      method: 'PUT',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ description: editDescription, quantity, unitPrice: price }),
++    });
++    if (!res.ok) {
++      return;
++    }
++    setEditingId(null);
++    await load();
++  }
++
++  async function remove(lineItemId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
++      method: 'DELETE',
++    });
++    if (!res.ok) {
++      return;
++    }
++    if (editingId === lineItemId) {
++      setEditingId(null);
++    }
++    await load();
++  }
++
+   const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+ 
+   return (
+@@ -107,24 +158,95 @@ export function InvoiceLineItems({
+             <th>How many</th>
+             <th>Price each</th>
+             <th>Line total</th>
++            <th></th>
+           </tr>
+         </thead>
+         <tbody>
+-          {lineItems.map((li) => (
+-            <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+-              <td data-testid="lineitem-description">{li.description}</td>
+-              <td data-testid="lineitem-qty">{li.quantity}</td>
+-              <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
+-              <td data-testid="lineitem-total">
+-                {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
+-              </td>
+-            </tr>
+-          ))}
++          {lineItems.map((li) =>
++            editingId === li.id ? (
++              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
++                <td>
++                  <input
++                    data-testid="lineitem-edit-description"
++                    placeholder="Description"
++                    value={editDescription}
++                    onChange={(e) => setEditDescription(e.target.value)}
++                  />
++                </td>
++                <td>
++                  <input
++                    data-testid="lineitem-edit-qty"
++                    placeholder="How many"
++                    value={editQty}
++                    onChange={(e) => setEditQty(e.target.value)}
++                  />
++                </td>
++                <td>
++                  <input
++                    data-testid="lineitem-edit-unitprice"
++                    placeholder="Price each"
++                    value={editUnitPrice}
++                    onChange={(e) => setEditUnitPrice(e.target.value)}
++                  />
++                </td>
++                <td data-testid="lineitem-total">
++                  {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
++                </td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-save-${li.id}`}
++                    onClick={() => void saveEdit(li.id)}
++                  >
++                    Save
++                  </button>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-cancel-${li.id}`}
++                    onClick={cancelEdit}
++                  >
++                    Cancel
++                  </button>
++                  {editError ? (
++                    <p data-testid="lineitem-edit-error" role="alert">
++                      {editError}
++                    </p>
++                  ) : null}
++                </td>
++              </tr>
++            ) : (
++              <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
++                <td data-testid="lineitem-description">{li.description}</td>
++                <td data-testid="lineitem-qty">{li.quantity}</td>
++                <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
++                <td data-testid="lineitem-total">
++                  {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
++                </td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-edit-${li.id}`}
++                    onClick={() => startEdit(li)}
++                  >
++                    Change
++                  </button>
++                  <button
++                    type="button"
++                    data-testid={`lineitem-remove-${li.id}`}
++                    onClick={() => void remove(li.id)}
++                  >
++                    Remove
++                  </button>
++                </td>
++              </tr>
++            ),
++          )}
+         </tbody>
+         <tfoot>
+           <tr>
+             <td colSpan={3}>Total</td>
+             <td data-testid="invoice-amount">{formatAmount(total)}</td>
++            <td></td>
+           </tr>
+         </tfoot>
+       </table>
+diff --git a/src/main/java/net/officefloor/hq/app/DeleteLineItemLogic.java b/src/main/java/net/officefloor/hq/app/DeleteLineItemLogic.java
+new file mode 100644
+index 0000000..1987527
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DeleteLineItemLogic.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * DELETE /api/invoices/{invoiceId}/lineitems/{lineItemId} — remove a charge line from an invoice,
++ * then re-total the invoice from its remaining line items and echo back the updated invoice. An
++ * unknown invoice, an unknown line item, or a line item that does not belong to the invoice, is
++ * rejected with 400 and nothing is written.
++ */
++public class DeleteLineItemLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            @HttpPathParameter("lineItemId") String lineItemId, InvoiceRepository invoices,
++            LineItemRepository lineItems, ObjectResponse<InvoiceView> response) {
++        Long id = Long.valueOf(invoiceId);
++        Invoice invoice = invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        Long lineId = Long.valueOf(lineItemId);
++        LineItem lineItem = lineItems.findById(lineId).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing line item is required"));
++        if (!id.equals(lineItem.getInvoiceId())) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "The line item does not belong to this invoice");
++        }
++        lineItems.deleteById(lineId);
++
++        // Keep the invoice's amount in step with its line items: the total the owner is charging.
++        BigDecimal amount = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
++                .map(LineItem::lineTotal)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        invoice.setAmount(amount);
++        Invoice saved = invoices.save(invoice);
++
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
++                saved.getStatus(),
++                saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),
++                saved.getDueDate() == null ? null : saved.getDueDate().toString()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java b/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java
+new file mode 100644
+index 0000000..acfda9f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * PUT /api/invoices/{invoiceId}/lineitems/{lineItemId} — change a charge line (description, quantity,
++ * unit price) on an invoice, then re-total the invoice from its line items and echo back the saved
++ * line. A missing/blank description, a non-positive quantity or a negative unit price, an unknown
++ * invoice or line item, or a line item that does not belong to the invoice, is rejected with 400 and
++ * nothing is written.
++ */
++public class UpdateLineItemLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            @HttpPathParameter("lineItemId") String lineItemId, @RequestBody NewLineItem newLineItem,
++            InvoiceRepository invoices, LineItemRepository lineItems,
++            ObjectResponse<LineItemView> response) {
++        Long id = Long.valueOf(invoiceId);
++        Invoice invoice = invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        Long lineId = Long.valueOf(lineItemId);
++        LineItem lineItem = lineItems.findById(lineId).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing line item is required"));
++        if (!id.equals(lineItem.getInvoiceId())) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "The line item does not belong to this invoice");
++        }
++        String description = newLineItem.getDescription();
++        if (description == null || description.isBlank()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A description is required");
++        }
++        Integer quantity = newLineItem.getQuantity();
++        if (quantity == null || quantity <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A quantity greater than zero is required");
++        }
++        BigDecimal unitPrice = newLineItem.getUnitPrice();
++        if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price of zero or more is required");
++        }
++        lineItem.setDescription(description.trim());
++        lineItem.setQuantity(quantity);
++        lineItem.setUnitPrice(unitPrice);
++        LineItem saved = lineItems.save(lineItem);
++
++        // Keep the invoice's amount in step with its line items: the total the owner is charging.
++        BigDecimal amount = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
++                .map(LineItem::lineTotal)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        invoice.setAmount(amount);
++        invoices.save(invoice);
++
++        response.send(new LineItemView(saved.getId(), saved.getInvoiceId(), saved.getDescription(),
++                saved.getQuantity(), saved.getUnitPrice()));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.DELETE.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.DELETE.yml
+new file mode 100644
+index 0000000..9f70084
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.DELETE.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.DeleteLineItemLogic
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.PUT.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.PUT.yml
+new file mode 100644
+index 0000000..9c316fc
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/lineitems/{lineItemId}.PUT.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.UpdateLineItemLogic
