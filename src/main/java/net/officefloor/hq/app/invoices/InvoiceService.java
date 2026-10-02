@@ -18,6 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class InvoiceService {
 
+    // An invoice's amount minus whatever has been paid against it is what is still left to pay.
+    private static final String DUE_AWARE_SELECT =
+            "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, "
+                    + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
+                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
+
+    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> new InvoiceView(
+            rs.getLong("id"), rs.getLong("project_id"), rs.getBigDecimal("amount"),
+            rs.getString("status"), rs.getDate("issued_date").toLocalDate().toString(),
+            rs.getDate("due_date").toLocalDate().toString(), rs.getBigDecimal("due_amount"));
+
     private final InvoiceRepository repository;
     private final LineItemRepository lineItemRepository;
     private final PaymentRepository paymentRepository;
@@ -49,23 +60,15 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public List<InvoiceView> listForProject(Long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY id ASC",
-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getBigDecimal("amount"), rs.getString("status"),
-                        rs.getDate("issued_date").toLocalDate().toString(),
-                        rs.getDate("due_date").toLocalDate().toString()),
-                projectId);
+                DUE_AWARE_SELECT + "WHERE i.project_id = ? ORDER BY i.id ASC",
+                INVOICE_MAPPER, projectId);
     }
 
     @Transactional(readOnly = true)
     public List<InvoiceView> listForProjectByDueDate(Long projectId) {
         return jdbc.query(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY due_date ASC, id ASC",
-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getBigDecimal("amount"), rs.getString("status"),
-                        rs.getDate("issued_date").toLocalDate().toString(),
-                        rs.getDate("due_date").toLocalDate().toString()),
-                projectId);
+                DUE_AWARE_SELECT + "WHERE i.project_id = ? ORDER BY i.due_date ASC, i.id ASC",
+                INVOICE_MAPPER, projectId);
     }
 
     @Transactional
@@ -87,8 +90,10 @@ public class InvoiceService {
         invoice.setIssuedDate(issued);
         invoice.setDueDate(issued.plusDays(30));
         Invoice saved = repository.save(invoice);
+        // A brand-new invoice has had nothing paid against it yet, so the whole amount is due.
         return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
-                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString());
+                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString(),
+                saved.getAmount());
     }
 
     @Transactional
@@ -218,12 +223,6 @@ public class InvoiceService {
     }
 
     private InvoiceView find(Long invoiceId) {
-        return jdbc.queryForObject(
-                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
-                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
-                        rs.getBigDecimal("amount"), rs.getString("status"),
-                        rs.getDate("issued_date").toLocalDate().toString(),
-                        rs.getDate("due_date").toLocalDate().toString()),
-                invoiceId);
+        return jdbc.queryForObject(DUE_AWARE_SELECT + "WHERE i.id = ?", INVOICE_MAPPER, invoiceId);
     }
 }

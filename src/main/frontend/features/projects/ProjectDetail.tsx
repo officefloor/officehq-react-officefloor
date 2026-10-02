@@ -14,6 +14,8 @@ type Invoice = {
   status: string;
   issuedDate: string;
   dueDate: string;
+  // How much is still left to pay: the invoice amount minus any payments recorded against it.
+  dueAmount: number;
 };
 
 type Task = {
@@ -192,6 +194,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Left to pay</th>
             <th>Issued</th>
             <th>Due</th>
             <th>Status</th>
@@ -202,6 +205,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           {invoices.map((invoice) => (
             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
               <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
+              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount)}</td>
               <td data-testid="invoice-issued">{invoice.issuedDate}</td>
               <td data-testid="invoice-due">{invoice.dueDate}</td>
               <td data-testid="invoice-status">{invoice.status}</td>

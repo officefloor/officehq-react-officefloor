@@ -4,8 +4,9 @@ import java.math.BigDecimal;
 
 /**
  * JSON response shape for an invoice (what the UI renders): id, owning project, money amount,
- * payment status (UNPAID until marked paid), and the two dates it carries — when it was issued
- * (sent out) and when payment is due (ISO {@code yyyy-MM-dd} strings).
+ * payment status (UNPAID until marked paid), the two dates it carries — when it was issued
+ * (sent out) and when payment is due (ISO {@code yyyy-MM-dd} strings) — and the amount still
+ * left to pay (the money amount minus any payments recorded against it).
  */
 public class InvoiceView {
 
@@ -15,15 +16,17 @@ public class InvoiceView {
     private final String status;
     private final String issuedDate;
     private final String dueDate;
+    private final BigDecimal dueAmount;
 
     public InvoiceView(long id, long projectId, BigDecimal amount, String status,
-            String issuedDate, String dueDate) {
+            String issuedDate, String dueDate, BigDecimal dueAmount) {
         this.id = id;
         this.projectId = projectId;
         this.amount = amount;
         this.status = status;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
+        this.dueAmount = dueAmount;
     }
 
     public long getId() {
@@ -48,5 +51,9 @@ public class InvoiceView {
 
     public String getDueDate() {
         return dueDate;
+    }
+
+    public BigDecimal getDueAmount() {
+        return dueAmount;
     }
 }
