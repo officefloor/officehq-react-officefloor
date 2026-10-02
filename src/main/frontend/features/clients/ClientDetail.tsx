@@ -6,7 +6,7 @@ import { ClientStatement } from './ClientStatement';
 // listing reads the same way wherever projects appear. It also keeps the client's contacts (name,
 // email, role), scoped the same way via /api/clients/<id>/contacts, with a form to add one.
 type Project = { id: number; name: string };
-type Contact = { id: number; name: string; email: string; role: string };
+type Contact = { id: number; name: string; email: string; role: string; primary: boolean };
 type Counts = { projects: number; contacts: number };
 
 // A contact must carry a proper email address too, same guard as clients: a single non-whitespace
@@ -57,6 +57,20 @@ export function ClientDetail({ clientId }: { clientId: number }) {
     void loadContacts();
     void loadCounts();
   }, [clientId]);
+
+  // A client has one main contact. Pick it by flagging the chosen contact primary on the server,
+  // then reload so the "who is primary" line and the row buttons reflect the new choice.
+  async function onPickPrimary(contactId: number) {
+    const res = await fetch(
+      `/api/clients/${clientId}/contacts/${contactId}/primary`,
+      { method: 'POST' },
+    );
+    if (res.ok) {
+      setContacts(await res.json());
+    }
+  }
+
+  const primaryContact = contacts.find((contact) => contact.primary);
 
   async function onAddContact(event: FormEvent) {
     event.preventDefault();
@@ -122,12 +136,17 @@ export function ClientDetail({ clientId }: { clientId: number }) {
       </table>
 
       <h2>Contacts</h2>
+      <p>
+        Main contact:{' '}
+        <span data-testid="client-primary-contact">{primaryContact?.name ?? ''}</span>
+      </p>
       <table data-testid="client-contacts-table">
         <thead>
           <tr>
             <th>Name</th>
             <th>Email</th>
             <th>Role</th>
+            <th>Main</th>
           </tr>
         </thead>
         <tbody>
@@ -136,6 +155,17 @@ export function ClientDetail({ clientId }: { clientId: number }) {
               <td data-testid="contact-name">{contact.name}</td>
               <td data-testid="contact-email">{contact.email}</td>
               <td data-testid="contact-role">{contact.role}</td>
+              <td>
+                <button
+                  data-testid={`contact-primary-${contact.id}`}
+                  type="button"
+                  aria-pressed={contact.primary}
+                  disabled={contact.primary}
+                  onClick={() => void onPickPrimary(contact.id)}
+                >
+                  {contact.primary ? 'Main contact' : 'Make main'}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -100,8 +100,11 @@ public class TestSupportController {
         for (Map<String, Object> contact : contacts) {
             long id = ((Number) contact.get("id")).longValue();
             long clientId = ((Number) contact.get("clientId")).longValue();
-            jdbc.update("INSERT INTO contacts (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
-                    id, clientId, contact.get("name"), contact.get("email"), contact.get("role"));
+            boolean primary = Boolean.TRUE.equals(contact.getOrDefault("primary", Boolean.FALSE));
+            jdbc.update(
+                    "INSERT INTO contacts (id, client_id, name, email, role, is_primary) VALUES (?, ?, ?, ?, ?, ?)",
+                    id, clientId, contact.get("name"), contact.get("email"), contact.get("role"),
+                    primary);
             maxContactId = Math.max(maxContactId, id);
         }
         if (maxContactId > 0) {

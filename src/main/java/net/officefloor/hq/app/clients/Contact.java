@@ -25,6 +25,10 @@ public class Contact {
 
     private String role;
 
+    // Whether this contact is the client's one main (primary) contact.
+    @Column(name = "is_primary")
+    private boolean primary;
+
     public Long getId() {
         return id;
     }
@@ -63,5 +67,13 @@ public class Contact {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isPrimary() {
+        return primary;
+    }
+
+    public void setPrimary(boolean primary) {
+        this.primary = primary;
     }
 }

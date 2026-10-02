@@ -119,8 +119,23 @@ public class ClientService {
     public List<ClientContactView> contactsFor(Long clientId) {
         return contacts.findByClientIdOrderByIdAsc(clientId).stream()
                 .map(c -> new ClientContactView(c.getId(), c.getClientId(), c.getName(),
-                        c.getEmail(), c.getRole()))
+                        c.getEmail(), c.getRole(), c.isPrimary()))
                 .toList();
+    }
+
+    /**
+     * Pick a client's one main (primary) contact. Clears the flag across the client's contacts and
+     * sets it on the chosen one, so exactly one is primary at a time. Returns the client's contacts.
+     */
+    @Transactional
+    public List<ClientContactView> setPrimaryContact(Long clientId, Long contactId) {
+        if (clientId == null || contactId == null) {
+            throw new IllegalArgumentException("A client and contact are required");
+        }
+        jdbc.update("UPDATE contacts SET is_primary = FALSE WHERE client_id = ?", clientId);
+        jdbc.update("UPDATE contacts SET is_primary = TRUE WHERE id = ? AND client_id = ?",
+                contactId, clientId);
+        return contactsFor(clientId);
     }
 
     @Transactional
@@ -141,7 +156,7 @@ public class ClientService {
         contact.setRole(role);
         Contact saved = contacts.save(contact);
         return new ClientContactView(saved.getId(), saved.getClientId(), saved.getName(),
-                saved.getEmail(), saved.getRole());
+                saved.getEmail(), saved.getRole(), saved.isPrimary());
     }
 
     @Transactional

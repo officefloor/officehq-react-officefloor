@@ -8,13 +8,16 @@ public class ClientContactView {
     private final String name;
     private final String email;
     private final String role;
+    private final boolean primary;
 
-    public ClientContactView(long id, long clientId, String name, String email, String role) {
+    public ClientContactView(long id, long clientId, String name, String email, String role,
+            boolean primary) {
         this.id = id;
         this.clientId = clientId;
         this.name = name;
         this.email = email;
         this.role = role;
+        this.primary = primary;
     }
 
     public long getId() {
@@ -35,5 +38,9 @@ public class ClientContactView {
 
     public String getRole() {
         return role;
+    }
+
+    public boolean isPrimary() {
+        return primary;
     }
 }
