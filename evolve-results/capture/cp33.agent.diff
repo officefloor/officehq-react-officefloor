@@ -1,0 +1,189 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+new file mode 100644
+index 0000000..1e1a949
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -0,0 +1,76 @@
++import React, { useEffect, useState } from 'react';
++
++// A client's statement, rendered inside the clients feature when a client is opened: all of that
++// client's invoices (gathered from every one of their projects) in one place, each with how much is
++// still left to pay, and the outstanding total — what they still owe across those invoices. Opens on
++// demand (client-statement-open) and then reads /api/clients/<id>/statement. Owns its own state and
++// data loading (no global store); composed, not branched.
++type StatementInvoice = {
++  id: number;
++  projectId: number;
++  amount: number;
++  due: number;
++  status: string;
++};
++
++type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
++
++function formatAmount(amount: number): string {
++  return `$${Number(amount).toFixed(2)}`;
++}
++
++export function ClientStatement({ clientId }: { clientId: number }) {
++  const [statement, setStatement] = useState<Statement | null>(null);
++
++  // Collapse the statement when the opened client changes, so it is opened fresh per client.
++  useEffect(() => {
++    setStatement(null);
++  }, [clientId]);
++
++  async function open() {
++    const res = await fetch(`/api/clients/${clientId}/statement`);
++    if (!res.ok) {
++      return;
++    }
++    setStatement(await res.json());
++  }
++
++  return (
++    <section data-testid="client-statement">
++      <button type="button" data-testid="client-statement-open" onClick={() => void open()}>
++        Statement
++      </button>
++
++      {statement ? (
++        <table data-testid="client-statement-table">
++          <thead>
++            <tr>
++              <th>Invoice</th>
++              <th>Amount</th>
++              <th>Due</th>
++              <th>Status</th>
++            </tr>
++          </thead>
++          <tbody>
++            {statement.invoices.map((inv) => (
++              <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
++                <td data-testid="statement-invoice-id">{inv.id}</td>
++                <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
++                <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
++                <td data-testid="statement-invoice-status">{inv.status}</td>
++              </tr>
++            ))}
++          </tbody>
++          <tfoot>
++            <tr>
++              <td>Outstanding</td>
++              <td data-testid="client-outstanding-total" colSpan={3}>
++                {formatAmount(statement.outstandingTotal)}
++              </td>
++            </tr>
++          </tfoot>
++        </table>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index d458989..45ea3a1 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,5 +1,6 @@
+ import React, { useEffect, useState } from 'react';
+ import { ClientSummary } from './ClientSummary';
++import { ClientStatement } from './ClientStatement';
+ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
+ 
+@@ -136,6 +137,7 @@ export function ClientsPage() {
+       )}
+ 
+       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
++      {openClientId !== null ? <ClientStatement clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+new file mode 100644
+index 0000000..436fc39
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/clients/{clientId}/statement — one client's statement: all of that client's invoices,
++ * gathered from every one of their projects, each with how much is still left to pay (the billed
++ * amount minus everything paid against it), and the outstanding total — the sum of what is still due
++ * across those invoices.
++ */
++public class ClientStatementLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ProjectRepository projects,
++            InvoiceRepository invoices, PaymentRepository payments,
++            ObjectResponse<ClientStatementView> response) {
++        Long id = Long.valueOf(clientId);
++        List<InvoiceView> rows = new ArrayList<>();
++        BigDecimal outstandingTotal = BigDecimal.ZERO;
++        for (Project project : projects.findByClientIdOrderByIdAsc(id)) {
++            for (Invoice inv : invoices.findByProjectIdOrderByIdAsc(project.getId())) {
++                // What is still left to pay: the billed amount minus everything paid so far.
++                BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
++                        .map(Payment::getAmount)
++                        .reduce(BigDecimal.ZERO, BigDecimal::add);
++                BigDecimal due = inv.getAmount().subtract(paid);
++                String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
++                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
++                        status,
++                        inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
++                        inv.getDueDate() == null ? null : inv.getDueDate().toString()));
++                outstandingTotal = outstandingTotal.add(due);
++            }
++        }
++        response.send(new ClientStatementView(rows, outstandingTotal));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementView.java b/src/main/java/net/officefloor/hq/app/ClientStatementView.java
+new file mode 100644
+index 0000000..7d89441
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementView.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * A client's statement: all of that client's invoices (across every one of their projects) in one
++ * place, each carrying how much is still left to pay, plus the outstanding total — the sum of what is
++ * still due across those invoices.
++ */
++public class ClientStatementView {
++
++    private final List<InvoiceView> invoices;
++    private final BigDecimal outstandingTotal;
++
++    public ClientStatementView(List<InvoiceView> invoices, BigDecimal outstandingTotal) {
++        this.invoices = invoices;
++        this.outstandingTotal = outstandingTotal;
++    }
++
++    public List<InvoiceView> getInvoices() {
++        return invoices;
++    }
++
++    public BigDecimal getOutstandingTotal() {
++        return outstandingTotal;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml
+new file mode 100644
+index 0000000..53758fe
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/statement.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientStatementLogic
