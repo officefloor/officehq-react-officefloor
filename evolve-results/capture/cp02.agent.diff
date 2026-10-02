@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index f9b8e50..d69d51c 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -4,10 +4,15 @@ import React, { useEffect, useState } from 'react';
+ // client and adds a new one by name + email.
+ type Client = { id: number; name: string; email: string };
+ 
++// A proper email: something, '@', something, '.', something — no whitespace. Matches the server
++// (CreateClientLogic) and schema (V2) checks so the three layers agree on what is acceptable.
++const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
++  const [emailError, setEmailError] = useState('');
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -20,11 +25,24 @@ export function ClientsPage() {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+-    await fetch('/api/clients', {
++
++    // Every client needs a proper email — block the save and surface the error if it is missing or
++    // malformed, so no row is created.
++    if (!EMAIL.test(email.trim())) {
++      setEmailError('A proper email address is required');
++      return;
++    }
++    setEmailError('');
++
++    const res = await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ name, email }),
++      body: JSON.stringify({ name, email: email.trim() }),
+     });
++    if (!res.ok) {
++      setEmailError('A proper email address is required');
++      return;
++    }
+     setName('');
+     setEmail('');
+     await load();
+@@ -47,6 +65,11 @@ export function ClientsPage() {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <p data-testid="client-form-email-error" role="alert">
++            {emailError}
++          </p>
++        )}
+         <button type="submit" data-testid="client-form-submit">
+           Add client
+         </button>
+diff --git a/src/main/java/net/officefloor/hq/app/CreateClientLogic.java b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+index 5fef02a..52ed816 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+@@ -1,14 +1,28 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.regex.Pattern;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.web.bind.annotation.RequestBody;
+ 
+-/** POST /api/clients — add a client from the submitted name + email, echo back the saved row. */
++/**
++ * POST /api/clients — add a client from the submitted name + email, echo back the saved row.
++ * A client must carry a proper email: a blank or malformed address is rejected with 400 and never
++ * persisted (mirrors the UI validation and the schema check in V2).
++ */
+ public class CreateClientLogic {
+ 
++    /** Basic email shape: something, '@', something, '.', something — no whitespace. */
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
+     public void service(@RequestBody NewClient newClient, ClientRepository clients,
+             ObjectResponse<Client> response) {
+-        Client saved = clients.save(new Client(newClient.getName(), newClient.getEmail()));
++        String email = newClient.getEmail();
++        if (email == null || !EMAIL.matcher(email.trim()).matches()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A proper email address is required");
++        }
++        Client saved = clients.save(new Client(newClient.getName(), email.trim()));
+         response.send(saved);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V2__client_email_format.sql b/src/main/resources/db/migration/V2__client_email_format.sql
+new file mode 100644
+index 0000000..85ee7a4
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__client_email_format.sql
+@@ -0,0 +1,6 @@
++-- Every client needs a proper email: enforce a basic email shape at the schema level so a client
++-- with a blank or malformed address can never be persisted (defence-in-depth behind the server and
++-- UI validation). email is already NOT NULL (V1); this adds the format check.
++ALTER TABLE client
++    ADD CONSTRAINT client_email_format
++    CHECK (REGEXP_LIKE(email, '^[^\s@]+@[^\s@]+\.[^\s@]+$'));

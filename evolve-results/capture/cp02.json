@@ -1,0 +1,110 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp02_client_email_validation",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Every client needs an email. Do not let me save one without a proper email address.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nEvery client needs an email. Do not let me save one without a proper email address.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "f848e7f3f5778c128cda33805a1d4f5a239bf632",
+  "reset_sha": "",
+  "preagent_sha": "0be34484c1c9a09d751c7f5e849f6284ffb95c6b",
+  "prev_sha": "0be34484c1c9a09d751c7f5e849f6284ffb95c6b",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.686061,
+    "input_tokens": 28,
+    "output_tokens": 7775,
+    "cache_read_tokens": 393734,
+    "cache_creation_tokens": 29352,
+    "num_turns": 30,
+    "duration_ms": 118361,
+    "duration_api_ms": 100959,
+    "model": "claude-opus-4-8",
+    "session_id": "02d13966-65fe-427f-a27d-8782fbcf0b85",
+    "stop_reason": "success",
+    "result_text": "All 3 tests pass. The change is implemented as a full-stack, additive change:\n\n**What I did** \u2014 enforced that every client must have a proper email address, across all three layers:\n\n- **Database** (`V2__client_email_format.sql`): new Flyway migration adding a `CHECK` constraint (`REGEXP_LIKE`) so a blank/malformed email can never be persisted.\n- **Server** (`CreateClientLogic.java`): validates the submitted email against an email regex and throws `HttpException(BAD_REQUEST)` without saving if it's missing or malformed.\n- **Front-end** (`ClientsPage.tsx`): validates on submit, surfaces a `client-form-email-error` element and blocks the POST when the email is invalid (also handles a server rejection), so no client row is created.\n\nAll three layers share the same email shape (`^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$`). The existing `data-testid` anchors are untouched; the only new one is `client-form-email-error`, which the spec requires. Tests: 3 passed (blank rejected, malformed rejected, valid accepted).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.686061,
+        "num_turns": 30,
+        "duration_ms": 118361,
+        "duration_api_ms": 100959,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": "cp02.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 5,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 601,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 348,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 202,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 321,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
