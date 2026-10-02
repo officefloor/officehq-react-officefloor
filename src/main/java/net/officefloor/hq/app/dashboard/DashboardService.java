@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.dashboard;
 
 import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,21 @@ public class DashboardService {
                 "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
                         + "COALESCE((SELECT as_of FROM dashboard_settings WHERE id = 1), CURRENT_DATE)",
                 Long.class);
-        return new DashboardView(clients, projects, outstanding, overdue);
+        // The top five clients ranked by how much they owe: each client's discounted SENT total
+        // across all their projects' invoices, highest first. Only clients that owe something appear
+        // (ties broken by id for a stable order).
+        List<TopClientView> topClients = jdbc.query(
+                "SELECT c.id, c.name, "
+                        + "COALESCE(SUM(i.amount * (1 - i.discount_pct / 100)), 0) AS owed "
+                        + "FROM clients c "
+                        + "JOIN projects p ON p.client_id = c.id "
+                        + "JOIN invoices i ON i.project_id = p.id AND i.status = 'SENT' "
+                        + "GROUP BY c.id, c.name "
+                        + "HAVING SUM(i.amount * (1 - i.discount_pct / 100)) > 0 "
+                        + "ORDER BY owed DESC, c.id ASC "
+                        + "LIMIT 5",
+                (rs, rowNum) -> new TopClientView(
+                        rs.getLong("id"), rs.getString("name"), rs.getBigDecimal("owed")));
+        return new DashboardView(clients, projects, outstanding, overdue, topClients);
     }
 }

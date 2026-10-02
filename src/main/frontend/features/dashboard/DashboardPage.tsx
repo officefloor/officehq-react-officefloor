@@ -5,7 +5,14 @@ import { formatMoney } from '../../ui/money';
 // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
 // owns its own state and reads the single /api/dashboard aggregate; it does not import other
 // features.
-type Summary = { clients: number; projects: number; outstanding: number; overdue: number };
+type TopClient = { id: number; name: string; owed: number };
+type Summary = {
+  clients: number;
+  projects: number;
+  outstanding: number;
+  overdue: number;
+  topClients: TopClient[];
+};
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -24,6 +31,7 @@ export function DashboardPage() {
   const projects = summary?.projects ?? 0;
   const outstanding = summary?.outstanding ?? 0;
   const overdue = summary?.overdue ?? 0;
+  const topClients = summary?.topClients ?? [];
 
   return (
     <section data-testid="dashboard-page">
@@ -47,6 +55,16 @@ export function DashboardPage() {
       <div data-testid="dashboard-overdue">
         <span>Overdue invoices</span>
         <strong data-testid="dashboard-overdue-count">{overdue}</strong>
+      </div>
+
+      <div data-testid="dashboard-top-clients">
+        <h2>Top clients</h2>
+        {topClients.map((client) => (
+          <div key={client.id} data-testid={`top-client-row-${client.id}`}>
+            <span data-testid="top-client-name">{client.name}</span>
+            <span data-testid="top-client-amount">{formatMoney(client.owed)}</span>
+          </div>
+        ))}
       </div>
     </section>
   );
