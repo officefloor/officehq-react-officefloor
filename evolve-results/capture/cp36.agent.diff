@@ -1,0 +1,128 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+index a192279..0784489 100644
+--- a/src/main/frontend/features/clients/ClientDetail.tsx
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -22,6 +22,9 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+   const [role, setRole] = useState('');
+   const [emailError, setEmailError] = useState(false);
+   const [statementOpen, setStatementOpen] = useState(false);
++  // By default a client's page shows only their ACTIVE projects — the work still in play. Flipping
++  // this reveals the finished and hidden (archived) ones too, by asking the server for them all.
++  const [showAll, setShowAll] = useState(false);
+ 
+   async function loadContacts() {
+     const res = await fetch(`/api/clients/${clientId}/contacts`);
+@@ -40,12 +43,17 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+ 
+   useEffect(() => {
+     async function load() {
+-      const res = await fetch(`/api/clients/${clientId}/projects`);
++      const res = await fetch(
++        `/api/clients/${clientId}/projects${showAll ? '?all=true' : ''}`,
++      );
+       if (res.ok) {
+         setProjects(await res.json());
+       }
+     }
+     void load();
++  }, [clientId, showAll]);
++
++  useEffect(() => {
+     void loadContacts();
+     void loadCounts();
+   }, [clientId]);
+@@ -90,6 +98,14 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+       {statementOpen && <ClientStatement clientId={clientId} />}
+ 
+       <h2>Projects</h2>
++      <button
++        data-testid="client-projects-show-all"
++        type="button"
++        aria-pressed={showAll}
++        onClick={() => setShowAll((v) => !v)}
++      >
++        {showAll ? 'Show active only' : 'Show finished and hidden'}
++      </button>
+       <table data-testid="client-projects-table">
+         <thead>
+           <tr>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 83aaf59..c5dd906 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -75,8 +75,10 @@ public class TestSupportController {
+             long id = ((Number) project.get("id")).longValue();
+             long clientId = ((Number) project.get("clientId")).longValue();
+             String status = (String) project.getOrDefault("status", "ACTIVE");
+-            jdbc.update("INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+-                    id, project.get("name"), clientId, status);
++            boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
++            jdbc.update(
++                    "INSERT INTO projects (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
++                    id, project.get("name"), clientId, status, archived);
+             maxProjectId = Math.max(maxProjectId, id);
+         }
+         if (maxProjectId > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java
+index 8846dad..4d61480 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientProjectsLogic.java
+@@ -2,13 +2,19 @@ package net.officefloor.hq.app.clients;
+ 
+ import java.util.List;
+ import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/clients/{clientId}/projects — list the projects done for a client. */
++/**
++ * GET /api/clients/{clientId}/projects — list the projects done for a client. Only the client's
++ * ACTIVE, non-archived projects are returned by default; pass {@code ?all=true} to also include the
++ * finished and hidden (archived) ones (the client page's "show all" toggle).
++ */
+ public class ClientProjectsLogic {
+ 
+-    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++    public void service(@HttpPathParameter("clientId") String clientId,
++            @HttpQueryParameter("all") String all, ClientService clients,
+             ObjectResponse<List<ClientProjectView>> response) {
+-        response.send(clients.projectsFor(Long.valueOf(clientId)));
++        response.send(clients.projectsFor(Long.valueOf(clientId), Boolean.parseBoolean(all)));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 940c5f1..7b91e8e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -62,14 +62,17 @@ public class ClientService {
+     }
+ 
+     /**
+-     * The projects done for a client, oldest first. Reads the {@code projects} table via SQL so the
+-     * clients feature stays self-contained and does not import the projects feature's Java types.
++     * The projects done for a client, oldest first. By default only ACTIVE, non-archived projects —
++     * the work still in play — are returned; pass {@code includeAll} to also surface the finished and
++     * archived (hidden) ones (how the client page's "show all" toggle reveals them). Reads the
++     * {@code projects} table via SQL so the clients feature stays self-contained and does not import
++     * the projects feature's Java types.
+      */
+     @Transactional(readOnly = true)
+-    public List<ClientProjectView> projectsFor(Long clientId) {
++    public List<ClientProjectView> projectsFor(Long clientId, boolean includeAll) {
++        String filter = includeAll ? "" : " AND status = 'ACTIVE' AND archived = FALSE";
+         return jdbc.query(
+-                "SELECT id, name FROM projects WHERE client_id = ? AND archived = FALSE "
+-                        + "ORDER BY id ASC",
++                "SELECT id, name FROM projects WHERE client_id = ?" + filter + " ORDER BY id ASC",
+                 (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
+                 clientId);
+     }
+diff --git a/src/main/resources/db/migration/V25__projects_client_status_archived_index.sql b/src/main/resources/db/migration/V25__projects_client_status_archived_index.sql
+new file mode 100644
+index 0000000..8b5b15f
+--- /dev/null
++++ b/src/main/resources/db/migration/V25__projects_client_status_archived_index.sql
+@@ -0,0 +1,3 @@
++-- A client's page now lists their ACTIVE, non-archived projects by default. Index the columns that
++-- lookup filters by so the default view stays cheap as a client accrues finished/archived work.
++CREATE INDEX idx_projects_client_status_archived ON projects (client_id, status, archived);
