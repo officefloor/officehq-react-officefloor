@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { routes } from './router/routes';
+import { GlobalSearch } from './features/search/GlobalSearch';
 
 // Minimal base shell. The opinionated conventions (file-based routing under router/, closed
 // primitives under ui/, no global store, scoped styles) are how checkpoints add features additively
@@ -13,6 +14,7 @@ function App() {
 
   return (
     <div data-testid="app-root">
+      <GlobalSearch />
       <nav data-testid="app-nav">
         {routes.map((r) => (
           <button

@@ -17,4 +17,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     /** How many projects one client has — for the client's at-a-glance counts. */
     long countByClientId(Long clientId);
+
+    /** Active projects whose name contains the query (case-insensitive), oldest first — for search. */
+    List<Project> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
 }
