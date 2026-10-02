@@ -1,0 +1,359 @@
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index 3089118..273e717 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -1,14 +1,16 @@
+ import React, { useEffect, useState } from 'react';
+ 
+ // An opened invoice's line items, rendered inside the projects feature. The owner lists the things
+-// being charged for — each with a description, how many, and the price each — and the invoice total
+-// is worked out for them (the sum of each line's quantity times unit price). Owns its own state and
+-// data loading (no global store); composed, not branched.
++// being charged for — each with a description, how many, the unit that quantity is measured in, and
++// the price each — and the amount for each line (and the invoice total) is worked out for them (the
++// sum of each line's quantity times unit price). Owns its own state and data loading (no global
++// store); composed, not branched.
+ type LineItem = {
+   id: number;
+   invoiceId: number;
+   description: string;
+   quantity: number;
++  unit: string;
+   unitPrice: number;
+ };
+ 
+@@ -29,11 +31,13 @@ export function InvoiceLineItems({
+   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
++  const [unit, setUnit] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
+   const [error, setError] = useState('');
+   const [editingId, setEditingId] = useState<number | null>(null);
+   const [editDescription, setEditDescription] = useState('');
+   const [editQty, setEditQty] = useState('');
++  const [editUnit, setEditUnit] = useState('');
+   const [editUnitPrice, setEditUnitPrice] = useState('');
+   const [editError, setEditError] = useState('');
+ 
+@@ -58,13 +62,14 @@ export function InvoiceLineItems({
+     const res = await fetch(`/api/invoices/${invoiceId}/lineitems`, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ description, quantity, unitPrice: price }),
++      body: JSON.stringify({ description, quantity, unit, unitPrice: price }),
+     });
+     if (!res.ok) {
+       return;
+     }
+     setDescription('');
+     setQty('');
++    setUnit('');
+     setUnitPrice('');
+     await load();
+   }
+@@ -73,6 +78,7 @@ export function InvoiceLineItems({
+     setEditingId(li.id);
+     setEditDescription(li.description);
+     setEditQty(String(li.quantity));
++    setEditUnit(li.unit);
+     setEditUnitPrice(String(li.unitPrice));
+     setEditError('');
+   }
+@@ -93,7 +99,7 @@ export function InvoiceLineItems({
+     const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
+       method: 'PUT',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ description: editDescription, quantity, unitPrice: price }),
++      body: JSON.stringify({ description: editDescription, quantity, unit: editUnit, unitPrice: price }),
+     });
+     if (!res.ok) {
+       return;
+@@ -138,6 +144,12 @@ export function InvoiceLineItems({
+           value={qty}
+           onChange={(e) => setQty(e.target.value)}
+         />
++        <input
++          data-testid="lineitem-form-unit"
++          placeholder="Unit"
++          value={unit}
++          onChange={(e) => setUnit(e.target.value)}
++        />
+         <input
+           data-testid="lineitem-form-unitprice"
+           placeholder="Price each"
+@@ -159,8 +171,9 @@ export function InvoiceLineItems({
+           <tr>
+             <th>Description</th>
+             <th>How many</th>
++            <th>Unit</th>
+             <th>Price each</th>
+-            <th>Line total</th>
++            <th>Amount</th>
+             <th></th>
+           </tr>
+         </thead>
+@@ -184,6 +197,14 @@ export function InvoiceLineItems({
+                     onChange={(e) => setEditQty(e.target.value)}
+                   />
+                 </td>
++                <td>
++                  <input
++                    data-testid="lineitem-edit-unit"
++                    placeholder="Unit"
++                    value={editUnit}
++                    onChange={(e) => setEditUnit(e.target.value)}
++                  />
++                </td>
+                 <td>
+                   <input
+                     data-testid="lineitem-edit-unitprice"
+@@ -193,7 +214,9 @@ export function InvoiceLineItems({
+                   />
+                 </td>
+                 <td data-testid="lineitem-total">
+-                  {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
++                  <span data-testid="lineitem-amount">
++                    {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
++                  </span>
+                 </td>
+                 <td>
+                   <button
+@@ -221,9 +244,12 @@ export function InvoiceLineItems({
+               <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
+                 <td data-testid="lineitem-description">{li.description}</td>
+                 <td data-testid="lineitem-qty">{li.quantity}</td>
++                <td data-testid="lineitem-unit">{li.unit}</td>
+                 <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
+                 <td data-testid="lineitem-total">
+-                  {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
++                  <span data-testid="lineitem-amount">
++                    {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
++                  </span>
+                 </td>
+                 <td>
+                   <button
+@@ -247,7 +273,7 @@ export function InvoiceLineItems({
+         </tbody>
+         <tfoot>
+           <tr>
+-            <td colSpan={3}>Total</td>
++            <td colSpan={4}>Total</td>
+             <td data-testid="invoice-amount">{formatAmount(total)}</td>
+             <td></td>
+           </tr>
+diff --git a/src/main/java/net/officefloor/hq/app/CreateLineItemLogic.java b/src/main/java/net/officefloor/hq/app/CreateLineItemLogic.java
+index 1385bad..cc31b69 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateLineItemLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateLineItemLogic.java
+@@ -33,7 +33,9 @@ public class CreateLineItemLogic {
+         if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price of zero or more is required");
+         }
+-        LineItem saved = lineItems.save(new LineItem(id, description.trim(), quantity, unitPrice));
++        String unit = newLineItem.getUnit() == null ? "" : newLineItem.getUnit().trim();
++        LineItem saved =
++                lineItems.save(new LineItem(id, description.trim(), quantity, unit, unitPrice));
+ 
+         // Keep the invoice's amount in step with its line items: the total the owner is charging.
+         BigDecimal amount = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
+@@ -43,6 +45,6 @@ public class CreateLineItemLogic {
+         invoices.save(invoice);
+ 
+         response.send(new LineItemView(saved.getId(), saved.getInvoiceId(), saved.getDescription(),
+-                saved.getQuantity(), saved.getUnitPrice()));
++                saved.getQuantity(), saved.getUnit(), saved.getUnitPrice()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItem.java b/src/main/java/net/officefloor/hq/app/LineItem.java
+index 1dd8002..3d88f5a 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItem.java
++++ b/src/main/java/net/officefloor/hq/app/LineItem.java
+@@ -28,16 +28,20 @@ public class LineItem {
+ 
+     private int quantity;
+ 
++    private String unit;
++
+     @Column(name = "unit_price")
+     private BigDecimal unitPrice;
+ 
+     public LineItem() {
+     }
+ 
+-    public LineItem(Long invoiceId, String description, int quantity, BigDecimal unitPrice) {
++    public LineItem(Long invoiceId, String description, int quantity, String unit,
++            BigDecimal unitPrice) {
+         this.invoiceId = invoiceId;
+         this.description = description;
+         this.quantity = quantity;
++        this.unit = unit;
+         this.unitPrice = unitPrice;
+     }
+ 
+@@ -73,6 +77,14 @@ public class LineItem {
+         this.quantity = quantity;
+     }
+ 
++    public String getUnit() {
++        return unit;
++    }
++
++    public void setUnit(String unit) {
++        this.unit = unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/LineItemView.java b/src/main/java/net/officefloor/hq/app/LineItemView.java
+index fc8e821..928e7cd 100644
+--- a/src/main/java/net/officefloor/hq/app/LineItemView.java
++++ b/src/main/java/net/officefloor/hq/app/LineItemView.java
+@@ -3,8 +3,9 @@ package net.officefloor.hq.app;
+ import java.math.BigDecimal;
+ 
+ /**
+- * A line item as the UI shows it: its id, the owning invoice's id, the description, the quantity and
+- * the unit price. The UI works out each line's total and the invoice amount from these.
++ * A line item as the UI shows it: its id, the owning invoice's id, the description, the quantity, the
++ * unit that quantity is measured in and the unit price. The UI works out each line's amount and the
++ * invoice amount from these.
+  */
+ public class LineItemView {
+ 
+@@ -12,14 +13,16 @@ public class LineItemView {
+     private final Long invoiceId;
+     private final String description;
+     private final int quantity;
++    private final String unit;
+     private final BigDecimal unitPrice;
+ 
+-    public LineItemView(Long id, Long invoiceId, String description, int quantity,
++    public LineItemView(Long id, Long invoiceId, String description, int quantity, String unit,
+             BigDecimal unitPrice) {
+         this.id = id;
+         this.invoiceId = invoiceId;
+         this.description = description;
+         this.quantity = quantity;
++        this.unit = unit;
+         this.unitPrice = unitPrice;
+     }
+ 
+@@ -39,6 +42,10 @@ public class LineItemView {
+         return quantity;
+     }
+ 
++    public String getUnit() {
++        return unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/ListLineItemsLogic.java b/src/main/java/net/officefloor/hq/app/ListLineItemsLogic.java
+index 865d2ab..68e3a5b 100644
+--- a/src/main/java/net/officefloor/hq/app/ListLineItemsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListLineItemsLogic.java
+@@ -16,7 +16,7 @@ public class ListLineItemsLogic {
+         Long id = Long.valueOf(invoiceId);
+         List<LineItemView> views = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
+                 .map(li -> new LineItemView(li.getId(), li.getInvoiceId(), li.getDescription(),
+-                        li.getQuantity(), li.getUnitPrice()))
++                        li.getQuantity(), li.getUnit(), li.getUnitPrice()))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/NewLineItem.java b/src/main/java/net/officefloor/hq/app/NewLineItem.java
+index c01e550..91ed4ea 100644
+--- a/src/main/java/net/officefloor/hq/app/NewLineItem.java
++++ b/src/main/java/net/officefloor/hq/app/NewLineItem.java
+@@ -4,7 +4,7 @@ import java.math.BigDecimal;
+ 
+ /**
+  * Request body for adding a line item to an invoice: what is being charged for (description), how
+- * many (quantity) and the price of each (unitPrice).
++ * many (quantity), the unit that quantity is measured in (unit) and the price of each (unitPrice).
+  */
+ public class NewLineItem {
+ 
+@@ -12,6 +12,8 @@ public class NewLineItem {
+ 
+     private Integer quantity;
+ 
++    private String unit;
++
+     private BigDecimal unitPrice;
+ 
+     public String getDescription() {
+@@ -30,6 +32,14 @@ public class NewLineItem {
+         this.quantity = quantity;
+     }
+ 
++    public String getUnit() {
++        return unit;
++    }
++
++    public void setUnit(String unit) {
++        this.unit = unit;
++    }
++
+     public BigDecimal getUnitPrice() {
+         return unitPrice;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f0d59cc..482ad0b 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -163,12 +163,15 @@ public class TestSupportController {
+                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
+                     dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
+             for (Map<String, Object> lineItem : lineItems) {
++                Object unit = lineItem.getOrDefault("unit", "");
+                 jdbc.update(
+-                        "INSERT INTO line_item (id, invoice_id, description, quantity, unit_price) "
+-                                + "VALUES (?, ?, ?, ?, ?)",
++                        "INSERT INTO line_item "
++                                + "(id, invoice_id, description, quantity, unit, unit_price) "
++                                + "VALUES (?, ?, ?, ?, ?, ?)",
+                         ((Number) lineItem.get("id")).longValue(), invoiceId,
+                         lineItem.get("description"),
+                         ((Number) lineItem.get("qty")).intValue(),
++                        unit == null ? "" : unit.toString(),
+                         new java.math.BigDecimal(lineItem.get("unitPrice").toString()));
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java b/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java
+index acfda9f..21c2b1e 100644
+--- a/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java
++++ b/src/main/java/net/officefloor/hq/app/UpdateLineItemLogic.java
+@@ -42,8 +42,10 @@ public class UpdateLineItemLogic {
+         if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price of zero or more is required");
+         }
++        String unit = newLineItem.getUnit() == null ? "" : newLineItem.getUnit().trim();
+         lineItem.setDescription(description.trim());
+         lineItem.setQuantity(quantity);
++        lineItem.setUnit(unit);
+         lineItem.setUnitPrice(unitPrice);
+         LineItem saved = lineItems.save(lineItem);
+ 
+@@ -55,6 +57,6 @@ public class UpdateLineItemLogic {
+         invoices.save(invoice);
+ 
+         response.send(new LineItemView(saved.getId(), saved.getInvoiceId(), saved.getDescription(),
+-                saved.getQuantity(), saved.getUnitPrice()));
++                saved.getQuantity(), saved.getUnit(), saved.getUnitPrice()));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V29__line_item_unit.sql b/src/main/resources/db/migration/V29__line_item_unit.sql
+new file mode 100644
+index 0000000..c769126
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__line_item_unit.sql
+@@ -0,0 +1,5 @@
++-- A charge line now records the unit its quantity is measured in (e.g. "hours", "items") alongside
++-- the quantity and unit price, so the line reads as "2 hours" rather than a bare "2". Existing rows
++-- have no unit yet, so default to the empty string; the line total is unaffected (quantity times
++-- unit price as before).
++ALTER TABLE line_item ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT '';
