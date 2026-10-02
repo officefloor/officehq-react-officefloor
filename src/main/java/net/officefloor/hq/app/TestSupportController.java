@@ -73,11 +73,13 @@ public class TestSupportController {
             Object budgetValue = project.get("budget");
             java.math.BigDecimal budget = budgetValue == null ? java.math.BigDecimal.ZERO
                     : new java.math.BigDecimal(budgetValue.toString());
+            Object code = project.getOrDefault("code", "");
             jdbc.update(
-                    "INSERT INTO project (id, name, client_id, status, archived, budget) "
-                            + "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO project (id, name, client_id, status, archived, budget, code) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     ((Number) project.get("id")).longValue(), project.get("name"),
-                    ((Number) project.get("clientId")).longValue(), status, archived, budget);
+                    ((Number) project.get("clientId")).longValue(), status, archived, budget,
+                    code == null ? "" : code.toString());
         }
         List<Map<String, Object>> tasks =
                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());

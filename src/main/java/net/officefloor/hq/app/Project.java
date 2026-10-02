@@ -29,6 +29,9 @@ public class Project {
     /** The budget set against this project; what has been invoiced is compared to it (V23). */
     private BigDecimal budget;
 
+    /** The short reference code set when the project is created; unique across projects (V33). */
+    private String code;
+
     public Project() {
     }
 
@@ -41,11 +44,16 @@ public class Project {
     }
 
     public Project(String name, Long clientId, String status, BigDecimal budget) {
+        this(name, clientId, status, budget, "");
+    }
+
+    public Project(String name, Long clientId, String status, BigDecimal budget, String code) {
         this.name = name;
         this.clientId = clientId;
         this.archived = false;
         this.status = status;
         this.budget = budget;
+        this.code = code;
     }
 
     public Long getId() {
@@ -94,5 +102,13 @@ public class Project {
 
     public void setBudget(BigDecimal budget) {
         this.budget = budget;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 }

@@ -20,4 +20,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     /** Active projects whose name contains the query (case-insensitive), oldest first — for search. */
     List<Project> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+
+    /** Whether any project already holds this reference code (case-insensitive) — codes are unique. */
+    boolean existsByCodeIgnoreCase(String code);
 }

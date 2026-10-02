@@ -16,6 +16,7 @@ type Project = {
   archived: boolean;
   status: string;
   tagIds: number[];
+  code: string;
 };
 type Client = { id: number; name: string; email: string };
 type Tag = { id: number; name: string };
@@ -31,6 +32,8 @@ export function ProjectsPage() {
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState('ACTIVE');
   const [budget, setBudget] = useState('');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [filterTagId, setFilterTagId] = useState('');
@@ -77,6 +80,15 @@ export function ProjectsPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Every job needs a reference code — block the save and surface the error if it is missing, so
+    // no row is created.
+    if (code.trim() === '') {
+      setCodeError('A reference code is required');
+      return;
+    }
+    setCodeError('');
+
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -85,15 +97,23 @@ export function ProjectsPage() {
         clientId: Number(clientId),
         status,
         budget: budget === '' ? 0 : Number(budget),
+        code: code.trim(),
       }),
     });
     if (!res.ok) {
+      // A 409 means the code is already taken by another job; anything else is a bad code.
+      setCodeError(
+        res.status === 409
+          ? 'A job with this code already exists'
+          : 'A reference code is required',
+      );
       return;
     }
     setName('');
     setClientId('');
     setStatus('ACTIVE');
     setBudget('');
+    setCode('');
     await load();
   }
 
@@ -137,6 +157,17 @@ export function ProjectsPage() {
           value={budget}
           onChange={(e) => setBudget(e.target.value)}
         />
+        <input
+          data-testid="project-form-code"
+          placeholder="Reference code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+        {codeError && (
+          <p data-testid="project-form-code-error" role="alert">
+            {codeError}
+          </p>
+        )}
         <button type="submit" data-testid="project-form-submit">
           Add job
         </button>
@@ -191,6 +222,7 @@ export function ProjectsPage() {
         <table data-testid="projects-table">
           <thead>
             <tr>
+              <th>Code</th>
               <th>Name</th>
               <th>Client</th>
               <th>Status</th>
@@ -199,6 +231,7 @@ export function ProjectsPage() {
           <tbody>
             {visible.map((p) => (
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
+                <td data-testid="project-code">{p.code}</td>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
                 <td data-testid="project-status">{p.status}</td>

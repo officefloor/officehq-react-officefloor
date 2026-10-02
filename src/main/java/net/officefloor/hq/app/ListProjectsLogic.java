@@ -19,7 +19,7 @@ public class ListProjectsLogic {
         List<ProjectView> views = projects.findAllByOrderByIdAsc().stream()
                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
                         clientNames.get(p.getClientId()), p.isArchived(), p.getStatus(),
-                        tagIdsByProject.getOrDefault(p.getId(), List.of())))
+                        tagIdsByProject.getOrDefault(p.getId(), List.of()), p.getCode()))
                 .collect(Collectors.toList());
         response.send(views);
     }

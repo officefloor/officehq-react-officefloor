@@ -16,17 +16,23 @@ public class ProjectView {
     private final boolean archived;
     private final String status;
     private final List<Long> tagIds;
+    private final String code;
 
     public ProjectView(Long id, String name, Long clientId, String clientName) {
-        this(id, name, clientId, clientName, false, "ACTIVE", List.of());
+        this(id, name, clientId, clientName, false, "ACTIVE", List.of(), "");
     }
 
     public ProjectView(Long id, String name, Long clientId, String clientName, String status) {
-        this(id, name, clientId, clientName, false, status, List.of());
+        this(id, name, clientId, clientName, false, status, List.of(), "");
     }
 
     public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
             String status, List<Long> tagIds) {
+        this(id, name, clientId, clientName, archived, status, tagIds, "");
+    }
+
+    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
+            String status, List<Long> tagIds, String code) {
         this.id = id;
         this.name = name;
         this.clientId = clientId;
@@ -34,6 +40,7 @@ public class ProjectView {
         this.archived = archived;
         this.status = status;
         this.tagIds = tagIds;
+        this.code = code;
     }
 
     public Long getId() {
@@ -62,5 +69,9 @@ public class ProjectView {
 
     public List<Long> getTagIds() {
         return tagIds;
+    }
+
+    public String getCode() {
+        return code;
     }
 }

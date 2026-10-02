@@ -13,6 +13,8 @@ public class NewProject {
 
     private BigDecimal budget;
 
+    private String code;
+
     public String getName() {
         return name;
     }
@@ -43,5 +45,13 @@ public class NewProject {
 
     public void setBudget(BigDecimal budget) {
         this.budget = budget;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 }
