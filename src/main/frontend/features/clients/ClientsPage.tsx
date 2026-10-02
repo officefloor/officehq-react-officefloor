@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ClientProjects } from './ClientProjects';
+import { ClientContacts } from './ClientContacts';
 
 // The clients feature owns its own state, data loading and layout (no global store). It lists every
 // client and adds a new one by name + email.
@@ -121,6 +122,7 @@ export function ClientsPage() {
       )}
 
       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+      {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
     </section>
   );
 }
