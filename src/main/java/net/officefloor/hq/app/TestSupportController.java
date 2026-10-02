@@ -36,6 +36,7 @@ public class TestSupportController {
         // referential integrity for the duration of the clear, then restore it.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE line_item RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
@@ -81,17 +82,45 @@ public class TestSupportController {
         List<Map<String, Object>> invoices =
                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
         for (Map<String, Object> invoice : invoices) {
-            Object status = invoice.getOrDefault("status", "UNPAID");
+            Object status = invoice.getOrDefault("status", "DRAFT");
             Object issuedDate = invoice.get("issuedDate");
             Object dueDate = invoice.get("dueDate");
+            long invoiceId = ((Number) invoice.get("id")).longValue();
+            // An invoice's amount is the sum of its line items (quantity times unit price); work it
+            // out here so a fixture lists the things being charged for, not a pre-computed figure.
+            // A fixture may still pass an explicit amount for an invoice with no line items.
+            List<Map<String, Object>> lineItems =
+                    (List<Map<String, Object>>) invoice.getOrDefault("lineItems", null);
+            java.math.BigDecimal amount;
+            if (lineItems != null) {
+                amount = java.math.BigDecimal.ZERO;
+                for (Map<String, Object> lineItem : lineItems) {
+                    java.math.BigDecimal unitPrice =
+                            new java.math.BigDecimal(lineItem.get("unitPrice").toString());
+                    int qty = ((Number) lineItem.get("qty")).intValue();
+                    amount = amount.add(unitPrice.multiply(java.math.BigDecimal.valueOf(qty)));
+                }
+            } else {
+                lineItems = List.of();
+                Object explicit = invoice.get("amount");
+                amount = explicit == null ? java.math.BigDecimal.ZERO
+                        : new java.math.BigDecimal(explicit.toString());
+            }
             jdbc.update(
                     "INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date) "
                             + "VALUES (?, ?, ?, ?, ?, ?)",
-                    ((Number) invoice.get("id")).longValue(),
-                    ((Number) invoice.get("projectId")).longValue(),
-                    ((Number) invoice.get("amount")), status,
+                    invoiceId, ((Number) invoice.get("projectId")).longValue(), amount, status,
                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
                     dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
+            for (Map<String, Object> lineItem : lineItems) {
+                jdbc.update(
+                        "INSERT INTO line_item (id, invoice_id, description, quantity, unit_price) "
+                                + "VALUES (?, ?, ?, ?, ?)",
+                        ((Number) lineItem.get("id")).longValue(), invoiceId,
+                        lineItem.get("description"),
+                        ((Number) lineItem.get("qty")).intValue(),
+                        new java.math.BigDecimal(lineItem.get("unitPrice").toString()));
+            }
         }
     }
 }
