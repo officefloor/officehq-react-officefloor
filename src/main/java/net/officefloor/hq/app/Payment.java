@@ -29,6 +29,11 @@ public class Payment {
     @Column(name = "paid_date")
     private LocalDate paidDate;
 
+    // The lump {@link ClientPayment} this payment is a share of, or null for a standalone payment
+    // recorded directly against a single invoice (V34).
+    @Column(name = "client_payment_id")
+    private Long clientPaymentId;
+
     public Payment() {
     }
 
@@ -36,6 +41,13 @@ public class Payment {
         this.invoiceId = invoiceId;
         this.amount = amount;
         this.paidDate = paidDate;
+    }
+
+    public Payment(Long invoiceId, BigDecimal amount, LocalDate paidDate, Long clientPaymentId) {
+        this.invoiceId = invoiceId;
+        this.amount = amount;
+        this.paidDate = paidDate;
+        this.clientPaymentId = clientPaymentId;
     }
 
     public Long getId() {
@@ -68,5 +80,13 @@ public class Payment {
 
     public void setPaidDate(LocalDate paidDate) {
         this.paidDate = paidDate;
+    }
+
+    public Long getClientPaymentId() {
+        return clientPaymentId;
+    }
+
+    public void setClientPaymentId(Long clientPaymentId) {
+        this.clientPaymentId = clientPaymentId;
     }
 }
