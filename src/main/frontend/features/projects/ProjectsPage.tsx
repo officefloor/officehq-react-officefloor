@@ -33,6 +33,16 @@ export function ProjectsPage() {
     void loadClients();
   }, []);
 
+  async function onDelete(id: number) {
+    const res = await fetch(`/api/projects/${id}/delete`, { method: 'POST' });
+    if (res.ok) {
+      if (openProjectId === id) {
+        setOpenProjectId(null);
+      }
+      await loadProjects();
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const res = await fetch('/api/projects', {
@@ -98,6 +108,13 @@ export function ProjectsPage() {
                     onClick={() => setOpenProjectId(project.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    data-testid={`project-delete-${project.id}`}
+                    type="button"
+                    onClick={() => void onDelete(project.id)}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>
