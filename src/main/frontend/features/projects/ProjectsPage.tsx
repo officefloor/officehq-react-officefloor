@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ProjectInvoices } from './ProjectInvoices';
+import { ProjectTags } from './ProjectTags';
 import { ProjectTasks } from './ProjectTasks';
 
 // The projects feature owns its own state, data loading and layout (no global store). It lists every
@@ -157,6 +158,7 @@ export function ProjectsPage() {
 
       {openProjectId !== null ? (
         <>
+          <ProjectTags projectId={openProjectId} />
           <ProjectTasks projectId={openProjectId} />
           <ProjectInvoices projectId={openProjectId} />
         </>
