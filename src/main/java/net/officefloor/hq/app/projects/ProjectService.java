@@ -50,7 +50,7 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public List<ProjectView> list(boolean includeArchived, Long tagId) {
         StringBuilder sql = new StringBuilder(
-                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
+                "SELECT p.id, p.name, p.client_id, p.status, c.name AS client_name "
                         + "FROM projects p JOIN clients c ON p.client_id = c.id ");
         List<Object> args = new java.util.ArrayList<>();
         if (tagId != null) {
@@ -63,25 +63,30 @@ public class ProjectService {
         sql.append("ORDER BY p.id ASC");
         return jdbc.query(sql.toString(),
                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
-                        rs.getLong("client_id"), rs.getString("client_name")),
+                        rs.getLong("client_id"), rs.getString("client_name"),
+                        rs.getString("status")),
                 args.toArray());
     }
 
     @Transactional
-    public ProjectView create(String name, Long clientId) {
+    public ProjectView create(String name, Long clientId, String status) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("A project requires a name");
         }
         if (clientId == null) {
             throw new IllegalArgumentException("A project requires a client");
         }
+        // Default to ACTIVE when the caller doesn't pick a status, matching the column default.
+        String projectStatus = (status == null || status.isBlank()) ? "ACTIVE" : status;
         Project project = new Project();
         project.setName(name);
         project.setClientId(clientId);
+        project.setStatus(projectStatus);
         Project saved = repository.save(project);
         String clientName = jdbc.queryForObject(
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
-        return new ProjectView(saved.getId(), saved.getName(), clientId, clientName);
+        return new ProjectView(saved.getId(), saved.getName(), clientId, clientName,
+                saved.getStatus());
     }
 
     @Transactional

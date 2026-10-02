@@ -7,12 +7,14 @@ public class ProjectView {
     private final String name;
     private final long clientId;
     private final String clientName;
+    private final String status;
 
-    public ProjectView(long id, String name, long clientId, String clientName) {
+    public ProjectView(long id, String name, long clientId, String clientName, String status) {
         this.id = id;
         this.name = name;
         this.clientId = clientId;
         this.clientName = clientName;
+        this.status = status;
     }
 
     public long getId() {
@@ -29,5 +31,9 @@ public class ProjectView {
 
     public String getClientName() {
         return clientName;
+    }
+
+    public String getStatus() {
+        return status;
     }
 }

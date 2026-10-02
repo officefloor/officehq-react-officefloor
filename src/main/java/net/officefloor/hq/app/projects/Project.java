@@ -21,6 +21,8 @@ public class Project {
     @Column(name = "client_id")
     private Long clientId;
 
+    private String status;
+
     public Long getId() {
         return id;
     }
@@ -43,5 +45,13 @@ public class Project {
 
     public void setClientId(Long clientId) {
         this.clientId = clientId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

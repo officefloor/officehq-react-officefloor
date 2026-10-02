@@ -8,6 +8,7 @@ public class NewProject {
 
     private String name;
     private Long clientId;
+    private String status;
 
     public String getName() {
         return name;
@@ -23,5 +24,13 @@ public class NewProject {
 
     public void setClientId(Long clientId) {
         this.clientId = clientId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

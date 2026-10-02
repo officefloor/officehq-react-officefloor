@@ -6,6 +6,6 @@ import net.officefloor.web.ObjectResponse;
 public class CreateProjectLogic {
 
     public void service(NewProject body, ProjectService projects, ObjectResponse<ProjectView> response) {
-        response.send(projects.create(body.getName(), body.getClientId()));
+        response.send(projects.create(body.getName(), body.getClientId(), body.getStatus()));
     }
 }

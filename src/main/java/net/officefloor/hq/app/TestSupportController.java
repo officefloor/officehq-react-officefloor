@@ -74,8 +74,9 @@ public class TestSupportController {
         for (Map<String, Object> project : projects) {
             long id = ((Number) project.get("id")).longValue();
             long clientId = ((Number) project.get("clientId")).longValue();
-            jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
-                    id, project.get("name"), clientId);
+            String status = (String) project.getOrDefault("status", "ACTIVE");
+            jdbc.update("INSERT INTO projects (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+                    id, project.get("name"), clientId, status);
             maxProjectId = Math.max(maxProjectId, id);
         }
         if (maxProjectId > 0) {
