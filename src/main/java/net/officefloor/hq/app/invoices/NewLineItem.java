@@ -12,6 +12,7 @@ public class NewLineItem {
 
     private String description;
     private Integer qty;
+    private String unit;
     private BigDecimal unitPrice;
 
     public String getDescription() {
@@ -28,6 +29,14 @@ public class NewLineItem {
 
     public void setQty(Integer qty) {
         this.qty = qty;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public void setUnit(String unit) {
+        this.unit = unit;
     }
 
     public BigDecimal getUnitPrice() {

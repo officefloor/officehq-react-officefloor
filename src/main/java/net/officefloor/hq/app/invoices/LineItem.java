@@ -28,6 +28,8 @@ public class LineItem {
 
     private int qty;
 
+    private String unit;
+
     @Column(name = "unit_price")
     private BigDecimal unitPrice;
 
@@ -61,6 +63,14 @@ public class LineItem {
 
     public void setQty(int qty) {
         this.qty = qty;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public void setUnit(String unit) {
+        this.unit = unit;
     }
 
     public BigDecimal getUnitPrice() {

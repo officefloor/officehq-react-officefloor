@@ -190,10 +190,11 @@ public class TestSupportController {
             maxInvoiceId = Math.max(maxInvoiceId, id);
             for (Map<String, Object> lineItem : lineItems) {
                 long lineItemId = ((Number) lineItem.get("id")).longValue();
+                Object unit = lineItem.getOrDefault("unit", "unit");
                 jdbc.update(
-                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price) VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO line_items (id, invoice_id, description, qty, unit, unit_price) VALUES (?, ?, ?, ?, ?, ?)",
                         lineItemId, id, lineItem.get("description"),
-                        ((Number) lineItem.get("qty")).intValue(), lineItem.get("unitPrice"));
+                        ((Number) lineItem.get("qty")).intValue(), unit, lineItem.get("unitPrice"));
                 maxLineItemId = Math.max(maxLineItemId, lineItemId);
             }
         }

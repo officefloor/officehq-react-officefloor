@@ -11,6 +11,7 @@ type LineItem = {
   invoiceId: number;
   description: string;
   qty: number;
+  unit: string;
   unitPrice: number;
 };
 
@@ -32,6 +33,7 @@ export function InvoiceLineItems({
   const [status, setStatus] = useState('');
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
+  const [unit, setUnit] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
 
   async function load() {
@@ -75,6 +77,7 @@ export function InvoiceLineItems({
       body: JSON.stringify({
         description,
         qty: Number(qty),
+        unit,
         unitPrice: Number(unitPrice),
       }),
     });
@@ -85,6 +88,7 @@ export function InvoiceLineItems({
       void loadInvoice();
       setDescription('');
       setQty('');
+      setUnit('');
       setUnitPrice('');
     }
   }
@@ -104,6 +108,7 @@ export function InvoiceLineItems({
           <tr>
             <th>Description</th>
             <th>Qty</th>
+            <th>Unit</th>
             <th>Price each</th>
             <th>Amount</th>
           </tr>
@@ -113,6 +118,7 @@ export function InvoiceLineItems({
             <tr key={item.id} data-testid={`lineitem-row-${item.id}`}>
               <td data-testid="lineitem-description">{item.description}</td>
               <td data-testid="lineitem-qty">{item.qty}</td>
+              <td data-testid="lineitem-unit">{item.unit}</td>
               <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice)}</td>
               <td data-testid="lineitem-amount">
                 {formatMoney(item.qty * Number(item.unitPrice))}
@@ -143,6 +149,12 @@ export function InvoiceLineItems({
           placeholder="Qty"
           value={qty}
           onChange={(e) => setQty(e.target.value)}
+        />
+        <input
+          data-testid="lineitem-form-unit"
+          placeholder="Unit"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
         />
         <input
           data-testid="lineitem-form-unitprice"

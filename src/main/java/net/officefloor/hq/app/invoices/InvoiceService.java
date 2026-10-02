@@ -205,9 +205,9 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public List<LineItemView> listLineItems(Long invoiceId) {
         return jdbc.query(
-                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE invoice_id = ? ORDER BY id ASC",
+                "SELECT id, invoice_id, description, qty, unit, unit_price FROM line_items WHERE invoice_id = ? ORDER BY id ASC",
                 (rs, i) -> new LineItemView(rs.getLong("id"), rs.getLong("invoice_id"),
-                        rs.getString("description"), rs.getInt("qty"),
+                        rs.getString("description"), rs.getInt("qty"), rs.getString("unit"),
                         rs.getBigDecimal("unit_price")),
                 invoiceId);
     }
@@ -234,6 +234,9 @@ public class InvoiceService {
         lineItem.setInvoiceId(invoiceId);
         lineItem.setDescription(body.getDescription());
         lineItem.setQty(body.getQty());
+        // The unit the quantity is counted in; default to a generic "unit" when none is given.
+        String unit = body.getUnit() == null || body.getUnit().isBlank() ? "unit" : body.getUnit().trim();
+        lineItem.setUnit(unit);
         lineItem.setUnitPrice(body.getUnitPrice());
         lineItemRepository.save(lineItem);
         jdbc.update(
