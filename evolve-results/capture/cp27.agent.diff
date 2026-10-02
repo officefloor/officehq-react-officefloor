@@ -1,0 +1,137 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 9ec9c53..58a2791 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -12,21 +12,30 @@ type Project = {
+   clientId: number;
+   clientName: string;
+   archived: boolean;
++  tagIds: number[];
+ };
+ type Client = { id: number; name: string; email: string };
++type Tag = { id: number; name: string };
+ 
+ export function ProjectsPage() {
+   const [projects, setProjects] = useState<Project[]>([]);
+   const [clients, setClients] = useState<Client[]>([]);
++  const [tags, setTags] = useState<Tag[]>([]);
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
++  const [filterTagId, setFilterTagId] = useState('');
+ 
+   async function load() {
+-    const [pRes, cRes] = await Promise.all([fetch('/api/projects'), fetch('/api/clients')]);
++    const [pRes, cRes, tRes] = await Promise.all([
++      fetch('/api/projects'),
++      fetch('/api/clients'),
++      fetch('/api/tags'),
++    ]);
+     setProjects(await pRes.json());
+     setClients(await cRes.json());
++    setTags(await tRes.json());
+   }
+ 
+   useEffect(() => {
+@@ -109,8 +118,24 @@ export function ProjectsPage() {
+         {showArchived ? 'Hide archived' : 'Show archived'}
+       </button>
+ 
++      <select
++        data-testid="project-tag-filter"
++        value={filterTagId}
++        onChange={(e) => setFilterTagId(e.target.value)}
++      >
++        <option value="">All tags</option>
++        {tags.map((t) => (
++          <option key={t.id} value={t.id}>
++            {t.name}
++          </option>
++        ))}
++      </select>
++
+       {(() => {
+-        const visible = showArchived ? projects : projects.filter((p) => !p.archived);
++        const byArchived = showArchived ? projects : projects.filter((p) => !p.archived);
++        const visible = filterTagId
++          ? byArchived.filter((p) => (p.tagIds ?? []).includes(Number(filterTagId)))
++          : byArchived;
+         return visible.length === 0 ? (
+           <p data-testid="projects-empty">No projects yet.</p>
+         ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+index 6ee8754..576d929 100644
+--- a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+@@ -10,12 +10,16 @@ import net.officefloor.web.ObjectResponse;
+ public class ListProjectsLogic {
+ 
+     public void service(ProjectRepository projects, ClientRepository clients,
+-            ObjectResponse<List<ProjectView>> response) {
++            ProjectTagRepository projectTags, ObjectResponse<List<ProjectView>> response) {
+         Map<Long, String> clientNames = clients.findAll().stream()
+                 .collect(Collectors.toMap(Client::getId, Client::getName));
++        Map<Long, List<Long>> tagIdsByProject = projectTags.findAll().stream()
++                .collect(Collectors.groupingBy(ProjectTag::getProjectId,
++                        Collectors.mapping(ProjectTag::getTagId, Collectors.toList())));
+         List<ProjectView> views = projects.findAllByOrderByIdAsc().stream()
+                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
+-                        clientNames.get(p.getClientId()), p.isArchived()))
++                        clientNames.get(p.getClientId()), p.isArchived(),
++                        tagIdsByProject.getOrDefault(p.getId(), List.of())))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectView.java b/src/main/java/net/officefloor/hq/app/ProjectView.java
+index 42d01b3..eb34e9f 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectView.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectView.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.List;
++
+ /**
+  * A project as the UI shows it: the project's id and name plus the owning client's id and NAME
+- * (the list surfaces the client's name, not its id). Built by joining a project to its client.
++ * (the list surfaces the client's name, not its id). Built by joining a project to its client. Also
++ * carries the ids of the tags attached to it, so the list can be filtered by tag.
+  */
+ public class ProjectView {
+ 
+@@ -11,17 +14,24 @@ public class ProjectView {
+     private final Long clientId;
+     private final String clientName;
+     private final boolean archived;
++    private final List<Long> tagIds;
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName) {
+-        this(id, name, clientId, clientName, false);
++        this(id, name, clientId, clientName, false, List.of());
+     }
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived) {
++        this(id, name, clientId, clientName, archived, List.of());
++    }
++
++    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
++            List<Long> tagIds) {
+         this.id = id;
+         this.name = name;
+         this.clientId = clientId;
+         this.clientName = clientName;
+         this.archived = archived;
++        this.tagIds = tagIds;
+     }
+ 
+     public Long getId() {
+@@ -43,4 +53,8 @@ public class ProjectView {
+     public boolean isArchived() {
+         return archived;
+     }
++
++    public List<Long> getTagIds() {
++        return tagIds;
++    }
+ }
