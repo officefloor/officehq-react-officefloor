@@ -25,6 +25,6 @@ public class CreateInvoiceLogic {
         projects.findById(id).orElseThrow(
                 () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing project is required"));
         Invoice saved = invoices.save(new Invoice(id, amount));
-        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount()));
+        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(), saved.getStatus()));
     }
 }

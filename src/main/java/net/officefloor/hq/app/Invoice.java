@@ -22,12 +22,15 @@ public class Invoice {
 
     private BigDecimal amount;
 
+    private String status;
+
     public Invoice() {
     }
 
     public Invoice(Long projectId, BigDecimal amount) {
         this.projectId = projectId;
         this.amount = amount;
+        this.status = "UNPAID";
     }
 
     public Long getId() {
@@ -52,5 +55,13 @@ public class Invoice {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }
