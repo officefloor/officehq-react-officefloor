@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { formatMoney } from '../../ui/money';
+import { InvoicePayments } from './InvoicePayments';
 
 // Opened from a project's invoice row (invoice-open-<id>): instead of typing one figure, you list
 // the things you are charging for — each with a description, how many, and the price each. The
@@ -132,6 +133,8 @@ export function InvoiceLineItems({
       </form>
 
       <p data-testid="invoice-amount">{formatMoney(total)}</p>
+
+      <InvoicePayments invoiceId={invoiceId} />
     </section>
   );
 }

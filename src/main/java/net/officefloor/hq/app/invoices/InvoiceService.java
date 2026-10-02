@@ -20,13 +20,15 @@ public class InvoiceService {
 
     private final InvoiceRepository repository;
     private final LineItemRepository lineItemRepository;
+    private final PaymentRepository paymentRepository;
     private final JdbcTemplate jdbc;
     private final Audit audit;
 
     public InvoiceService(InvoiceRepository repository, LineItemRepository lineItemRepository,
-            JdbcTemplate jdbc, Audit audit) {
+            PaymentRepository paymentRepository, JdbcTemplate jdbc, Audit audit) {
         this.repository = repository;
         this.lineItemRepository = lineItemRepository;
+        this.paymentRepository = paymentRepository;
         this.jdbc = jdbc;
         this.audit = audit;
     }
@@ -181,6 +183,38 @@ public class InvoiceService {
                 "UPDATE invoices SET amount = COALESCE((SELECT SUM(qty * unit_price) FROM line_items WHERE invoice_id = ?), 0) WHERE id = ?",
                 invoiceId, invoiceId);
         return listLineItems(invoiceId);
+    }
+
+    /** The payments a client has made on an invoice, in the order they were recorded. */
+    @Transactional(readOnly = true)
+    public List<PaymentView> listPayments(Long invoiceId) {
+        return jdbc.query(
+                "SELECT id, invoice_id, amount, paid_date FROM payments WHERE invoice_id = ? ORDER BY id ASC",
+                (rs, i) -> new PaymentView(rs.getLong("id"), rs.getLong("invoice_id"),
+                        rs.getBigDecimal("amount"), rs.getDate("paid_date").toLocalDate().toString()),
+                invoiceId);
+    }
+
+    /** Record one payment a client has made against an invoice. Returns the invoice's payments. */
+    @Transactional
+    public List<PaymentView> addPayment(Long invoiceId, NewPayment body) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        if (body == null || body.getAmount() == null || body.getAmount().signum() <= 0) {
+            throw new IllegalArgumentException("A payment requires an amount greater than zero");
+        }
+        if (body.getDate() == null || body.getDate().isBlank()) {
+            throw new IllegalArgumentException("A payment requires a date");
+        }
+        Payment payment = new Payment();
+        payment.setInvoiceId(invoiceId);
+        payment.setAmount(body.getAmount());
+        payment.setPaidDate(LocalDate.parse(body.getDate()));
+        paymentRepository.save(payment);
+        audit.record("PAYMENT_RECORDED invoice=" + invoiceId + " amount="
+                + body.getAmount().setScale(2) + " date=" + body.getDate());
+        return listPayments(invoiceId);
     }
 
     private InvoiceView find(Long invoiceId) {

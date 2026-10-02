@@ -36,6 +36,7 @@ public class TestSupportController {
         audit.clear();
         // Disable FK checks so a referenced parent (clients) can be truncated alongside its child.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE payments RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
@@ -186,6 +187,22 @@ public class TestSupportController {
         }
         if (maxLineItemId > 0) {
             jdbc.execute("ALTER TABLE line_items ALTER COLUMN id RESTART WITH " + (maxLineItemId + 1));
+        }
+
+        List<Map<String, Object>> payments =
+                (List<Map<String, Object>>) fixture.getOrDefault("payments", List.of());
+        long maxPaymentId = 0;
+        for (Map<String, Object> payment : payments) {
+            long id = ((Number) payment.get("id")).longValue();
+            long invoiceId = ((Number) payment.get("invoiceId")).longValue();
+            jdbc.update(
+                    "INSERT INTO payments (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    id, invoiceId, ((Number) payment.get("amount")).doubleValue(),
+                    payment.get("date"));
+            maxPaymentId = Math.max(maxPaymentId, id);
+        }
+        if (maxPaymentId > 0) {
+            jdbc.execute("ALTER TABLE payments ALTER COLUMN id RESTART WITH " + (maxPaymentId + 1));
         }
     }
 }
