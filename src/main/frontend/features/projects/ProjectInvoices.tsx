@@ -20,15 +20,21 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
+  const [sort, setSort] = useState<'id' | 'due'>('id');
 
-  async function load() {
-    const res = await fetch(`/api/projects/${projectId}/invoices`);
+  async function load(order: 'id' | 'due' = sort) {
+    const res = await fetch(`/api/projects/${projectId}/invoices?sort=${order}`);
     setInvoices(await res.json());
   }
 
   useEffect(() => {
     void load();
   }, [projectId]);
+
+  async function sortByDue() {
+    setSort('due');
+    await load('due');
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +86,10 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
           </p>
         ) : null}
       </form>
+
+      <button type="button" data-testid="invoice-sort-due" onClick={() => void sortByDue()}>
+        Sort by due date
+      </button>
 
       <table data-testid="project-invoices-table">
         <thead>

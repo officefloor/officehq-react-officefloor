@@ -3,15 +3,23 @@ package net.officefloor.hq.app;
 import java.util.List;
 import java.util.stream.Collectors;
 import net.officefloor.web.HttpPathParameter;
+import net.officefloor.web.HttpQueryParameter;
 import net.officefloor.web.ObjectResponse;
 
-/** GET /api/projects/{projectId}/invoices — a project's invoices, oldest first. */
+/**
+ * GET /api/projects/{projectId}/invoices — a project's invoices. Ordered oldest first by default;
+ * {@code ?sort=due} orders them by their due date, earliest first (id as a stable tie-breaker).
+ */
 public class ListInvoicesLogic {
 
     public void service(@HttpPathParameter("projectId") String projectId,
-            InvoiceRepository invoices, ObjectResponse<List<InvoiceView>> response) {
+            @HttpQueryParameter("sort") String sort, InvoiceRepository invoices,
+            ObjectResponse<List<InvoiceView>> response) {
         Long id = Long.valueOf(projectId);
-        List<InvoiceView> views = invoices.findByProjectIdOrderByIdAsc(id).stream()
+        List<Invoice> ordered = "due".equals(sort)
+                ? invoices.findByProjectIdOrderByDueDateAscIdAsc(id)
+                : invoices.findByProjectIdOrderByIdAsc(id);
+        List<InvoiceView> views = ordered.stream()
                 .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), inv.getStatus(),
                         inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
                         inv.getDueDate() == null ? null : inv.getDueDate().toString()))
