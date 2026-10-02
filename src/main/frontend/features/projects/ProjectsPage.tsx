@@ -6,17 +6,28 @@ import { ProjectDetail } from './ProjectDetail';
 // a <select> whose option values are client ids.
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId: number; clientName: string };
+type Tag = { id: number; name: string };
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
   async function loadProjects() {
-    const res = await fetch(showArchived ? '/api/projects?includeArchived=true' : '/api/projects');
+    const params = new URLSearchParams();
+    if (showArchived) {
+      params.set('includeArchived', 'true');
+    }
+    if (tagFilter) {
+      params.set('tagId', tagFilter);
+    }
+    const query = params.toString();
+    const res = await fetch(query ? `/api/projects?${query}` : '/api/projects');
     if (res.ok) {
       setProjects(await res.json());
     }
@@ -29,15 +40,25 @@ export function ProjectsPage() {
     }
   }
 
+  async function loadTags() {
+    const res = await fetch('/api/tags');
+    if (res.ok) {
+      setTags(await res.json());
+    }
+  }
+
   useEffect(() => {
-    void loadProjects();
     void loadClients();
+    void loadTags();
   }, []);
 
-  // Re-fetch when the archived toggle flips so tucked-away projects appear or disappear.
+  // Load the list on mount and re-fetch whenever the archived toggle flips or the tag filter
+  // changes, so the list always reflects them. This is the single owner of the projects fetch:
+  // keeping it the only caller avoids a stray initial request resolving after a filtered one and
+  // overwriting the narrowed list.
   useEffect(() => {
     void loadProjects();
-  }, [showArchived]);
+  }, [showArchived, tagFilter]);
 
   async function onArchive(id: number) {
     const res = await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
@@ -108,6 +129,19 @@ export function ProjectsPage() {
       >
         {showArchived ? 'Hide archived' : 'Show archived'}
       </button>
+
+      <select
+        data-testid="project-tag-filter"
+        value={tagFilter}
+        onChange={(e) => setTagFilter(e.target.value)}
+      >
+        <option value="">All tags</option>
+        {tags.map((tag) => (
+          <option key={tag.id} value={tag.id}>
+            {tag.name}
+          </option>
+        ))}
+      </select>
 
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>

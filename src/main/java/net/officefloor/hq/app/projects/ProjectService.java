@@ -38,14 +38,33 @@ public class ProjectService {
      */
     @Transactional(readOnly = true)
     public List<ProjectView> list(boolean includeArchived) {
-        String filter = includeArchived ? "" : "WHERE p.archived = FALSE ";
-        return jdbc.query(
+        return list(includeArchived, null);
+    }
+
+    /**
+     * List projects with their client's name, optionally narrowed to those carrying a given tag (the
+     * UI's "filter by tag" picker). A null {@code tagId} means no tag filter — list every project the
+     * archived flag allows. The join to {@code project_tags} reads the tag link via SQL so the feature
+     * stays self-contained and does not import the tags feature's Java types.
+     */
+    @Transactional(readOnly = true)
+    public List<ProjectView> list(boolean includeArchived, Long tagId) {
+        StringBuilder sql = new StringBuilder(
                 "SELECT p.id, p.name, p.client_id, c.name AS client_name "
-                        + "FROM projects p JOIN clients c ON p.client_id = c.id "
-                        + filter
-                        + "ORDER BY p.id ASC",
+                        + "FROM projects p JOIN clients c ON p.client_id = c.id ");
+        List<Object> args = new java.util.ArrayList<>();
+        if (tagId != null) {
+            sql.append("JOIN project_tags pt ON pt.project_id = p.id AND pt.tag_id = ? ");
+            args.add(tagId);
+        }
+        if (!includeArchived) {
+            sql.append("WHERE p.archived = FALSE ");
+        }
+        sql.append("ORDER BY p.id ASC");
+        return jdbc.query(sql.toString(),
                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
-                        rs.getLong("client_id"), rs.getString("client_name")));
+                        rs.getLong("client_id"), rs.getString("client_name")),
+                args.toArray());
     }
 
     @Transactional

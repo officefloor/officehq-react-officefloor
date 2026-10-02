@@ -11,7 +11,9 @@ import net.officefloor.web.ObjectResponse;
 public class ProjectsLogic {
 
     public void service(@HttpQueryParameter("includeArchived") String includeArchived,
+            @HttpQueryParameter("tagId") String tagId,
             ProjectService projects, ObjectResponse<List<ProjectView>> response) {
-        response.send(projects.list(Boolean.parseBoolean(includeArchived)));
+        Long tag = (tagId == null || tagId.isBlank()) ? null : Long.valueOf(tagId.trim());
+        response.send(projects.list(Boolean.parseBoolean(includeArchived), tag));
     }
 }
