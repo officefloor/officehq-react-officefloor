@@ -14,10 +14,12 @@ public class ClientService {
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final ClientRepository repository;
+    private final ContactRepository contacts;
     private final JdbcTemplate jdbc;
 
-    public ClientService(ClientRepository repository, JdbcTemplate jdbc) {
+    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc) {
         this.repository = repository;
+        this.contacts = contacts;
         this.jdbc = jdbc;
     }
 
@@ -45,6 +47,33 @@ public class ClientService {
                 "SELECT id, name FROM projects WHERE client_id = ? ORDER BY id ASC",
                 (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
                 clientId);
+    }
+
+    /** The contacts kept for a client, oldest first. */
+    @Transactional(readOnly = true)
+    public List<ClientContactView> contactsFor(Long clientId) {
+        return contacts.findByClientIdOrderByIdAsc(clientId).stream()
+                .map(c -> new ClientContactView(c.getId(), c.getClientId(), c.getName(),
+                        c.getEmail(), c.getRole()))
+                .toList();
+    }
+
+    @Transactional
+    public ClientContactView createContact(Long clientId, String name, String email, String role) {
+        if (clientId == null) {
+            throw new IllegalArgumentException("A contact requires a client");
+        }
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("A contact requires a name");
+        }
+        Contact contact = new Contact();
+        contact.setClientId(clientId);
+        contact.setName(name);
+        contact.setEmail(email);
+        contact.setRole(role);
+        Contact saved = contacts.save(contact);
+        return new ClientContactView(saved.getId(), saved.getClientId(), saved.getName(),
+                saved.getEmail(), saved.getRole());
     }
 
     @Transactional
