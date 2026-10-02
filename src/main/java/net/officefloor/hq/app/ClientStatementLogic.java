@@ -26,12 +26,17 @@ public class ClientStatementLogic {
                 BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
                         .map(Payment::getAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                BigDecimal due = inv.getAmount().subtract(paid);
-                String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
-                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
+                // The invoice's final total (its discount already taken off) is what is billed and
+                // owed, so the statement's amount, what is still due, and the paid/partial status all
+                // work from the discounted total rather than the undiscounted subtotal.
+                BigDecimal billed = inv.getDiscountedAmount();
+                BigDecimal due = billed.subtract(paid);
+                String status = InvoiceStatus.derive(inv.getStatus(), billed, paid);
+                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), billed, due,
                         status,
                         inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
-                        inv.getDueDate() == null ? null : inv.getDueDate().toString()));
+                        inv.getDueDate() == null ? null : inv.getDueDate().toString(),
+                        inv.getDiscountPct()));
                 outstandingTotal = outstandingTotal.add(due);
             }
         }

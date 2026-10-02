@@ -98,4 +98,18 @@ public class Invoice {
     public void setDiscountPct(int discountPct) {
         this.discountPct = discountPct;
     }
+
+    /**
+     * The invoice's final total — the stored {@code amount} (the undiscounted subtotal of its line
+     * items, per V30) with the owner's percentage discount taken off. This is what is actually owed,
+     * so it is what every "money owed" read should total. Division by 100 is exact, so no rounding.
+     */
+    public BigDecimal getDiscountedAmount() {
+        if (amount == null) {
+            return null;
+        }
+        BigDecimal discount = amount.multiply(BigDecimal.valueOf(discountPct))
+                .divide(BigDecimal.valueOf(100));
+        return amount.subtract(discount);
+    }
 }
