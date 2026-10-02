@@ -12,6 +12,7 @@ type Project = {
   clientId: number;
   clientName: string;
   status: ProjectStatus;
+  code: string;
 };
 type Tag = { id: number; name: string };
 
@@ -25,6 +26,8 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
@@ -102,15 +105,24 @@ export function ProjectsPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    setCodeError(null);
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
+      body: JSON.stringify({ name, clientId: Number(clientId), status, code }),
     });
     if (res.ok) {
+      // No two jobs can share a reference code: the server rejects the duplicate and adds no row.
+      const result = (await res.json()) as { codeInUse?: boolean };
+      if (result.codeInUse) {
+        setCodeError('That code is already in use.');
+        return;
+      }
       setName('');
       setClientId('');
       setStatus('ACTIVE');
+      setCode('');
+      setCodeError(null);
       await loadProjects();
     }
   }
@@ -149,6 +161,13 @@ export function ProjectsPage() {
             </option>
           ))}
         </select>
+        <input
+          data-testid="project-form-code"
+          placeholder="Code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+        {codeError && <p data-testid="project-form-code-error">{codeError}</p>}
         <button data-testid="project-form-submit" type="submit">
           Add job
         </button>
@@ -195,6 +214,7 @@ export function ProjectsPage() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Code</th>
               <th>Client</th>
               <th>Status</th>
               <th></th>
@@ -204,6 +224,7 @@ export function ProjectsPage() {
             {projects.map((project) => (
               <tr key={project.id} data-testid={`project-row-${project.id}`}>
                 <td data-testid="project-name">{project.name}</td>
+                <td data-testid="project-code">{project.code}</td>
                 <td data-testid="project-client">{project.clientName}</td>
                 <td data-testid="project-status">{project.status}</td>
                 <td>

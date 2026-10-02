@@ -9,6 +9,7 @@ public class NewProject {
     private String name;
     private Long clientId;
     private String status;
+    private String code;
 
     public String getName() {
         return name;
@@ -32,5 +33,13 @@ public class NewProject {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 }

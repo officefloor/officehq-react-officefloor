@@ -76,7 +76,7 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public List<ProjectView> list(boolean includeArchived, Long tagId, String status) {
         StringBuilder sql = new StringBuilder(
-                "SELECT p.id, p.name, p.client_id, p.status, c.name AS client_name "
+                "SELECT p.id, p.name, p.client_id, p.status, p.code, c.name AS client_name "
                         + "FROM projects p JOIN clients c ON p.client_id = c.id ");
         List<Object> args = new java.util.ArrayList<>();
         if (tagId != null) {
@@ -98,17 +98,26 @@ public class ProjectService {
         return jdbc.query(sql.toString(),
                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
                         rs.getLong("client_id"), rs.getString("client_name"),
-                        rs.getString("status")),
+                        rs.getString("status"), rs.getString("code")),
                 args.toArray());
     }
 
     @Transactional
-    public ProjectView create(String name, Long clientId, String status) {
+    public ProjectView create(String name, Long clientId, String status, String code) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("A project requires a name");
         }
         if (clientId == null) {
             throw new IllegalArgumentException("A project requires a client");
+        }
+        if (code == null || code.isBlank()) {
+            throw new IllegalArgumentException("A project requires a reference code");
+        }
+        String projectCode = code.trim();
+        // No two projects can share a reference code (also enforced by the projects_code_unique
+        // constraint); reject the duplicate before saving so the UI can flag it.
+        if (repository.existsByCode(projectCode)) {
+            throw new DuplicateProjectCodeException(projectCode);
         }
         // Default to ACTIVE when the caller doesn't pick a status, matching the column default.
         String projectStatus = (status == null || status.isBlank()) ? "ACTIVE" : status;
@@ -116,11 +125,12 @@ public class ProjectService {
         project.setName(name);
         project.setClientId(clientId);
         project.setStatus(projectStatus);
+        project.setCode(projectCode);
         Project saved = repository.save(project);
         String clientName = jdbc.queryForObject(
                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
         return new ProjectView(saved.getId(), saved.getName(), clientId, clientName,
-                saved.getStatus());
+                saved.getStatus(), saved.getCode());
     }
 
     @Transactional

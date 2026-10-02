@@ -8,13 +8,16 @@ public class ProjectView {
     private final long clientId;
     private final String clientName;
     private final String status;
+    private final String code;
 
-    public ProjectView(long id, String name, long clientId, String clientName, String status) {
+    public ProjectView(long id, String name, long clientId, String clientName, String status,
+            String code) {
         this.id = id;
         this.name = name;
         this.clientId = clientId;
         this.clientName = clientName;
         this.status = status;
+        this.code = code;
     }
 
     public long getId() {
@@ -35,5 +38,9 @@ public class ProjectView {
 
     public String getStatus() {
         return status;
+    }
+
+    public String getCode() {
+        return code;
     }
 }
