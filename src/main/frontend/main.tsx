@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { routes } from './router/routes';
+import { GlobalSearch } from './features/search/GlobalSearch';
 
 // Minimal base shell. Features register routes under features/<name>/route.tsx (discovered by
 // router/routes.ts); the shell renders the nav and the selected page. Every observable element
@@ -23,6 +24,7 @@ function App() {
           </button>
         ))}
       </nav>
+      <GlobalSearch />
       <main data-testid="app-home">{current ? <current.Component /> : null}</main>
     </div>
   );
