@@ -56,6 +56,14 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     await load();
   }
 
+  async function send(invoiceId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}/send`, { method: 'POST' });
+    if (!res.ok) {
+      return;
+    }
+    await load();
+  }
+
   async function pay(invoiceId: number) {
     const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
     if (!res.ok) {
@@ -109,7 +117,16 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
               <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
               <td>
-                {inv.status === 'UNPAID' ? (
+                {inv.status === 'DRAFT' ? (
+                  <button
+                    type="button"
+                    data-testid={`invoice-send-${inv.id}`}
+                    onClick={() => void send(inv.id)}
+                  >
+                    Send
+                  </button>
+                ) : null}
+                {inv.status === 'SENT' ? (
                   <button
                     type="button"
                     data-testid={`invoice-pay-${inv.id}`}

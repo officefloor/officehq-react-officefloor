@@ -37,7 +37,7 @@ public class Invoice {
     public Invoice(Long projectId, BigDecimal amount) {
         this.projectId = projectId;
         this.amount = amount;
-        this.status = "UNPAID";
+        this.status = "DRAFT";
     }
 
     public Long getId() {
