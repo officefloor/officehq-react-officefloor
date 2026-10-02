@@ -25,6 +25,17 @@ export function ProjectsPage() {
     void load();
   }, []);
 
+  async function remove(projectId: number) {
+    const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      return;
+    }
+    if (openProjectId === projectId) {
+      setOpenProjectId(null);
+    }
+    await load();
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const res = await fetch('/api/projects', {
@@ -90,6 +101,13 @@ export function ProjectsPage() {
                     onClick={() => setOpenProjectId(p.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`project-delete-${p.id}`}
+                    onClick={() => void remove(p.id)}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>
