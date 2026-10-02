@@ -1,0 +1,246 @@
+{
+  "checkpoint": 14,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp14_all_invoices",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Give me one place that lists all my invoices from every project. Show which project each one\nis for. Show what stage it is at.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nGive me one place that lists all my invoices from every project. Show which project each one\nis for. Show what stage it is at.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "c63f0265b14b845e7777ffe9524a9e33907c6373",
+  "reset_sha": "",
+  "preagent_sha": "54b40e2886f9b946f42e3e0209e4df5712df29fd",
+  "prev_sha": "54b40e2886f9b946f42e3e0209e4df5712df29fd",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5208195000000001,
+    "input_tokens": 16,
+    "output_tokens": 6058,
+    "cache_read_tokens": 202037,
+    "cache_creation_tokens": 26709,
+    "num_turns": 17,
+    "duration_ms": 92359,
+    "duration_api_ms": 73903,
+    "model": "claude-opus-4-8",
+    "session_id": "405319dc-050f-433a-9660-6938fb548675",
+    "stop_reason": "success",
+    "result_text": "The test passes. The change is complete.\n\n## Summary\n\nI added a single new \"Invoices\" page that lists every invoice across all projects, showing each invoice's project name and stage (status). Implemented as an additive, full-stack change:\n\n**Server (OfficeFloor REST):**\n- `rest/api/invoices.GET.yml` \u2014 new endpoint `GET /api/invoices`, wired to a new logic class.\n- `ListAllInvoicesLogic.java` \u2014 joins every invoice to its project, returning oldest-first with the project's name.\n- `AllInvoiceView.java` \u2014 the view DTO (id, projectId, projectName, amount, status).\n- `InvoiceRepository.findAllByOrderByIdAsc()` \u2014 a new stable-ordered finder for all invoices.\n\n**Front-end (React):**\n- `features/invoices/AllInvoicesPage.tsx` \u2014 the page rendering `all-invoices-table` with `invoice-row-{id}` rows, each exposing `invoice-project`, `invoice-amount`, and `invoice-status`.\n- `features/invoices/route.tsx` \u2014 the auto-discovered route declaration (`id: 'invoices'` \u2192 `nav-invoices`).\n\nNo schema migration was needed: the `invoice` table already carries `project_id` and `status`, and projects already have names \u2014 so the feature is a pure read-side join over existing data. I followed the existing conventions (feature-owned state, composed shared primitives, one YAML + one logic class per endpoint) and the test passes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.5208195000000001,
+        "num_turns": 17,
+        "duration_ms": 92359,
+        "duration_api_ms": 73903,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp14.agent.jsonl",
+  "agent_diff_file": "cp14.agent.diff",
+  "build_log_file": "cp14.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 22,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true,
+      "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol": true,
+      "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount": true,
+      "cp10_invoice_amount_positive.spec.ts::accepts a positive amount": true,
+      "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates": true,
+      "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first": true,
+      "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it": true,
+      "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent": true,
+      "cp14_all_invoices.spec.ts::lists invoices from every project with project and status": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 596,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 218,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 203,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 313,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 260,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 348,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 381,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 375,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying a sent invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 374,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 246,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_currency_format.spec.ts::invoice amounts and totals show a currency symbol",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 202,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::rejects a non-positive amount",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 258,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_invoice_amount_positive.spec.ts::accepts a positive amount",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 348,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_invoice_dates.spec.ts::an invoice shows its issue and due dates",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_invoice_sort_due.spec.ts::sorts the invoices earliest due first",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 370,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::sending a draft invoice moves it to sent and records it",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 347,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_invoice_lifecycle.spec.ts::a draft invoice cannot be paid until it is sent",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 420,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_all_invoices.spec.ts::lists invoices from every project with project and status",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 263,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
