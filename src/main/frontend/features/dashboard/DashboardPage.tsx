@@ -35,7 +35,7 @@ export function DashboardPage() {
       </div>
 
       <div data-testid="dashboard-projects">
-        <span>Projects</span>
+        <span>Jobs</span>
         <strong data-testid="dashboard-projects-count">{projects}</strong>
       </div>
 

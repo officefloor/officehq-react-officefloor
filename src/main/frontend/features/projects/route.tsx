@@ -3,6 +3,6 @@ import { ProjectsPage } from './ProjectsPage';
 
 export const route: AppRoute = {
   id: 'projects',
-  label: 'Projects',
+  label: 'Jobs',
   Component: ProjectsPage,
 };

@@ -96,7 +96,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   return (
     <section data-testid="client-detail">
       <dl data-testid="client-counts">
-        <dt>Projects</dt>
+        <dt>Jobs</dt>
         <dd data-testid="client-projects-count">{counts.projects}</dd>
         <dt>Contacts</dt>
         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
@@ -111,7 +111,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
       </button>
       {statementOpen && <ClientStatement clientId={clientId} />}
 
-      <h2>Projects</h2>
+      <h2>Jobs</h2>
       <button
         data-testid="client-projects-show-all"
         type="button"

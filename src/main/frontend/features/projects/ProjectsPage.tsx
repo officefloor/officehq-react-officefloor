@@ -117,7 +117,7 @@ export function ProjectsPage() {
 
   return (
     <section data-testid="projects-page">
-      <h1>Projects</h1>
+      <h1>Jobs</h1>
 
       <form data-testid="project-form" onSubmit={onSubmit}>
         <input
@@ -150,7 +150,7 @@ export function ProjectsPage() {
           ))}
         </select>
         <button data-testid="project-form-submit" type="submit">
-          Add project
+          Add job
         </button>
       </form>
 
@@ -189,7 +189,7 @@ export function ProjectsPage() {
       </select>
 
       {projects.length === 0 ? (
-        <p data-testid="projects-empty">No projects yet.</p>
+        <p data-testid="projects-empty">No jobs yet.</p>
       ) : (
         <table data-testid="projects-table">
           <thead>

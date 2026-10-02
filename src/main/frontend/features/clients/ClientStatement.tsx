@@ -36,7 +36,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
         <thead>
           <tr>
             <th>Invoice</th>
-            <th>Project</th>
+            <th>Job</th>
             <th>Amount</th>
             <th>Status</th>
             <th>Due</th>
