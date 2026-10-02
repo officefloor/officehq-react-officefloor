@@ -28,6 +28,16 @@ public class InvoiceService {
     }
 
     @Transactional(readOnly = true)
+    public List<AllInvoiceView> listAll() {
+        return jdbc.query(
+                "SELECT i.id, i.amount, i.status, p.name AS project_name "
+                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
+                        + "ORDER BY i.id ASC",
+                (rs, i) -> new AllInvoiceView(rs.getLong("id"), rs.getString("project_name"),
+                        rs.getBigDecimal("amount"), rs.getString("status")));
+    }
+
+    @Transactional(readOnly = true)
     public List<InvoiceView> listForProject(Long projectId) {
         return jdbc.query(
                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY id ASC",
