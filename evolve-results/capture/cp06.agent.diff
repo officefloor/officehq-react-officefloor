@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index d69d51c..ee8b3c8 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -13,6 +13,7 @@ export function ClientsPage() {
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState('');
++  const [search, setSearch] = useState('');
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -48,6 +49,10 @@ export function ClientsPage() {
+     await load();
+   }
+ 
++  // Case-insensitive filter on the client name; an empty box shows every client.
++  const q = search.trim().toLowerCase();
++  const shown = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
++
+   return (
+     <section data-testid="clients-section">
+       <h1>Clients</h1>
+@@ -75,7 +80,14 @@ export function ClientsPage() {
+         </button>
+       </form>
+ 
+-      {clients.length === 0 ? (
++      <input
++        data-testid="client-search"
++        placeholder="Search clients by name"
++        value={search}
++        onChange={(e) => setSearch(e.target.value)}
++      />
++
++      {shown.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
+       ) : (
+         <table data-testid="clients-table">
+@@ -86,7 +98,7 @@ export function ClientsPage() {
+             </tr>
+           </thead>
+           <tbody>
+-            {clients.map((c) => (
++            {shown.map((c) => (
+               <tr key={c.id} data-testid={`client-row-${c.id}`}>
+                 <td data-testid="client-name">{c.name}</td>
+                 <td data-testid="client-email">{c.email}</td>
