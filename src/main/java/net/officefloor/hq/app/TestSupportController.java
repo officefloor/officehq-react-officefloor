@@ -184,9 +184,11 @@ public class TestSupportController {
             String status = (String) invoice.getOrDefault("status", "UNPAID");
             Object issuedDate = invoice.getOrDefault("issuedDate", LocalDate.now().toString());
             Object dueDate = invoice.getOrDefault("dueDate", LocalDate.now().toString());
+            // A percentage discount taken off the subtotal; absent means no discount.
+            double discountPct = ((Number) invoice.getOrDefault("discountPct", 0)).doubleValue();
             jdbc.update(
-                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?)",
-                    id, projectId, amount, status, issuedDate, dueDate);
+                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date, discount_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    id, projectId, amount, status, issuedDate, dueDate, discountPct);
             maxInvoiceId = Math.max(maxInvoiceId, id);
             for (Map<String, Object> lineItem : lineItems) {
                 long lineItemId = ((Number) lineItem.get("id")).longValue();

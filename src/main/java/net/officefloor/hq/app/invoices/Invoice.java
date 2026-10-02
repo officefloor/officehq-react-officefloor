@@ -26,6 +26,10 @@ public class Invoice {
     /** Lifecycle status: DRAFT -> SENT -> PAID. A new invoice starts as a DRAFT. */
     private String status = "DRAFT";
 
+    /** Percentage taken off the subtotal as a discount (0..100); 0 means no discount. */
+    @Column(name = "discount_pct")
+    private BigDecimal discountPct = BigDecimal.ZERO;
+
     /** The date the invoice was issued (sent out). */
     @Column(name = "issued_date")
     private LocalDate issuedDate;
@@ -64,6 +68,14 @@ public class Invoice {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public BigDecimal getDiscountPct() {
+        return discountPct;
+    }
+
+    public void setDiscountPct(BigDecimal discountPct) {
+        this.discountPct = discountPct;
     }
 
     public LocalDate getIssuedDate() {

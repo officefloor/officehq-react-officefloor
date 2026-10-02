@@ -16,10 +16,12 @@ type LineItem = {
 };
 
 // The invoice's status is worked out from its payments (PAID once covered, PARTIAL once part paid),
-// so we read it back from the server rather than flipping it by hand.
+// so we read it back from the server rather than flipping it by hand. It also carries the
+// percentage discount taken off the subtotal (0 when there is none).
 type Invoice = {
   id: number;
   status: string;
+  discountPct: number;
 };
 
 export function InvoiceLineItems({
@@ -31,6 +33,7 @@ export function InvoiceLineItems({
 }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [status, setStatus] = useState('');
+  const [discountPct, setDiscountPct] = useState(0);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
@@ -48,6 +51,7 @@ export function InvoiceLineItems({
     if (res.ok) {
       const invoice: Invoice = await res.json();
       setStatus(invoice.status);
+      setDiscountPct(Number(invoice.discountPct));
     }
   }
 
@@ -93,7 +97,11 @@ export function InvoiceLineItems({
     }
   }
 
-  const total = lineItems.reduce((sum, item) => sum + item.qty * Number(item.unitPrice), 0);
+  // The subtotal is the sum of each line's quantity times unit price. The discount takes a
+  // percentage off that subtotal, and the final total is what is left after it.
+  const subtotal = lineItems.reduce((sum, item) => sum + item.qty * Number(item.unitPrice), 0);
+  const discount = (subtotal * discountPct) / 100;
+  const finalTotal = subtotal - discount;
 
   return (
     <section data-testid="invoice-detail">
@@ -167,7 +175,14 @@ export function InvoiceLineItems({
         </button>
       </form>
 
-      <p data-testid="invoice-amount">{formatMoney(total)}</p>
+      <dl data-testid="invoice-totals">
+        <dt>Subtotal</dt>
+        <dd data-testid="invoice-subtotal">{formatMoney(subtotal)}</dd>
+        <dt>Discount</dt>
+        <dd data-testid="invoice-discount">{formatMoney(discount)}</dd>
+        <dt>Total</dt>
+        <dd data-testid="invoice-amount">{formatMoney(finalTotal)}</dd>
+      </dl>
 
       <InvoicePayments invoiceId={invoiceId} onPaymentRecorded={loadInvoice} />
     </section>
