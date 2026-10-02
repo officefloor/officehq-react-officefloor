@@ -1,0 +1,235 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index efde863..d4a64a7 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -1,13 +1,15 @@
+ import React, { useEffect, useState } from 'react';
+ 
+ // The dashboard feature owns its own state and data loading (no global store). It is a read-only home
+-// summary: how many clients and projects there are, and how much money is still owed (the sum of
+-// every SENT invoice across all projects — drafts and paid invoices are excluded, served
+-// pre-computed by /api/dashboard).
++// summary: how many clients and projects there are, how much money is still owed (the sum of
++// every SENT invoice across all projects — drafts and paid invoices are excluded), and how many
++// SENT invoices are overdue (past their due date as of the dashboard's reference date). All served
++// pre-computed by /api/dashboard.
+ type Summary = {
+   clientsCount: number;
+   projectsCount: number;
+   outstandingTotal: number;
++  overdueCount: number;
+ };
+ 
+ function formatAmount(amount: number): string {
+@@ -40,6 +42,9 @@ export function DashboardPage() {
+         <dd data-testid="dashboard-outstanding-total">
+           {summary ? formatAmount(summary.outstandingTotal) : ''}
+         </dd>
++
++        <dt>Overdue</dt>
++        <dd data-testid="dashboard-overdue-count">{summary ? summary.overdueCount : ''}</dd>
+       </dl>
+     </section>
+   );
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardConfig.java b/src/main/java/net/officefloor/hq/app/DashboardConfig.java
+new file mode 100644
+index 0000000..0d9cdfb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardConfig.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/**
++ * The dashboard's reference ("as of") date, used to decide which SENT invoices are overdue. A single
++ * configuration row (id = 1); absent in a real deploy, where the dashboard uses the current date.
++ * Maps to {@code dashboard_config} (V24).
++ */
++@Entity
++@Table(name = "dashboard_config")
++public class DashboardConfig {
++
++    @Id
++    private Long id;
++
++    @Column(name = "as_of")
++    private LocalDate asOf;
++
++    public DashboardConfig() {
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public LocalDate getAsOf() {
++        return asOf;
++    }
++
++    public void setAsOf(LocalDate asOf) {
++        this.asOf = asOf;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardConfigRepository.java b/src/main/java/net/officefloor/hq/app/DashboardConfigRepository.java
+new file mode 100644
+index 0000000..7a6ab13
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DashboardConfigRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link DashboardConfig}. A Spring bean, injected into the dashboard logic. */
++public interface DashboardConfigRepository extends JpaRepository<DashboardConfig, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardLogic.java b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+index 19b7b18..348c80b 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardLogic.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+@@ -1,23 +1,31 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+- * GET /api/dashboard — the home summary: the number of clients and projects, and the outstanding
+- * total (the money still owed). An invoice counts towards what is owed only once it has actually
+- * been SENT to the client: a DRAFT has not been issued yet, and a PAID invoice is settled, so both
+- * are excluded. The total is the sum of every SENT invoice's amount across all projects.
++ * GET /api/dashboard — the home summary: the number of clients and projects, the outstanding total
++ * (the money still owed) and how many SENT invoices are overdue. An invoice counts towards what is
++ * owed only once it has actually been SENT to the client: a DRAFT has not been issued yet, and a PAID
++ * invoice is settled, so both are excluded. The total is the sum of every SENT invoice's amount. An
++ * invoice is overdue when it is SENT and its due date has passed relative to the dashboard's
++ * reference ("as of") date; that date comes from the dashboard_config row, falling back to today.
+  */
+ public class DashboardLogic {
+ 
+     public void service(ClientRepository clients, ProjectRepository projects,
+-            InvoiceRepository invoices, ObjectResponse<DashboardView> response) {
++            InvoiceRepository invoices, DashboardConfigRepository config,
++            ObjectResponse<DashboardView> response) {
+         long clientsCount = clients.count();
+         long projectsCount = projects.count();
+         BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("SENT").stream()
+                 .map(Invoice::getAmount)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+-        response.send(new DashboardView(clientsCount, projectsCount, outstandingTotal));
++        LocalDate asOf = config.findById(1L)
++                .map(DashboardConfig::getAsOf)
++                .orElse(LocalDate.now());
++        long overdueCount = invoices.countByStatusAndDueDateBefore("SENT", asOf);
++        response.send(new DashboardView(clientsCount, projectsCount, outstandingTotal, overdueCount));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardView.java b/src/main/java/net/officefloor/hq/app/DashboardView.java
+index dbddd22..380b5f6 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardView.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardView.java
+@@ -2,17 +2,23 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ 
+-/** The home dashboard summary: how many clients and projects there are, and the total still owed. */
++/**
++ * The home dashboard summary: how many clients and projects there are, the total still owed, and how
++ * many SENT invoices are overdue (past their due date as of the dashboard's reference date).
++ */
+ public class DashboardView {
+ 
+     private final long clientsCount;
+     private final long projectsCount;
+     private final BigDecimal outstandingTotal;
++    private final long overdueCount;
+ 
+-    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
++    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal,
++            long overdueCount) {
+         this.clientsCount = clientsCount;
+         this.projectsCount = projectsCount;
+         this.outstandingTotal = outstandingTotal;
++        this.overdueCount = overdueCount;
+     }
+ 
+     public long getClientsCount() {
+@@ -26,4 +32,8 @@ public class DashboardView {
+     public BigDecimal getOutstandingTotal() {
+         return outstandingTotal;
+     }
++
++    public long getOverdueCount() {
++        return overdueCount;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index d3f6f6e..5279be9 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -17,4 +18,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     /** Every invoice with the given status (e.g. SENT), oldest first — used to total what is owed. */
+     List<Invoice> findByStatusOrderByIdAsc(String status);
++
++    /**
++     * How many invoices with the given status fell due before {@code date} — i.e. are overdue as of
++     * that reference date (strictly before, so an invoice due on the date itself is not yet overdue).
++     */
++    long countByStatusAndDueDateBefore(String status, LocalDate date);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2f15080..26facd3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -35,6 +35,7 @@ public class TestSupportController {
+         // project references client via FK; H2 refuses TRUNCATE on a referenced table, so drop
+         // referential integrity for the duration of the clear, then restore it.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE dashboard_config");
+         jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE project_tag RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+@@ -52,6 +53,12 @@ public class TestSupportController {
+     @PostMapping("/seed")
+     @SuppressWarnings("unchecked")
+     public void seed(@RequestBody Map<String, Object> fixture) {
++        Object asOf = fixture.get("asOf");
++        if (asOf != null) {
++            // The dashboard's reference date for deciding which SENT invoices are overdue (V24).
++            jdbc.update("INSERT INTO dashboard_config (id, as_of) VALUES (1, ?)",
++                    java.sql.Date.valueOf(asOf.toString()));
++        }
+         List<Map<String, Object>> clients =
+                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
+         for (Map<String, Object> client : clients) {
+diff --git a/src/main/resources/db/migration/V24__dashboard_reference_date.sql b/src/main/resources/db/migration/V24__dashboard_reference_date.sql
+new file mode 100644
+index 0000000..f12b021
+--- /dev/null
++++ b/src/main/resources/db/migration/V24__dashboard_reference_date.sql
+@@ -0,0 +1,7 @@
++-- Dashboard reference date: "overdue" is measured against a fixed as-of date the dashboard is given,
++-- so the overdue count is deterministic in tests rather than depending on the wall clock. A single
++-- config row (id = 1) holds that date; when absent the dashboard falls back to the current date.
++CREATE TABLE dashboard_config (
++    id    BIGINT PRIMARY KEY,
++    as_of DATE
++);
