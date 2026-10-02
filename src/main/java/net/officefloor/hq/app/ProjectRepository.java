@@ -11,4 +11,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     /** The projects done for one client, oldest first, so the list is stable across loads. */
     List<Project> findByClientIdOrderByIdAsc(Long clientId);
+
+    /** How many projects one client has — for the client's at-a-glance counts. */
+    long countByClientId(Long clientId);
 }

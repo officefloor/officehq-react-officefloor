@@ -8,4 +8,7 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
 
     /** The contacts for one client, oldest first, so the list is stable across loads. */
     List<Contact> findByClientIdOrderByIdAsc(Long clientId);
+
+    /** How many contacts one client has — for the client's at-a-glance counts. */
+    long countByClientId(Long clientId);
 }
