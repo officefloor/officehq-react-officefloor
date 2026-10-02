@@ -1,0 +1,473 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 978bad7..ad2307c 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -1,6 +1,7 @@
+ import { useEffect, useState, type FormEvent } from 'react';
+ import { formatMoney } from '../../ui/money';
+ import { InvoiceLineItems } from './InvoiceLineItems';
++import { ProjectTags } from './ProjectTags';
+ 
+ // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
+ // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
+@@ -107,6 +108,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+ 
+   return (
+     <section data-testid="project-detail">
++      <ProjectTags projectId={projectId} />
++
+       <h2>Tasks</h2>
+ 
+       <label>
+diff --git a/src/main/frontend/features/projects/ProjectTags.tsx b/src/main/frontend/features/projects/ProjectTags.tsx
+new file mode 100644
+index 0000000..c9de6d1
+--- /dev/null
++++ b/src/main/frontend/features/projects/ProjectTags.tsx
+@@ -0,0 +1,97 @@
++import { useEffect, useState, type FormEvent } from 'react';
++
++// A project can be labelled with tags (chips) to group it. This panel shows the project's current
++// tags, lets you add one from the tags that aren't on it yet, and remove any of them. Tags live in
++// the shared tags catalogue; assignments are scoped to the project via /api/projects/<id>/tags.
++type Tag = { id: number; name: string };
++
++export function ProjectTags({ projectId }: { projectId: number }) {
++  const [tags, setTags] = useState<Tag[]>([]);
++  const [allTags, setAllTags] = useState<Tag[]>([]);
++  const [tagId, setTagId] = useState('');
++
++  async function loadTags() {
++    const res = await fetch(`/api/projects/${projectId}/tags`);
++    if (res.ok) {
++      setTags(await res.json());
++    }
++  }
++
++  async function loadAllTags() {
++    const res = await fetch('/api/tags');
++    if (res.ok) {
++      setAllTags(await res.json());
++    }
++  }
++
++  useEffect(() => {
++    void loadTags();
++    void loadAllTags();
++  }, [projectId]);
++
++  // Only offer tags that aren't already on the project.
++  const assigned = new Set(tags.map((tag) => tag.id));
++  const available = allTags.filter((tag) => !assigned.has(tag.id));
++
++  async function onAdd(event: FormEvent) {
++    event.preventDefault();
++    if (!tagId) {
++      return;
++    }
++    const res = await fetch(`/api/projects/${projectId}/tags`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ tagId: Number(tagId) }),
++    });
++    if (res.ok) {
++      setTagId('');
++      setTags(await res.json());
++    }
++  }
++
++  async function onRemove(id: number) {
++    const res = await fetch(`/api/projects/${projectId}/tags/${id}/remove`, { method: 'POST' });
++    if (res.ok) {
++      setTags(await res.json());
++    }
++  }
++
++  return (
++    <section data-testid="project-tags">
++      <h2>Tags</h2>
++
++      <ul data-testid="project-tags-list">
++        {tags.map((tag) => (
++          <li key={tag.id}>
++            <span data-testid={`project-tag-${tag.id}`}>{tag.name}</span>
++            <button
++              data-testid={`project-tag-remove-${tag.id}`}
++              type="button"
++              onClick={() => void onRemove(tag.id)}
++            >
++              Remove
++            </button>
++          </li>
++        ))}
++      </ul>
++
++      <form data-testid="project-tag-form" onSubmit={onAdd}>
++        <select
++          data-testid="project-tag-add"
++          value={tagId}
++          onChange={(e) => setTagId(e.target.value)}
++        >
++          <option value="">Select a tag</option>
++          {available.map((tag) => (
++            <option key={tag.id} value={tag.id}>
++              {tag.name}
++            </option>
++          ))}
++        </select>
++        <button data-testid="project-tag-add-submit" type="submit">
++          Add tag
++        </button>
++      </form>
++    </section>
++  );
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4e38de7..d5d1a57 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,6 +39,8 @@ public class TestSupportController {
+         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+@@ -106,6 +108,27 @@ public class TestSupportController {
+             jdbc.execute("ALTER TABLE tasks ALTER COLUMN id RESTART WITH " + (maxTaskId + 1));
+         }
+ 
++        List<Map<String, Object>> tags =
++                (List<Map<String, Object>>) fixture.getOrDefault("tags", List.of());
++        long maxTagId = 0;
++        for (Map<String, Object> tag : tags) {
++            long id = ((Number) tag.get("id")).longValue();
++            jdbc.update("INSERT INTO tags (id, name) VALUES (?, ?)", id, tag.get("name"));
++            maxTagId = Math.max(maxTagId, id);
++        }
++        if (maxTagId > 0) {
++            jdbc.execute("ALTER TABLE tags ALTER COLUMN id RESTART WITH " + (maxTagId + 1));
++        }
++
++        List<Map<String, Object>> projectTags =
++                (List<Map<String, Object>>) fixture.getOrDefault("projectTags", List.of());
++        for (Map<String, Object> projectTag : projectTags) {
++            long projectId = ((Number) projectTag.get("projectId")).longValue();
++            long tagId = ((Number) projectTag.get("tagId")).longValue();
++            jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
++                    projectId, tagId);
++        }
++
+         List<Map<String, Object>> invoices =
+                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+         long maxInvoiceId = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/tags/AddProjectTagLogic.java b/src/main/java/net/officefloor/hq/app/tags/AddProjectTagLogic.java
+new file mode 100644
+index 0000000..bb36d57
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/AddProjectTagLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.tags;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/projects/{projectId}/tags — put the tag from the JSON body on the project. */
++public class AddProjectTagLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId, NewProjectTag body,
++            TagService tags, ObjectResponse<List<TagView>> response) {
++        response.send(tags.addToProject(Long.valueOf(projectId), body.getTagId()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/AllTagsLogic.java b/src/main/java/net/officefloor/hq/app/tags/AllTagsLogic.java
+new file mode 100644
+index 0000000..aeeef1e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/AllTagsLogic.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.tags;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/tags — list every tag so the UI can offer them as choices to add to a project. */
++public class AllTagsLogic {
++
++    public void service(TagService tags, ObjectResponse<List<TagView>> response) {
++        response.send(tags.listAll());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/NewProjectTag.java b/src/main/java/net/officefloor/hq/app/tags/NewProjectTag.java
+new file mode 100644
+index 0000000..0b00afa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/NewProjectTag.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.tags;
++
++import net.officefloor.web.HttpObject;
++
++/** JSON request body for putting a tag on a project. {@link HttpObject} loads it from the entity. */
++@HttpObject
++public class NewProjectTag {
++
++    private Long tagId;
++
++    public Long getTagId() {
++        return tagId;
++    }
++
++    public void setTagId(Long tagId) {
++        this.tagId = tagId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/ProjectTagsLogic.java b/src/main/java/net/officefloor/hq/app/tags/ProjectTagsLogic.java
+new file mode 100644
+index 0000000..ee851de
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/ProjectTagsLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.tags;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/projects/{projectId}/tags — list the tags currently on a project. */
++public class ProjectTagsLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId, TagService tags,
++            ObjectResponse<List<TagView>> response) {
++        response.send(tags.listForProject(Long.valueOf(projectId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/RemoveProjectTagLogic.java b/src/main/java/net/officefloor/hq/app/tags/RemoveProjectTagLogic.java
+new file mode 100644
+index 0000000..3a2f0a9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/RemoveProjectTagLogic.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.tags;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/projects/{projectId}/tags/{tagId}/remove — take a tag off a project. */
++public class RemoveProjectTagLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId,
++            @HttpPathParameter("tagId") String tagId, TagService tags,
++            ObjectResponse<List<TagView>> response) {
++        response.send(tags.removeFromProject(Long.valueOf(projectId), Long.valueOf(tagId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/Tag.java b/src/main/java/net/officefloor/hq/app/tags/Tag.java
+new file mode 100644
+index 0000000..ce7203f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/Tag.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.tags;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A reusable label a user puts on projects to group them. Mapped to the {@code tags} table (V20). */
++@Entity
++@Table(name = "tags")
++public class Tag {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/TagRepository.java b/src/main/java/net/officefloor/hq/app/tags/TagRepository.java
+new file mode 100644
+index 0000000..0ce8067
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/TagRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.tags;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Tag}. */
++public interface TagRepository extends JpaRepository<Tag, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/TagService.java b/src/main/java/net/officefloor/hq/app/tags/TagService.java
+new file mode 100644
+index 0000000..449c0ff
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/TagService.java
+@@ -0,0 +1,68 @@
++package net.officefloor.hq.app.tags;
++
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.core.RowMapper;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Business logic for the labels a user groups projects by. Tags are reusable labels; a project
++ * carries many tags through the {@code project_tags} join table. The feature stays self-contained
++ * and reads the join via SQL rather than importing the projects feature's Java types.
++ */
++@Service
++public class TagService {
++
++    private static final RowMapper<TagView> MAPPER =
++            (rs, i) -> new TagView(rs.getLong("id"), rs.getString("name"));
++
++    private final JdbcTemplate jdbc;
++
++    public TagService(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** Every tag that exists, so the UI can offer them as choices. */
++    @Transactional(readOnly = true)
++    public List<TagView> listAll() {
++        return jdbc.query("SELECT id, name FROM tags ORDER BY id ASC", MAPPER);
++    }
++
++    /** The tags currently on a project, in a stable order. */
++    @Transactional(readOnly = true)
++    public List<TagView> listForProject(Long projectId) {
++        return jdbc.query(
++                "SELECT t.id, t.name FROM tags t "
++                        + "JOIN project_tags pt ON pt.tag_id = t.id "
++                        + "WHERE pt.project_id = ? ORDER BY t.id ASC",
++                MAPPER, projectId);
++    }
++
++    /** Put a tag on a project (idempotent) and return the project's resulting tags. */
++    @Transactional
++    public List<TagView> addToProject(Long projectId, Long tagId) {
++        if (projectId == null || tagId == null) {
++            throw new IllegalArgumentException("A project id and a tag id are required");
++        }
++        Integer existing = jdbc.queryForObject(
++                "SELECT COUNT(*) FROM project_tags WHERE project_id = ? AND tag_id = ?",
++                Integer.class, projectId, tagId);
++        if (existing == null || existing == 0) {
++            jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
++                    projectId, tagId);
++        }
++        return listForProject(projectId);
++    }
++
++    /** Take a tag off a project and return the project's remaining tags. */
++    @Transactional
++    public List<TagView> removeFromProject(Long projectId, Long tagId) {
++        if (projectId == null || tagId == null) {
++            throw new IllegalArgumentException("A project id and a tag id are required");
++        }
++        jdbc.update("DELETE FROM project_tags WHERE project_id = ? AND tag_id = ?",
++                projectId, tagId);
++        return listForProject(projectId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/tags/TagView.java b/src/main/java/net/officefloor/hq/app/tags/TagView.java
+new file mode 100644
+index 0000000..c7d1f70
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/tags/TagView.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.tags;
++
++/** JSON response shape for a tag (what the UI renders as a chip): its id and label. */
++public class TagView {
++
++    private final long id;
++    private final String name;
++
++    public TagView(long id, String name) {
++        this.id = id;
++        this.name = name;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++}
+diff --git a/src/main/resources/db/migration/V20__tags.sql b/src/main/resources/db/migration/V20__tags.sql
+new file mode 100644
+index 0000000..7d59697
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__tags.sql
+@@ -0,0 +1,12 @@
++-- Labels a user puts on projects to group them. A tag is a reusable label; a project can carry many
++-- tags and a tag can be on many projects, so the two are linked through a join table.
++CREATE TABLE tags (
++    id   BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name VARCHAR(255) NOT NULL
++);
++
++CREATE TABLE project_tags (
++    project_id BIGINT NOT NULL REFERENCES projects(id),
++    tag_id     BIGINT NOT NULL REFERENCES tags(id),
++    PRIMARY KEY (project_id, tag_id)
++);
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.GET.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.GET.yml
+new file mode 100644
+index 0000000..81b2e64
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.tags.ProjectTagsLogic
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.POST.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.POST.yml
+new file mode 100644
+index 0000000..029c333
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.tags.AddProjectTagLogic
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/tags/{tagId}/remove.POST.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags/{tagId}/remove.POST.yml
+new file mode 100644
+index 0000000..a21e3b4
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/tags/{tagId}/remove.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.tags.RemoveProjectTagLogic
+diff --git a/src/main/resources/officefloor/rest/api/tags.GET.yml b/src/main/resources/officefloor/rest/api/tags.GET.yml
+new file mode 100644
+index 0000000..ac90816
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/tags.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.tags.AllTagsLogic
