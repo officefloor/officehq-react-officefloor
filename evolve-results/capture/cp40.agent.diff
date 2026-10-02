@@ -1,0 +1,96 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index 1e1a949..af9df81 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -16,7 +16,10 @@ type StatementInvoice = {
+ type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ export function ClientStatement({ clientId }: { clientId: number }) {
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index d4a64a7..268edf0 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -13,7 +13,10 @@ type Summary = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ export function DashboardPage() {
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 948f72f..9c78141 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -12,7 +12,10 @@ type AllInvoice = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ const PAGE_SIZE = 10;
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index 55820be..3089118 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -13,7 +13,10 @@ type LineItem = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ export function InvoiceLineItems({
+diff --git a/src/main/frontend/features/projects/InvoicePayments.tsx b/src/main/frontend/features/projects/InvoicePayments.tsx
+index 2af491e..482545a 100644
+--- a/src/main/frontend/features/projects/InvoicePayments.tsx
++++ b/src/main/frontend/features/projects/InvoicePayments.tsx
+@@ -12,7 +12,10 @@ type Payment = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ export function InvoicePayments({
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index e7c7485..ed41c9a 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -20,7 +20,10 @@ type Invoice = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return `$${Number(amount).toFixed(2)}`;
++  return `$${Number(amount).toLocaleString('en-US', {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })}`;
+ }
+ 
+ export function ProjectInvoices({ projectId }: { projectId: number }) {
