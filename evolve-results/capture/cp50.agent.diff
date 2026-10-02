@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 93f7bb3..5e4d7e3 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useState, type FormEvent } from 'react';
++import { useEffect, useRef, useState, type FormEvent } from 'react';
+ import { ProjectDetail } from './ProjectDetail';
+ 
+ // This arm's convention: the page component owns the feature's state, data loading and layout.
+@@ -29,8 +29,13 @@ export function ProjectsPage() {
+   const [statusFilter, setStatusFilter] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
++  // Changing the status and tag filters in quick succession fires two overlapping fetches; without a
++  // guard the earlier (less-narrowed) response can land last and clobber the narrower one. Tag each
++  // request and apply only the latest, so combining both filters at once settles on the right list.
++  const loadSeq = useRef(0);
+ 
+   async function loadProjects() {
++    const seq = ++loadSeq.current;
+     const params = new URLSearchParams();
+     if (showArchived) {
+       params.set('includeArchived', 'true');
+@@ -43,7 +48,7 @@ export function ProjectsPage() {
+     }
+     const query = params.toString();
+     const res = await fetch(query ? `/api/projects?${query}` : '/api/projects');
+-    if (res.ok) {
++    if (res.ok && seq === loadSeq.current) {
+       setProjects(await res.json());
+     }
+   }
