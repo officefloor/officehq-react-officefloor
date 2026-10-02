@@ -84,13 +84,20 @@ public class TestSupportController {
             Object budgetValue = project.get("budget");
             java.math.BigDecimal budget = budgetValue == null ? java.math.BigDecimal.ZERO
                     : new java.math.BigDecimal(budgetValue.toString());
-            Object code = project.getOrDefault("code", "");
+            long projectId = ((Number) project.get("id")).longValue();
+            // project.code carries a UNIQUE constraint (V33). A fixture that omits the code can seed
+            // several projects, so synthesise a per-project code when none is supplied rather than
+            // letting them all collide on the empty-string default; honour an explicit code as given.
+            Object code = project.get("code");
+            String codeValue = project.containsKey("code")
+                    ? (code == null ? "" : code.toString())
+                    : "seed-project-" + projectId;
             jdbc.update(
                     "INSERT INTO project (id, name, client_id, status, archived, budget, code) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ((Number) project.get("id")).longValue(), project.get("name"),
+                    projectId, project.get("name"),
                     ((Number) project.get("clientId")).longValue(), status, archived, budget,
-                    code == null ? "" : code.toString());
+                    codeValue);
         }
         List<Map<String, Object>> tasks =
                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());

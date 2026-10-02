@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { DashboardTopClients } from './DashboardTopClients';
 
 // The dashboard feature owns its own state and data loading (no global store). It is a read-only home
 // summary: how many clients and projects there are, how much money is still owed (the sum of
@@ -49,6 +50,8 @@ export function DashboardPage() {
         <dt>Overdue</dt>
         <dd data-testid="dashboard-overdue-count">{summary ? summary.overdueCount : ''}</dd>
       </dl>
+
+      <DashboardTopClients />
     </section>
   );
 }
