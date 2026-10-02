@@ -1,0 +1,330 @@
+diff --git a/src/main/frontend/features/projects/ProjectBudget.tsx b/src/main/frontend/features/projects/ProjectBudget.tsx
+new file mode 100644
+index 0000000..9253d77
+--- /dev/null
++++ b/src/main/frontend/features/projects/ProjectBudget.tsx
+@@ -0,0 +1,49 @@
++import React, { useEffect, useState } from 'react';
++
++// A project's budget position, shown inside the projects feature when a project is opened: the budget
++// set on it, how much has been invoiced against it, and what is left (budget minus invoiced). Owns
++// its own state and data loading (no global store).
++type Budget = {
++  budget: number;
++  invoiced: number;
++  remaining: number;
++};
++
++// Money the owner reads, e.g. $1,000.00 — grouped thousands, always two decimals.
++const money = new Intl.NumberFormat('en-US', {
++  style: 'currency',
++  currency: 'USD',
++});
++
++export function ProjectBudget({ projectId }: { projectId: number }) {
++  const [budget, setBudget] = useState<Budget | null>(null);
++
++  useEffect(() => {
++    async function load() {
++      const res = await fetch(`/api/projects/${projectId}/budget`);
++      if (!res.ok) {
++        return;
++      }
++      setBudget(await res.json());
++    }
++    void load();
++  }, [projectId]);
++
++  if (budget === null) {
++    return null;
++  }
++
++  return (
++    <section data-testid="project-budget-section">
++      <h2>Budget</h2>
++      <dl>
++        <dt>Budget</dt>
++        <dd data-testid="project-budget">{money.format(Number(budget.budget))}</dd>
++        <dt>Invoiced</dt>
++        <dd data-testid="project-invoiced">{money.format(Number(budget.invoiced))}</dd>
++        <dt>Remaining</dt>
++        <dd data-testid="project-remaining">{money.format(Number(budget.remaining))}</dd>
++      </dl>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index fdbe394..b99cf24 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { ProjectBudget } from './ProjectBudget';
+ import { ProjectInvoices } from './ProjectInvoices';
+ import { ProjectNotes } from './ProjectNotes';
+ import { ProjectTags } from './ProjectTags';
+@@ -29,6 +30,7 @@ export function ProjectsPage() {
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [status, setStatus] = useState('ACTIVE');
++  const [budget, setBudget] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
+   const [filterTagId, setFilterTagId] = useState('');
+@@ -78,7 +80,12 @@ export function ProjectsPage() {
+     const res = await fetch('/api/projects', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
++      body: JSON.stringify({
++        name,
++        clientId: Number(clientId),
++        status,
++        budget: budget === '' ? 0 : Number(budget),
++      }),
+     });
+     if (!res.ok) {
+       return;
+@@ -86,6 +93,7 @@ export function ProjectsPage() {
+     setName('');
+     setClientId('');
+     setStatus('ACTIVE');
++    setBudget('');
+     await load();
+   }
+ 
+@@ -123,6 +131,12 @@ export function ProjectsPage() {
+             </option>
+           ))}
+         </select>
++        <input
++          data-testid="project-form-budget"
++          placeholder="Budget"
++          value={budget}
++          onChange={(e) => setBudget(e.target.value)}
++        />
+         <button type="submit" data-testid="project-form-submit">
+           Add project
+         </button>
+@@ -220,6 +234,7 @@ export function ProjectsPage() {
+ 
+       {openProjectId !== null ? (
+         <>
++          <ProjectBudget projectId={openProjectId} />
+           <ProjectTags projectId={openProjectId} />
+           <ProjectNotes projectId={openProjectId} />
+           <ProjectTasks projectId={openProjectId} />
+diff --git a/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java b/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
+index 8747652..a11569a 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.math.BigDecimal;
+ import net.officefloor.server.http.HttpException;
+ import net.officefloor.server.http.HttpStatus;
+ import net.officefloor.web.ObjectResponse;
+@@ -21,7 +22,8 @@ public class CreateProjectLogic {
+         Client client = clients.findById(clientId).orElseThrow(
+                 () -> new HttpException(HttpStatus.BAD_REQUEST, "A client is required"));
+         String status = newProject.getStatus() == null ? "ACTIVE" : newProject.getStatus();
+-        Project saved = projects.save(new Project(newProject.getName(), clientId, status));
++        BigDecimal budget = newProject.getBudget() == null ? BigDecimal.ZERO : newProject.getBudget();
++        Project saved = projects.save(new Project(newProject.getName(), clientId, status, budget));
+         response.send(new ProjectView(saved.getId(), saved.getName(), client.getId(),
+                 client.getName(), saved.getStatus()));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/NewProject.java b/src/main/java/net/officefloor/hq/app/NewProject.java
+index 3b1b820..7c1f6f2 100644
+--- a/src/main/java/net/officefloor/hq/app/NewProject.java
++++ b/src/main/java/net/officefloor/hq/app/NewProject.java
+@@ -1,5 +1,7 @@
+ package net.officefloor.hq.app;
+ 
++import java.math.BigDecimal;
++
+ /** Request body for creating a project: the name the owner types and the chosen client's id. */
+ public class NewProject {
+ 
+@@ -9,6 +11,8 @@ public class NewProject {
+ 
+     private String status;
+ 
++    private BigDecimal budget;
++
+     public String getName() {
+         return name;
+     }
+@@ -32,4 +36,12 @@ public class NewProject {
+     public void setStatus(String status) {
+         this.status = status;
+     }
++
++    public BigDecimal getBudget() {
++        return budget;
++    }
++
++    public void setBudget(BigDecimal budget) {
++        this.budget = budget;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/Project.java b/src/main/java/net/officefloor/hq/app/Project.java
+index 9990ec4..d56edcd 100644
+--- a/src/main/java/net/officefloor/hq/app/Project.java
++++ b/src/main/java/net/officefloor/hq/app/Project.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
+ 
+ /** A project the owner does for a client: a name and the owning client's id. Maps to {@code project} (V3). */
+ @Entity
+@@ -25,6 +26,9 @@ public class Project {
+ 
+     private String status;
+ 
++    /** The budget set against this project; what has been invoiced is compared to it (V23). */
++    private BigDecimal budget;
++
+     public Project() {
+     }
+ 
+@@ -33,10 +37,15 @@ public class Project {
+     }
+ 
+     public Project(String name, Long clientId, String status) {
++        this(name, clientId, status, BigDecimal.ZERO);
++    }
++
++    public Project(String name, Long clientId, String status, BigDecimal budget) {
+         this.name = name;
+         this.clientId = clientId;
+         this.archived = false;
+         this.status = status;
++        this.budget = budget;
+     }
+ 
+     public Long getId() {
+@@ -78,4 +87,12 @@ public class Project {
+     public void setStatus(String status) {
+         this.status = status;
+     }
++
++    public BigDecimal getBudget() {
++        return budget;
++    }
++
++    public void setBudget(BigDecimal budget) {
++        this.budget = budget;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectBudgetLogic.java b/src/main/java/net/officefloor/hq/app/ProjectBudgetLogic.java
+new file mode 100644
+index 0000000..9b83aae
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectBudgetLogic.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/projects/{projectId}/budget — a project's budget position: the budget set on it, how much
++ * has been invoiced against it (the sum of its invoices) and what is left (budget minus invoiced).
++ */
++public class ProjectBudgetLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId,
++            ProjectRepository projects, InvoiceRepository invoices,
++            ObjectResponse<ProjectBudgetView> response) {
++        Long id = Long.valueOf(projectId);
++        Project project = projects.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.NOT_FOUND, "Unknown project"));
++        BigDecimal invoiced = invoices.findByProjectIdOrderByIdAsc(id).stream()
++                .map(Invoice::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        response.send(new ProjectBudgetView(project.getBudget(), invoiced));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectBudgetView.java b/src/main/java/net/officefloor/hq/app/ProjectBudgetView.java
+new file mode 100644
+index 0000000..62612ea
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ProjectBudgetView.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * A project's budget position: the budget set on it, how much has been invoiced against it (the sum
++ * of its invoices), and what is left (budget minus invoiced).
++ */
++public class ProjectBudgetView {
++
++    private final BigDecimal budget;
++    private final BigDecimal invoiced;
++    private final BigDecimal remaining;
++
++    public ProjectBudgetView(BigDecimal budget, BigDecimal invoiced) {
++        this.budget = budget;
++        this.invoiced = invoiced;
++        this.remaining = budget.subtract(invoiced);
++    }
++
++    public BigDecimal getBudget() {
++        return budget;
++    }
++
++    public BigDecimal getInvoiced() {
++        return invoiced;
++    }
++
++    public BigDecimal getRemaining() {
++        return remaining;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 03dc533..2f15080 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -63,10 +63,14 @@ public class TestSupportController {
+         for (Map<String, Object> project : projects) {
+             Object status = project.getOrDefault("status", "ACTIVE");
+             boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
++            Object budgetValue = project.get("budget");
++            java.math.BigDecimal budget = budgetValue == null ? java.math.BigDecimal.ZERO
++                    : new java.math.BigDecimal(budgetValue.toString());
+             jdbc.update(
+-                    "INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
++                    "INSERT INTO project (id, name, client_id, status, archived, budget) "
++                            + "VALUES (?, ?, ?, ?, ?, ?)",
+                     ((Number) project.get("id")).longValue(), project.get("name"),
+-                    ((Number) project.get("clientId")).longValue(), status, archived);
++                    ((Number) project.get("clientId")).longValue(), status, archived, budget);
+         }
+         List<Map<String, Object>> tasks =
+                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
+diff --git a/src/main/resources/db/migration/V23__project_budget.sql b/src/main/resources/db/migration/V23__project_budget.sql
+new file mode 100644
+index 0000000..b142447
+--- /dev/null
++++ b/src/main/resources/db/migration/V23__project_budget.sql
+@@ -0,0 +1,3 @@
++-- Project budget: the owner sets a budget on a project and the detail compares it against what has
++-- been invoiced. Additive column on the existing project table (V3); existing rows default to 0.
++ALTER TABLE project ADD COLUMN budget DECIMAL(19, 2) NOT NULL DEFAULT 0;
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/budget.GET.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/budget.GET.yml
+new file mode 100644
+index 0000000..3e250c6
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/budget.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ProjectBudgetLogic
