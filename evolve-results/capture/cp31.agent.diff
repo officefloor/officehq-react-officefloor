@@ -1,0 +1,117 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index 40cc11d..7c66011 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -11,6 +11,7 @@ type Invoice = {
+   id: number;
+   projectId: number;
+   amount: number;
++  due: number;
+   status: string;
+   issuedDate: string | null;
+   dueDate: string | null;
+@@ -124,6 +125,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+         <thead>
+           <tr>
+             <th>Amount</th>
++            <th>Due</th>
+             <th>Status</th>
+             <th>Issued</th>
+             <th>Due</th>
+@@ -134,6 +136,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+           {invoices.map((inv) => (
+             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+               <td data-testid="invoice-amount">{formatAmount(inv.amount)}</td>
++              <td data-testid="invoice-due-amount">{formatAmount(inv.due)}</td>
+               <td data-testid="invoice-status">{inv.status}</td>
+               <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
+               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceView.java b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+index f109420..e2bcdb8 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+@@ -3,23 +3,32 @@ package net.officefloor.hq.app;
+ import java.math.BigDecimal;
+ 
+ /**
+- * An invoice as the UI shows it: the invoice's id, its project's id, the billed amount, its payment
+- * status, and the dates it was issued and is due (ISO {@code yyyy-MM-dd}, or null when unset).
++ * An invoice as the UI shows it: the invoice's id, its project's id, the billed amount, how much is
++ * still left to pay after payments ({@code due}), its payment status, and the dates it was issued
++ * and is due (ISO {@code yyyy-MM-dd}, or null when unset).
+  */
+ public class InvoiceView {
+ 
+     private final Long id;
+     private final Long projectId;
+     private final BigDecimal amount;
++    private final BigDecimal due;
+     private final String status;
+     private final String issuedDate;
+     private final String dueDate;
+ 
++    /** Default {@code due} to the full amount, for callers that have no payment information. */
+     public InvoiceView(Long id, Long projectId, BigDecimal amount, String status,
+             String issuedDate, String dueDate) {
++        this(id, projectId, amount, amount, status, issuedDate, dueDate);
++    }
++
++    public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal due, String status,
++            String issuedDate, String dueDate) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
++        this.due = due;
+         this.status = status;
+         this.issuedDate = issuedDate;
+         this.dueDate = dueDate;
+@@ -37,6 +46,10 @@ public class InvoiceView {
+         return amount;
+     }
+ 
++    public BigDecimal getDue() {
++        return due;
++    }
++
+     public String getStatus() {
+         return status;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+index a9efcc4..9334656 100644
+--- a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ import java.util.stream.Collectors;
+ import net.officefloor.web.HttpPathParameter;
+@@ -14,15 +15,23 @@ public class ListInvoicesLogic {
+ 
+     public void service(@HttpPathParameter("projectId") String projectId,
+             @HttpQueryParameter("sort") String sort, InvoiceRepository invoices,
+-            ObjectResponse<List<InvoiceView>> response) {
++            PaymentRepository payments, ObjectResponse<List<InvoiceView>> response) {
+         Long id = Long.valueOf(projectId);
+         List<Invoice> ordered = "due".equals(sort)
+                 ? invoices.findByProjectIdOrderByDueDateAscIdAsc(id)
+                 : invoices.findByProjectIdOrderByIdAsc(id);
+         List<InvoiceView> views = ordered.stream()
+-                .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), inv.getStatus(),
+-                        inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+-                        inv.getDueDate() == null ? null : inv.getDueDate().toString()))
++                .map(inv -> {
++                    // What is still left to pay: the billed amount minus everything paid so far.
++                    BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
++                            .map(Payment::getAmount)
++                            .reduce(BigDecimal.ZERO, BigDecimal::add);
++                    BigDecimal due = inv.getAmount().subtract(paid);
++                    return new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
++                            inv.getStatus(),
++                            inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
++                            inv.getDueDate() == null ? null : inv.getDueDate().toString());
++                })
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
