@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { formatMoney } from '../../ui/money';
 
 // Home screen: a cross-feature summary. It shows how many clients and projects the user has, and
 // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
@@ -39,7 +40,7 @@ export function DashboardPage() {
 
       <div data-testid="dashboard-outstanding">
         <span>Outstanding</span>
-        <strong data-testid="dashboard-outstanding-total">{outstanding.toFixed(2)}</strong>
+        <strong data-testid="dashboard-outstanding-total">{formatMoney(outstanding)}</strong>
       </div>
     </section>
   );

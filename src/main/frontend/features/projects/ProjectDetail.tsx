@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { formatMoney } from '../../ui/money';
 
 // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
 // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
@@ -69,7 +70,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         <tbody>
           {invoices.map((invoice) => (
             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
-              <td data-testid="invoice-amount">{Number(invoice.amount).toFixed(2)}</td>
+              <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
               <td data-testid="invoice-status">{invoice.status}</td>
               <td>
                 {invoice.status !== 'PAID' && (
@@ -87,7 +88,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         </tbody>
         <tfoot>
           <tr>
-            <td data-testid="project-invoices-total">{total.toFixed(2)}</td>
+            <td data-testid="project-invoices-total">{formatMoney(total)}</td>
           </tr>
         </tfoot>
       </table>
