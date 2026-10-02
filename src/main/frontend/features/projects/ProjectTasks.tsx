@@ -5,17 +5,25 @@ import React, { useEffect, useState } from 'react';
 // data loading (no global store); composed, not branched.
 type Task = { id: number; projectId: number; title: string; done: boolean };
 
+type Filter = 'ALL' | 'OPEN' | 'DONE';
+
 export function ProjectTasks({ projectId }: { projectId: number }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [filter, setFilter] = useState<Filter>('ALL');
 
-  async function load() {
-    const res = await fetch(`/api/projects/${projectId}/tasks`);
+  async function load(status: Filter = filter) {
+    const res = await fetch(`/api/projects/${projectId}/tasks?status=${status}`);
     setTasks(await res.json());
   }
 
   useEffect(() => {
     void load();
   }, [projectId]);
+
+  async function onFilter(status: Filter) {
+    setFilter(status);
+    await load(status);
+  }
 
   async function toggle(taskId: number) {
     const res = await fetch(`/api/tasks/${taskId}/toggle`, { method: 'POST' });
@@ -28,6 +36,16 @@ export function ProjectTasks({ projectId }: { projectId: number }) {
   return (
     <section data-testid="project-tasks">
       <h2>Tasks</h2>
+
+      <select
+        data-testid="task-filter"
+        value={filter}
+        onChange={(e) => void onFilter(e.target.value as Filter)}
+      >
+        <option value="ALL">All</option>
+        <option value="OPEN">Open</option>
+        <option value="DONE">Done</option>
+      </select>
 
       <table data-testid="project-tasks-table">
         <thead>

@@ -8,4 +8,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     /** A project's tasks, oldest first, so the checklist is stable across loads. */
     List<Task> findByProjectIdOrderByIdAsc(Long projectId);
+
+    /** A project's tasks in one state (done = true/false), oldest first. */
+    List<Task> findByProjectIdAndDoneOrderByIdAsc(Long projectId, boolean done);
 }
