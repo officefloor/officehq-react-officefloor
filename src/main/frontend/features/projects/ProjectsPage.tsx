@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ProjectInvoices } from './ProjectInvoices';
 
 // The projects feature owns its own state, data loading and layout (no global store). It lists every
 // project with its client's NAME (a cross-entity join surfaced in the UI) and adds a new project by
@@ -11,6 +12,7 @@ export function ProjectsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
 
   async function load() {
     const [pRes, cRes] = await Promise.all([fetch('/api/projects'), fetch('/api/clients')]);
@@ -80,11 +82,22 @@ export function ProjectsPage() {
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`project-open-${p.id}`}
+                    onClick={() => setOpenProjectId(p.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openProjectId !== null ? <ProjectInvoices projectId={openProjectId} /> : null}
     </section>
   );
 }
