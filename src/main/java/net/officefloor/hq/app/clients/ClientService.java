@@ -23,6 +23,15 @@ public class ClientService {
         return repository.findAllByOrderByIdAsc();
     }
 
+    /** Clients whose name contains {@code query} (case-insensitive); all clients when blank. */
+    @Transactional(readOnly = true)
+    public List<Client> search(String query) {
+        if (query == null || query.isBlank()) {
+            return list();
+        }
+        return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+    }
+
     @Transactional
     public Client create(String name, String email) {
         if (email == null || !EMAIL.matcher(email).matches()) {

@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ClientRepository extends JpaRepository<Client, Long> {
 
     List<Client> findAllByOrderByIdAsc();
+
+    List<Client> findByNameContainingIgnoreCaseOrderByIdAsc(String name);
 }

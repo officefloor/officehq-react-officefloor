@@ -9,20 +9,22 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [search, setSearch] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState(false);
 
   async function load() {
-    const res = await fetch('/api/clients');
+    const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
     if (res.ok) {
       setClients(await res.json());
     }
   }
 
+  // Reload whenever the search term changes — the server filters by name (case-insensitive).
   useEffect(() => {
     void load();
-  }, []);
+  }, [search]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -46,6 +48,13 @@ export function ClientsPage() {
   return (
     <section data-testid="clients-page">
       <h1>Clients</h1>
+
+      <input
+        data-testid="client-search"
+        placeholder="Search clients by name"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       <form data-testid="client-form" onSubmit={onSubmit}>
         <input
