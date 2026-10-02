@@ -1,0 +1,23 @@
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 04872c9..d6daa03 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -7,7 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Cross-feature aggregate for the home screen: how many clients and projects the user has, and how
+- * much money is still owed (the sum of UNPAID invoice amounts across every project). It reads the
++ * much money is still owed (the sum of SENT invoice amounts across every project — drafts have not
++ * been billed to the client yet and paid invoices are settled, so only sent-and-unpaid counts). It reads the
+  * other features' tables via SQL so the dashboard stays self-contained and does not import their
+  * Java types.
+  */
+@@ -25,7 +26,7 @@ public class DashboardService {
+         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
+         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
+         BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'UNPAID'",
++                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                 BigDecimal.class);
+         return new DashboardView(clients, projects, outstanding);
+     }
