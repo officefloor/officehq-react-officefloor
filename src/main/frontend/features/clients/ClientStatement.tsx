@@ -13,7 +13,18 @@ type StatementInvoice = {
   status: string;
 };
 
-type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
+type StatementGroup = {
+  projectId: number;
+  projectName: string;
+  invoices: StatementInvoice[];
+  subtotal: number;
+};
+
+type Statement = {
+  invoices: StatementInvoice[];
+  groups: StatementGroup[];
+  outstandingTotal: number;
+};
 
 function formatAmount(amount: number): string {
   return `$${Number(amount).toLocaleString('en-US', {
@@ -54,16 +65,32 @@ export function ClientStatement({ clientId }: { clientId: number }) {
               <th>Status</th>
             </tr>
           </thead>
-          <tbody>
-            {statement.invoices.map((inv) => (
-              <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
-                <td data-testid="statement-invoice-id">{inv.id}</td>
-                <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
-                <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
-                <td data-testid="statement-invoice-status">{inv.status}</td>
+          {statement.groups.map((group) => (
+            <tbody
+              key={group.projectId}
+              data-testid={`statement-project-${group.projectId}`}
+            >
+              <tr>
+                <th colSpan={4} data-testid="statement-project-name">
+                  {group.projectName}
+                </th>
               </tr>
-            ))}
-          </tbody>
+              {group.invoices.map((inv) => (
+                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+                  <td data-testid="statement-invoice-id">{inv.id}</td>
+                  <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
+                  <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
+                  <td data-testid="statement-invoice-status">{inv.status}</td>
+                </tr>
+              ))}
+              <tr>
+                <td>Subtotal</td>
+                <td data-testid="statement-project-subtotal" colSpan={3}>
+                  {formatAmount(group.subtotal)}
+                </td>
+              </tr>
+            </tbody>
+          ))}
           <tfoot>
             <tr>
               <td>Outstanding</td>

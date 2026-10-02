@@ -11,15 +11,22 @@ import java.util.List;
 public class ClientStatementView {
 
     private final List<InvoiceView> invoices;
+    private final List<StatementGroupView> groups;
     private final BigDecimal outstandingTotal;
 
-    public ClientStatementView(List<InvoiceView> invoices, BigDecimal outstandingTotal) {
+    public ClientStatementView(List<InvoiceView> invoices, List<StatementGroupView> groups,
+            BigDecimal outstandingTotal) {
         this.invoices = invoices;
+        this.groups = groups;
         this.outstandingTotal = outstandingTotal;
     }
 
     public List<InvoiceView> getInvoices() {
         return invoices;
+    }
+
+    public List<StatementGroupView> getGroups() {
+        return groups;
     }
 
     public BigDecimal getOutstandingTotal() {
