@@ -24,10 +24,27 @@ public class InvoiceService {
                     + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
                     + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
 
-    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> new InvoiceView(
-            rs.getLong("id"), rs.getLong("project_id"), rs.getBigDecimal("amount"),
-            rs.getString("status"), rs.getDate("issued_date").toLocalDate().toString(),
-            rs.getDate("due_date").toLocalDate().toString(), rs.getBigDecimal("due_amount"));
+    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> {
+        BigDecimal amount = rs.getBigDecimal("amount");
+        BigDecimal dueAmount = rs.getBigDecimal("due_amount");
+        return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
+                deriveStatus(rs.getString("status"), amount, dueAmount),
+                rs.getDate("issued_date").toLocalDate().toString(),
+                rs.getDate("due_date").toLocalDate().toString(), dueAmount);
+    };
+
+    /**
+     * The status we show is worked out from the payments, not flipped by hand: an invoice reads PAID
+     * once its payments cover the amount, PARTIAL once some (but not all) has been paid, and otherwise
+     * keeps its stored lifecycle status (DRAFT/SENT).
+     */
+    private static String deriveStatus(String stored, BigDecimal amount, BigDecimal dueAmount) {
+        BigDecimal paid = amount.subtract(dueAmount);
+        if (paid.signum() <= 0) {
+            return stored;
+        }
+        return dueAmount.signum() <= 0 ? "PAID" : "PARTIAL";
+    }
 
     private final InvoiceRepository repository;
     private final LineItemRepository lineItemRepository;
@@ -216,10 +233,19 @@ public class InvoiceService {
         payment.setInvoiceId(invoiceId);
         payment.setAmount(body.getAmount());
         payment.setPaidDate(LocalDate.parse(body.getDate()));
-        paymentRepository.save(payment);
-        audit.record("PAYMENT_RECORDED invoice=" + invoiceId + " amount="
-                + body.getAmount().setScale(2) + " date=" + body.getDate());
+        Payment saved = paymentRepository.save(payment);
+        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
+                + body.getAmount().setScale(2));
         return listPayments(invoiceId);
+    }
+
+    /** One invoice, with its status worked out from the payments recorded against it. */
+    @Transactional(readOnly = true)
+    public InvoiceView get(Long invoiceId) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        return find(invoiceId);
     }
 
     private InvoiceView find(Long invoiceId) {

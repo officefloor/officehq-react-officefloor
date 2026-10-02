@@ -11,7 +11,14 @@ type Payment = {
   date: string;
 };
 
-export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
+export function InvoicePayments({
+  invoiceId,
+  onPaymentRecorded,
+}: {
+  invoiceId: number;
+  // Recording a payment can change the invoice's worked-out status, so let the parent re-read it.
+  onPaymentRecorded?: () => void;
+}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
@@ -39,6 +46,7 @@ export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
       setPayments(await res.json());
       setAmount('');
       setDate('');
+      onPaymentRecorded?.();
     }
   }
 

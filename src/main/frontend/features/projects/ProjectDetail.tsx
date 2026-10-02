@@ -100,13 +100,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     }
   }
 
-  async function onPay(invoiceId: number) {
-    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
-    if (res.ok) {
-      await load();
-    }
-  }
-
   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
   return (
@@ -217,7 +210,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
                 >
                   Open
                 </button>
-                {/* Lifecycle: a DRAFT can be sent; only a SENT invoice can be paid. */}
+                {/* Lifecycle: a DRAFT can be sent. Once sent, the status is worked out from the
+                    payments recorded against the invoice — PARTIAL then PAID — not flipped by hand. */}
                 {invoice.status === 'DRAFT' && (
                   <button
                     data-testid={`invoice-send-${invoice.id}`}
@@ -225,15 +219,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
                     onClick={() => onSend(invoice.id)}
                   >
                     Send
-                  </button>
-                )}
-                {invoice.status === 'SENT' && (
-                  <button
-                    data-testid={`invoice-pay-${invoice.id}`}
-                    type="button"
-                    onClick={() => onPay(invoice.id)}
-                  >
-                    Mark paid
                   </button>
                 )}
               </td>

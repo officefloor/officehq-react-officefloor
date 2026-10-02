@@ -14,6 +14,13 @@ type LineItem = {
   unitPrice: number;
 };
 
+// The invoice's status is worked out from its payments (PAID once covered, PARTIAL once part paid),
+// so we read it back from the server rather than flipping it by hand.
+type Invoice = {
+  id: number;
+  status: string;
+};
+
 export function InvoiceLineItems({
   invoiceId,
   onBack,
@@ -22,6 +29,7 @@ export function InvoiceLineItems({
   onBack: () => void;
 }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [status, setStatus] = useState('');
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
@@ -33,8 +41,17 @@ export function InvoiceLineItems({
     }
   }
 
+  async function loadInvoice() {
+    const res = await fetch(`/api/invoices/${invoiceId}`);
+    if (res.ok) {
+      const invoice: Invoice = await res.json();
+      setStatus(invoice.status);
+    }
+  }
+
   useEffect(() => {
     void load();
+    void loadInvoice();
   }, [invoiceId]);
 
   async function onRemove(lineItemId: number) {
@@ -45,6 +62,8 @@ export function InvoiceLineItems({
     if (res.ok) {
       // The endpoint returns the invoice's remaining line items; the total re-derives from them.
       setLineItems(await res.json());
+      // The amount changed, so the status worked out from the payments may have too.
+      void loadInvoice();
     }
   }
 
@@ -62,6 +81,8 @@ export function InvoiceLineItems({
     if (res.ok) {
       // The endpoint returns the invoice's line items, totals included on re-derive.
       setLineItems(await res.json());
+      // The amount changed, so the status worked out from the payments may have too.
+      void loadInvoice();
       setDescription('');
       setQty('');
       setUnitPrice('');
@@ -75,6 +96,8 @@ export function InvoiceLineItems({
       <button data-testid="invoice-close" type="button" onClick={onBack}>
         Back to invoices
       </button>
+
+      <p data-testid="invoice-status">{status}</p>
 
       <table data-testid="invoice-lineitems-table">
         <thead>
@@ -134,7 +157,7 @@ export function InvoiceLineItems({
 
       <p data-testid="invoice-amount">{formatMoney(total)}</p>
 
-      <InvoicePayments invoiceId={invoiceId} />
+      <InvoicePayments invoiceId={invoiceId} onPaymentRecorded={loadInvoice} />
     </section>
   );
 }
