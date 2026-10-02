@@ -23,8 +23,8 @@ public class Invoice {
 
     private BigDecimal amount;
 
-    /** Payment status; defaults to UNPAID until the invoice is marked paid. */
-    private String status = "UNPAID";
+    /** Lifecycle status: DRAFT -> SENT -> PAID. A new invoice starts as a DRAFT. */
+    private String status = "DRAFT";
 
     /** The date the invoice was issued (sent out). */
     @Column(name = "issued_date")

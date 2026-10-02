@@ -57,6 +57,13 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     }
   }
 
+  async function onSend(invoiceId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}/send`, { method: 'POST' });
+    if (res.ok) {
+      await load();
+    }
+  }
+
   async function onPay(invoiceId: number) {
     const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
     if (res.ok) {
@@ -109,7 +116,17 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
               <td data-testid="invoice-due">{invoice.dueDate}</td>
               <td data-testid="invoice-status">{invoice.status}</td>
               <td>
-                {invoice.status !== 'PAID' && (
+                {/* Lifecycle: a DRAFT can be sent; only a SENT invoice can be paid. */}
+                {invoice.status === 'DRAFT' && (
+                  <button
+                    data-testid={`invoice-send-${invoice.id}`}
+                    type="button"
+                    onClick={() => onSend(invoice.id)}
+                  >
+                    Send
+                  </button>
+                )}
+                {invoice.status === 'SENT' && (
                   <button
                     data-testid={`invoice-pay-${invoice.id}`}
                     type="button"

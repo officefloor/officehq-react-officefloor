@@ -73,20 +73,45 @@ public class InvoiceService {
     }
 
     @Transactional
+    public InvoiceView send(Long invoiceId) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        InvoiceView current = find(invoiceId);
+        if (!"DRAFT".equals(current.getStatus())) {
+            throw new IllegalStateException("Only a draft invoice can be sent");
+        }
+        jdbc.update("UPDATE invoices SET status = 'SENT' WHERE id = ?", invoiceId);
+        InvoiceView invoice = find(invoiceId);
+        audit.record("INVOICE_SENT id=" + invoice.getId() + " amount="
+                + invoice.getAmount().setScale(2));
+        return invoice;
+    }
+
+    @Transactional
     public InvoiceView pay(Long invoiceId) {
         if (invoiceId == null) {
             throw new IllegalArgumentException("An invoice id is required");
         }
+        InvoiceView current = find(invoiceId);
+        // Payment is only allowed once an invoice has been sent.
+        if (!"SENT".equals(current.getStatus())) {
+            throw new IllegalStateException("An invoice can only be paid once it has been sent");
+        }
         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", invoiceId);
-        InvoiceView invoice = jdbc.queryForObject(
+        InvoiceView invoice = find(invoiceId);
+        audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
+                + invoice.getAmount().setScale(2));
+        return invoice;
+    }
+
+    private InvoiceView find(Long invoiceId) {
+        return jdbc.queryForObject(
                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
                         rs.getBigDecimal("amount"), rs.getString("status"),
                         rs.getDate("issued_date").toLocalDate().toString(),
                         rs.getDate("due_date").toLocalDate().toString()),
                 invoiceId);
-        audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
-                + invoice.getAmount().setScale(2));
-        return invoice;
     }
 }
