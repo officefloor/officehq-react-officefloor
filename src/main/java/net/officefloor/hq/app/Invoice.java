@@ -31,6 +31,9 @@ public class Invoice {
     @Column(name = "due_date")
     private LocalDate dueDate;
 
+    @Column(name = "discount_pct")
+    private int discountPct;
+
     public Invoice() {
     }
 
@@ -86,5 +89,13 @@ public class Invoice {
 
     public void setDueDate(LocalDate dueDate) {
         this.dueDate = dueDate;
+    }
+
+    public int getDiscountPct() {
+        return discountPct;
+    }
+
+    public void setDiscountPct(int discountPct) {
+        this.discountPct = discountPct;
     }
 }

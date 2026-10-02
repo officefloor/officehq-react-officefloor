@@ -23,9 +23,11 @@ function formatAmount(amount: number): string {
 
 export function InvoiceLineItems({
   invoiceId,
+  discountPct = 0,
   onClose,
 }: {
   invoiceId: number;
+  discountPct?: number;
   onClose: () => void;
 }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -121,7 +123,14 @@ export function InvoiceLineItems({
     await load();
   }
 
-  const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
+  // The subtotal is the sum of the line items; the owner can take a percentage off it as a discount,
+  // and the invoice's final total is what is left after that discount.
+  const subtotal = lineItems.reduce(
+    (sum, li) => sum + Number(li.quantity) * Number(li.unitPrice),
+    0,
+  );
+  const discount = subtotal * (Number(discountPct) / 100);
+  const total = subtotal - discount;
 
   return (
     <section data-testid="invoice-lineitems">
@@ -272,6 +281,16 @@ export function InvoiceLineItems({
           )}
         </tbody>
         <tfoot>
+          <tr>
+            <td colSpan={4}>Subtotal</td>
+            <td data-testid="invoice-subtotal">{formatAmount(subtotal)}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td colSpan={4}>Discount ({Number(discountPct)}%)</td>
+            <td data-testid="invoice-discount">{formatAmount(discount)}</td>
+            <td></td>
+          </tr>
           <tr>
             <td colSpan={4}>Total</td>
             <td data-testid="invoice-amount">{formatAmount(total)}</td>

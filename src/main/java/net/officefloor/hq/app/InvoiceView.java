@@ -16,6 +16,7 @@ public class InvoiceView {
     private final String status;
     private final String issuedDate;
     private final String dueDate;
+    private final int discountPct;
 
     /** Default {@code due} to the full amount, for callers that have no payment information. */
     public InvoiceView(Long id, Long projectId, BigDecimal amount, String status,
@@ -25,6 +26,11 @@ public class InvoiceView {
 
     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal due, String status,
             String issuedDate, String dueDate) {
+        this(id, projectId, amount, due, status, issuedDate, dueDate, 0);
+    }
+
+    public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal due, String status,
+            String issuedDate, String dueDate, int discountPct) {
         this.id = id;
         this.projectId = projectId;
         this.amount = amount;
@@ -32,6 +38,7 @@ public class InvoiceView {
         this.status = status;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
+        this.discountPct = discountPct;
     }
 
     public Long getId() {
@@ -60,5 +67,9 @@ public class InvoiceView {
 
     public String getDueDate() {
         return dueDate;
+    }
+
+    public int getDiscountPct() {
+        return discountPct;
     }
 }

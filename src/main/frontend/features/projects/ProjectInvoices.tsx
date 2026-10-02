@@ -17,6 +17,7 @@ type Invoice = {
   status: string;
   issuedDate: string | null;
   dueDate: string | null;
+  discountPct: number;
 };
 
 function formatAmount(amount: number): string {
@@ -33,6 +34,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
   const [sort, setSort] = useState<'id' | 'due'>('id');
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
   const [openStatus, setOpenStatus] = useState('');
+  const [openDiscountPct, setOpenDiscountPct] = useState(0);
 
   async function load(order: 'id' | 'due' = sort) {
     const res = await fetch(`/api/projects/${projectId}/invoices?sort=${order}`);
@@ -48,6 +50,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     }
     const inv: Invoice = await res.json();
     setOpenStatus(inv.status);
+    setOpenDiscountPct(Number(inv.discountPct ?? 0));
   }
 
   useEffect(() => {
@@ -113,6 +116,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         </p>
         <InvoiceLineItems
           invoiceId={openInvoiceId}
+          discountPct={openDiscountPct}
           onClose={() => {
             setOpenInvoiceId(null);
             void load();

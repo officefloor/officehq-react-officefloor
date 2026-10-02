@@ -156,12 +156,15 @@ public class TestSupportController {
                 amount = explicit == null ? java.math.BigDecimal.ZERO
                         : new java.math.BigDecimal(explicit.toString());
             }
+            Object discountPct = invoice.getOrDefault("discountPct", 0);
             jdbc.update(
-                    "INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date) "
-                            + "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO invoice "
+                            + "(id, project_id, amount, status, issued_date, due_date, discount_pct) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     invoiceId, ((Number) invoice.get("projectId")).longValue(), amount, status,
                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
-                    dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
+                    dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()),
+                    ((Number) discountPct).intValue());
             for (Map<String, Object> lineItem : lineItems) {
                 Object unit = lineItem.getOrDefault("unit", "");
                 jdbc.update(

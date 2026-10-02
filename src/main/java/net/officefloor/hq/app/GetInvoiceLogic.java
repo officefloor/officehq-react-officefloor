@@ -26,6 +26,6 @@ public class GetInvoiceLogic {
         String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
         response.send(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due, status,
                 inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
-                inv.getDueDate() == null ? null : inv.getDueDate().toString()));
+                inv.getDueDate() == null ? null : inv.getDueDate().toString(), inv.getDiscountPct()));
     }
 }
