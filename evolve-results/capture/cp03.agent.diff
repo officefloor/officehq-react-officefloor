@@ -1,0 +1,427 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+new file mode 100644
+index 0000000..4b95be6
+--- /dev/null
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -0,0 +1,98 @@
++import { useEffect, useState, type FormEvent } from 'react';
++
++// This arm's convention: the page component owns the feature's state, data loading and layout.
++// A project belongs to a client; the list shows the client's NAME, and the form's client picker is
++// a <select> whose option values are client ids.
++type Client = { id: number; name: string; email: string };
++type Project = { id: number; name: string; clientId: number; clientName: string };
++
++export function ProjectsPage() {
++  const [projects, setProjects] = useState<Project[]>([]);
++  const [clients, setClients] = useState<Client[]>([]);
++  const [name, setName] = useState('');
++  const [clientId, setClientId] = useState('');
++
++  async function loadProjects() {
++    const res = await fetch('/api/projects');
++    if (res.ok) {
++      setProjects(await res.json());
++    }
++  }
++
++  async function loadClients() {
++    const res = await fetch('/api/clients');
++    if (res.ok) {
++      setClients(await res.json());
++    }
++  }
++
++  useEffect(() => {
++    void loadProjects();
++    void loadClients();
++  }, []);
++
++  async function onSubmit(event: FormEvent) {
++    event.preventDefault();
++    const res = await fetch('/api/projects', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name, clientId: Number(clientId) }),
++    });
++    if (res.ok) {
++      setName('');
++      setClientId('');
++      await loadProjects();
++    }
++  }
++
++  return (
++    <section data-testid="projects-page">
++      <h1>Projects</h1>
++
++      <form data-testid="project-form" onSubmit={onSubmit}>
++        <input
++          data-testid="project-form-name"
++          placeholder="Name"
++          value={name}
++          onChange={(e) => setName(e.target.value)}
++        />
++        <select
++          data-testid="project-form-client"
++          value={clientId}
++          onChange={(e) => setClientId(e.target.value)}
++        >
++          <option value="">Select a client</option>
++          {clients.map((client) => (
++            <option key={client.id} value={client.id}>
++              {client.name}
++            </option>
++          ))}
++        </select>
++        <button data-testid="project-form-submit" type="submit">
++          Add project
++        </button>
++      </form>
++
++      {projects.length === 0 ? (
++        <p data-testid="projects-empty">No projects yet.</p>
++      ) : (
++        <table data-testid="projects-table">
++          <thead>
++            <tr>
++              <th>Name</th>
++              <th>Client</th>
++            </tr>
++          </thead>
++          <tbody>
++            {projects.map((project) => (
++              <tr key={project.id} data-testid={`project-row-${project.id}`}>
++                <td data-testid="project-name">{project.name}</td>
++                <td data-testid="project-client">{project.clientName}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/projects/route.tsx b/src/main/frontend/features/projects/route.tsx
+new file mode 100644
+index 0000000..4af382f
+--- /dev/null
++++ b/src/main/frontend/features/projects/route.tsx
+@@ -0,0 +1,8 @@
++import type { AppRoute } from '../../router/routes';
++import { ProjectsPage } from './ProjectsPage';
++
++export const route: AppRoute = {
++  id: 'projects',
++  label: 'Projects',
++  Component: ProjectsPage,
++};
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 3a2650d..10f0731 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,11 @@ public class TestSupportController {
+     @PostMapping("/reset")
+     public void reset() {
+         audit.clear();
++        // Disable FK checks so a referenced parent (clients) can be truncated alongside its child.
++        jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
++        jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
++        jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+@@ -41,17 +45,31 @@ public class TestSupportController {
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         List<Map<String, Object>> clients =
+                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
+-        long maxId = 0;
++        long maxClientId = 0;
+         for (Map<String, Object> client : clients) {
+             long id = ((Number) client.get("id")).longValue();
+             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
+             jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
+                     id, client.get("name"), client.get("email"));
+-            maxId = Math.max(maxId, id);
++            maxClientId = Math.max(maxClientId, id);
+         }
+-        if (maxId > 0) {
++        if (maxClientId > 0) {
+             // Advance the identity so app-generated ids don't collide with seeded rows.
+-            jdbc.execute("ALTER TABLE clients ALTER COLUMN id RESTART WITH " + (maxId + 1));
++            jdbc.execute("ALTER TABLE clients ALTER COLUMN id RESTART WITH " + (maxClientId + 1));
++        }
++
++        List<Map<String, Object>> projects =
++                (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
++        long maxProjectId = 0;
++        for (Map<String, Object> project : projects) {
++            long id = ((Number) project.get("id")).longValue();
++            long clientId = ((Number) project.get("clientId")).longValue();
++            jdbc.update("INSERT INTO projects (id, name, client_id) VALUES (?, ?, ?)",
++                    id, project.get("name"), clientId);
++            maxProjectId = Math.max(maxProjectId, id);
++        }
++        if (maxProjectId > 0) {
++            jdbc.execute("ALTER TABLE projects ALTER COLUMN id RESTART WITH " + (maxProjectId + 1));
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java b/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java
+new file mode 100644
+index 0000000..ccfd1d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.projects;
++
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/projects — add a project for a client from the JSON body and return the created row. */
++public class CreateProjectLogic {
++
++    public void service(NewProject body, ProjectService projects, ObjectResponse<ProjectView> response) {
++        response.send(projects.create(body.getName(), body.getClientId()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/NewProject.java b/src/main/java/net/officefloor/hq/app/projects/NewProject.java
+new file mode 100644
+index 0000000..54ddbd6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/NewProject.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.projects;
++
++import net.officefloor.web.HttpObject;
++
++/** JSON request body for creating a project. {@link HttpObject} loads it from the request entity. */
++@HttpObject
++public class NewProject {
++
++    private String name;
++    private Long clientId;
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/Project.java b/src/main/java/net/officefloor/hq/app/projects/Project.java
+new file mode 100644
+index 0000000..a38f101
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/Project.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.projects;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A project the user does for a client. Mapped to the {@code projects} table (Flyway V3). */
++@Entity
++@Table(name = "projects")
++public class Project {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java
+new file mode 100644
+index 0000000..1942eab
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.projects;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Project}. */
++public interface ProjectRepository extends JpaRepository<Project, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectService.java b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+new file mode 100644
+index 0000000..1c6515f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.projects;
++
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Business logic for projects. The list view joins each project to its client to surface the
++ * client's NAME (the UI shows names, not ids). The join reads the {@code clients} table via SQL so
++ * the feature stays self-contained and does not import the clients feature's Java types.
++ */
++@Service
++public class ProjectService {
++
++    private final ProjectRepository repository;
++    private final JdbcTemplate jdbc;
++
++    public ProjectService(ProjectRepository repository, JdbcTemplate jdbc) {
++        this.repository = repository;
++        this.jdbc = jdbc;
++    }
++
++    @Transactional(readOnly = true)
++    public List<ProjectView> list() {
++        return jdbc.query(
++                "SELECT p.id, p.name, p.client_id, c.name AS client_name "
++                        + "FROM projects p JOIN clients c ON p.client_id = c.id "
++                        + "ORDER BY p.id ASC",
++                (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
++                        rs.getLong("client_id"), rs.getString("client_name")));
++    }
++
++    @Transactional
++    public ProjectView create(String name, Long clientId) {
++        if (name == null || name.isBlank()) {
++            throw new IllegalArgumentException("A project requires a name");
++        }
++        if (clientId == null) {
++            throw new IllegalArgumentException("A project requires a client");
++        }
++        Project project = new Project();
++        project.setName(name);
++        project.setClientId(clientId);
++        Project saved = repository.save(project);
++        String clientName = jdbc.queryForObject(
++                "SELECT name FROM clients WHERE id = ?", String.class, clientId);
++        return new ProjectView(saved.getId(), saved.getName(), clientId, clientName);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectView.java b/src/main/java/net/officefloor/hq/app/projects/ProjectView.java
+new file mode 100644
+index 0000000..7e39b9c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectView.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.projects;
++
++/** JSON response shape for a project (what the UI renders): carries the client's NAME, not just id. */
++public class ProjectView {
++
++    private final long id;
++    private final String name;
++    private final long clientId;
++    private final String clientName;
++
++    public ProjectView(long id, String name, long clientId, String clientName) {
++        this.id = id;
++        this.name = name;
++        this.clientId = clientId;
++        this.clientName = clientName;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public long getClientId() {
++        return clientId;
++    }
++
++    public String getClientName() {
++        return clientName;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java b/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java
+new file mode 100644
+index 0000000..b360c49
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.projects;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/projects — list every project with its client's name. */
++public class ProjectsLogic {
++
++    public void service(ProjectService projects, ObjectResponse<List<ProjectView>> response) {
++        response.send(projects.list());
++    }
++}
+diff --git a/src/main/resources/db/migration/V3__projects.sql b/src/main/resources/db/migration/V3__projects.sql
+new file mode 100644
+index 0000000..ddba07e
+--- /dev/null
++++ b/src/main/resources/db/migration/V3__projects.sql
+@@ -0,0 +1,6 @@
++-- Second domain table: projects a user does for a client. Each project belongs to one client.
++CREATE TABLE projects (
++    id        BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name      VARCHAR(255) NOT NULL,
++    client_id BIGINT       NOT NULL REFERENCES clients(id)
++);
+diff --git a/src/main/resources/officefloor/rest/api/projects.GET.yml b/src/main/resources/officefloor/rest/api/projects.GET.yml
+new file mode 100644
+index 0000000..37110bf
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.projects.ProjectsLogic
+diff --git a/src/main/resources/officefloor/rest/api/projects.POST.yml b/src/main/resources/officefloor/rest/api/projects.POST.yml
+new file mode 100644
+index 0000000..6c69706
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.projects.CreateProjectLogic
