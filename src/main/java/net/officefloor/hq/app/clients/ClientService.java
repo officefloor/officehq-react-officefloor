@@ -2,6 +2,7 @@ package net.officefloor.hq.app.clients;
 
 import java.util.List;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.Audit;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,25 +17,47 @@ public class ClientService {
     private final ClientRepository repository;
     private final ContactRepository contacts;
     private final JdbcTemplate jdbc;
+    private final Audit audit;
 
-    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc) {
+    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc,
+            Audit audit) {
         this.repository = repository;
         this.contacts = contacts;
         this.jdbc = jdbc;
+        this.audit = audit;
     }
 
+    /** List the clients still in play. Archived clients are tucked away and omitted. */
     @Transactional(readOnly = true)
     public List<Client> list() {
-        return repository.findAllByOrderByIdAsc();
+        return repository.findByArchivedFalseOrderByIdAsc();
     }
 
-    /** Clients whose name contains {@code query} (case-insensitive); all clients when blank. */
+    /**
+     * Clients whose name contains {@code query} (case-insensitive); all clients when blank. Archived
+     * clients are tucked away, so they drop off the search too.
+     */
     @Transactional(readOnly = true)
     public List<Client> search(String query) {
         if (query == null || query.isBlank()) {
             return list();
         }
-        return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+        return repository.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+    }
+
+    /**
+     * Archive a client: keep the row (and everything hanging off it) but flag it so it drops off the
+     * list and search. Records an audit entry so the action can be checked later, and returns the
+     * clients that remain visible.
+     */
+    @Transactional
+    public List<Client> archive(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("A client id is required to archive");
+        }
+        jdbc.update("UPDATE clients SET archived = TRUE WHERE id = ?", id);
+        audit.record("CLIENT_ARCHIVED id=" + id);
+        return list();
     }
 
     /**

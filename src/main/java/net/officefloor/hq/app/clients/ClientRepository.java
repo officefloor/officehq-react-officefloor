@@ -6,7 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 /** Data access for {@link Client}. */
 public interface ClientRepository extends JpaRepository<Client, Long> {
 
-    List<Client> findAllByOrderByIdAsc();
+    // Archived clients are tucked away, so the list and search only surface the non-archived ones.
+    List<Client> findByArchivedFalseOrderByIdAsc();
 
-    List<Client> findByNameContainingIgnoreCaseOrderByIdAsc(String name);
+    List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
 }

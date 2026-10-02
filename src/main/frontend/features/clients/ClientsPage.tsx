@@ -28,6 +28,18 @@ export function ClientsPage() {
     void load();
   }, [search]);
 
+  // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
+  // detail pane if it was open on the archived client, then reload the (now narrower) list.
+  async function onArchive(id: number) {
+    const res = await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
+    if (res.ok) {
+      if (openClientId === id) {
+        setOpenClientId(null);
+      }
+      await load();
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!EMAIL_RE.test(email)) {
@@ -104,6 +116,13 @@ export function ClientsPage() {
                     onClick={() => setOpenClientId(client.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    data-testid={`client-archive-${client.id}`}
+                    type="button"
+                    onClick={() => void onArchive(client.id)}
+                  >
+                    Archive
                   </button>
                 </td>
               </tr>

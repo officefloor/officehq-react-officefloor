@@ -19,6 +19,9 @@ public class Client {
 
     private String email;
 
+    // Archived clients are tucked away: the row is kept but drops off the list and search.
+    private boolean archived;
+
     public Long getId() {
         return id;
     }
@@ -41,5 +44,13 @@ public class Client {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 }
