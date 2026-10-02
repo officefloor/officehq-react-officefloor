@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ClientDetail } from './ClientDetail';
 
 // This arm's convention: the page component owns the feature's state, data loading and layout.
 type Client = { id: number; name: string; email: string };
@@ -13,6 +14,7 @@ export function ClientsPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState(false);
+  const [openClientId, setOpenClientId] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
@@ -87,6 +89,7 @@ export function ClientsPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -94,11 +97,22 @@ export function ClientsPage() {
               <tr key={client.id} data-testid={`client-row-${client.id}`}>
                 <td data-testid="client-name">{client.name}</td>
                 <td data-testid="client-email">{client.email}</td>
+                <td>
+                  <button
+                    data-testid={`client-open-${client.id}`}
+                    type="button"
+                    onClick={() => setOpenClientId(client.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openClientId !== null && <ClientDetail clientId={openClientId} />}
     </section>
   );
 }

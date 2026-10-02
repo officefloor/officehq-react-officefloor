@@ -2,6 +2,7 @@ package net.officefloor.hq.app.clients;
 
 import java.util.List;
 import java.util.regex.Pattern;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,9 +14,11 @@ public class ClientService {
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final ClientRepository repository;
+    private final JdbcTemplate jdbc;
 
-    public ClientService(ClientRepository repository) {
+    public ClientService(ClientRepository repository, JdbcTemplate jdbc) {
         this.repository = repository;
+        this.jdbc = jdbc;
     }
 
     @Transactional(readOnly = true)
@@ -30,6 +33,18 @@ public class ClientService {
             return list();
         }
         return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+    }
+
+    /**
+     * The projects done for a client, oldest first. Reads the {@code projects} table via SQL so the
+     * clients feature stays self-contained and does not import the projects feature's Java types.
+     */
+    @Transactional(readOnly = true)
+    public List<ClientProjectView> projectsFor(Long clientId) {
+        return jdbc.query(
+                "SELECT id, name FROM projects WHERE client_id = ? ORDER BY id ASC",
+                (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
+                clientId);
     }
 
     @Transactional
