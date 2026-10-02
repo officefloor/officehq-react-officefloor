@@ -2,6 +2,7 @@ package net.officefloor.hq.app;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -48,6 +49,16 @@ public class TestSupportController {
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE dashboard_settings");
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+    }
+
+    /**
+     * Parse a note's {@code at} stamp, accepting either a full ISO offset date-time or a plain
+     * date (treated as the start of that day in UTC), so a fixture can write either form.
+     */
+    private static OffsetDateTime parseInstant(String value) {
+        return value.contains("T")
+                ? OffsetDateTime.parse(value)
+                : LocalDate.parse(value).atStartOfDay().atOffset(ZoneOffset.UTC);
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -157,7 +168,7 @@ public class TestSupportController {
             jdbc.update(
                     "INSERT INTO notes (id, target_type, target_id, text, at) VALUES (?, ?, ?, ?, ?)",
                     id, note.get("targetType"), targetId, note.get("text"),
-                    OffsetDateTime.parse((String) note.get("at")));
+                    parseInstant((String) note.get("at")));
             maxNoteId = Math.max(maxNoteId, id);
         }
         if (maxNoteId > 0) {

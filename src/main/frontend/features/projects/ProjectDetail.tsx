@@ -123,6 +123,22 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
+  // Opening an invoice drills into its own detail view (line items, payments, notes); it takes
+  // over the project view so the project's own panels don't double up with the invoice's.
+  if (openInvoiceId !== null) {
+    return (
+      <section data-testid="project-detail">
+        <InvoiceLineItems
+          invoiceId={openInvoiceId}
+          onBack={() => {
+            setOpenInvoiceId(null);
+            void load();
+          }}
+        />
+      </section>
+    );
+  }
+
   return (
     <section data-testid="project-detail">
       {budget && (
@@ -184,16 +200,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
       <h2>Invoices</h2>
 
-      {openInvoiceId !== null ? (
-        <InvoiceLineItems
-          invoiceId={openInvoiceId}
-          onBack={() => {
-            setOpenInvoiceId(null);
-            void load();
-          }}
-        />
-      ) : (
-      <>
       <form data-testid="invoice-form" onSubmit={onSubmit}>
         <input
           data-testid="invoice-form-amount"
@@ -273,8 +279,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           </tr>
         </tfoot>
       </table>
-      </>
-      )}
     </section>
   );
 }

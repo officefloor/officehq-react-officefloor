@@ -46,4 +46,26 @@ public class NoteService {
                 projectId, text, OffsetDateTime.now());
         return listForProject(projectId);
     }
+
+    /** The notes on an invoice, newest written first (ties broken by newest id). */
+    @Transactional(readOnly = true)
+    public List<NoteView> listForInvoice(Long invoiceId) {
+        return jdbc.query(
+                "SELECT id, text, at FROM notes "
+                        + "WHERE target_type = 'invoice' AND target_id = ? "
+                        + "ORDER BY at DESC, id DESC",
+                MAPPER, invoiceId);
+    }
+
+    /** Write a note on an invoice (stamped now) and return the invoice's notes, newest first. */
+    @Transactional
+    public List<NoteView> addToInvoice(Long invoiceId, String text) {
+        if (invoiceId == null || text == null || text.isBlank()) {
+            throw new IllegalArgumentException("An invoice id and note text are required");
+        }
+        jdbc.update(
+                "INSERT INTO notes (target_type, target_id, text, at) VALUES ('invoice', ?, ?, ?)",
+                invoiceId, text, OffsetDateTime.now());
+        return listForInvoice(invoiceId);
+    }
 }
