@@ -25,8 +25,11 @@ public class DashboardService {
     public DashboardView summary() {
         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
+        // What is owed is the discounted total: an invoice's percentage discount comes off its
+        // subtotal before it counts toward the outstanding figure, so the home screen shows the same
+        // money the client is actually asked to pay (matching the invoice and statement views).
         BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
+                "SELECT COALESCE(SUM(amount * (1 - discount_pct / 100)), 0) FROM invoices WHERE status = 'SENT'",
                 BigDecimal.class);
         // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
         // reference date (as_of); with no reference seeded it falls back to the current date.

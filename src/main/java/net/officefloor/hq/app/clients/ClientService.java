@@ -99,14 +99,20 @@ public class ClientService {
      */
     @Transactional(readOnly = true)
     public ClientStatementView statementFor(Long clientId) {
+        // The amount owed on an invoice is its discounted total — the percentage discount comes off
+        // the subtotal before anything is owed — so both the per-invoice amount and what is still due
+        // (that discounted total minus payments) reflect the discount, matching the invoice and
+        // dashboard views.
         List<ClientStatementInvoiceView> invoices = jdbc.query(
-                "SELECT i.id, p.name AS project_name, i.amount, i.status, "
-                        + "i.amount - COALESCE((SELECT SUM(pay.amount) FROM payments pay "
+                "SELECT i.id, p.name AS project_name, "
+                        + "i.amount * (1 - i.discount_pct / 100) AS net_amount, i.status, "
+                        + "i.amount * (1 - i.discount_pct / 100) "
+                        + "- COALESCE((SELECT SUM(pay.amount) FROM payments pay "
                         + "WHERE pay.invoice_id = i.id), 0) AS due_amount "
                         + "FROM invoices i JOIN projects p ON i.project_id = p.id "
                         + "WHERE p.client_id = ? ORDER BY i.id ASC",
                 (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"),
-                        rs.getString("project_name"), rs.getBigDecimal("amount"),
+                        rs.getString("project_name"), rs.getBigDecimal("net_amount"),
                         rs.getString("status"), rs.getBigDecimal("due_amount")),
                 clientId);
         BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
