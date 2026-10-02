@@ -1,0 +1,925 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+index 1f60c89..7366048 100644
+--- a/src/main/frontend/features/clients/ClientDetail.tsx
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -35,6 +35,19 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+   // By default a client's page shows only their ACTIVE projects — the work still in play. Flipping
+   // this reveals the finished and hidden (archived) ones too, by asking the server for them all.
+   const [showAll, setShowAll] = useState(false);
++  // The currency this client is paid in (their money is shown in it everywhere), and the draft the
++  // currency picker is set to before it is saved.
++  const [currency, setCurrency] = useState('USD');
++  const [currencyDraft, setCurrencyDraft] = useState('USD');
++
++  async function loadClient() {
++    const res = await fetch(`/api/clients/${clientId}`);
++    if (res.ok) {
++      const client = (await res.json()) as { currency: string };
++      setCurrency(client.currency);
++      setCurrencyDraft(client.currency);
++    }
++  }
+ 
+   async function loadContacts() {
+     const res = await fetch(`/api/clients/${clientId}/contacts`);
+@@ -66,8 +79,23 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+   useEffect(() => {
+     void loadContacts();
+     void loadCounts();
++    void loadClient();
+   }, [clientId]);
+ 
++  // Set the currency this client is paid in; their money then shows in it everywhere.
++  async function onSaveCurrency() {
++    const res = await fetch(`/api/clients/${clientId}/currency`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ currency: currencyDraft }),
++    });
++    if (res.ok) {
++      const client = (await res.json()) as { currency: string };
++      setCurrency(client.currency);
++      setCurrencyDraft(client.currency);
++    }
++  }
++
+   // A client has one main contact. Pick it by flagging the chosen contact primary on the server,
+   // then reload so the "who is primary" line and the row buttons reflect the new choice.
+   async function onPickPrimary(contactId: number) {
+@@ -142,6 +170,26 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
+       </dl>
+ 
++      <div data-testid="client-currency-field">
++        <span>Currency</span>
++        <span data-testid="client-currency">{currency}</span>
++        <select
++          data-testid="client-currency-select"
++          value={currencyDraft}
++          onChange={(e) => setCurrencyDraft(e.target.value)}
++        >
++          <option value="USD">USD</option>
++          <option value="EUR">EUR</option>
++        </select>
++        <button
++          data-testid="client-currency-save"
++          type="button"
++          onClick={() => void onSaveCurrency()}
++        >
++          Save currency
++        </button>
++      </div>
++
+       <button
+         data-testid="client-statement-open"
+         type="button"
+@@ -186,7 +234,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+                 <tr key={invoice.id} data-testid={`payment-alloc-row-${invoice.id}`}>
+                   <td>{invoice.id}</td>
+                   <td>{invoice.projectName}</td>
+-                  <td>{formatMoney(invoice.due)}</td>
++                  <td>{formatMoney(invoice.due, currency)}</td>
+                   <td>
+                     <input
+                       data-testid={`payment-alloc-${invoice.id}`}
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index 3692ff5..b33f81f 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -23,6 +23,8 @@ type Statement = {
+   invoices: StatementInvoice[];
+   projects: StatementProject[];
+   outstandingTotal: number;
++  // The currency the whole statement is shown in — the client's own currency.
++  currency: string;
+ };
+ 
+ export function ClientStatement({ clientId }: { clientId: number }) {
+@@ -30,6 +32,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+     invoices: [],
+     projects: [],
+     outstandingTotal: 0,
++    currency: 'USD',
+   });
+ 
+   useEffect(() => {
+@@ -60,7 +63,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+               <tr key={project.id} data-testid={`statement-print-project-${project.id}`}>
+                 <td data-testid="statement-print-project-name">{project.name}</td>
+                 <td data-testid="statement-print-project-subtotal">
+-                  {formatMoney(project.subtotal)}
++                  {formatMoney(project.subtotal, statement.currency)}
+                 </td>
+               </tr>
+             ))}
+@@ -69,7 +72,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+         <p className="statement-print-total">
+           Grand total owed:{' '}
+           <strong data-testid="statement-grand-total">
+-            {formatMoney(statement.outstandingTotal)}
++            {formatMoney(statement.outstandingTotal, statement.currency)}
+           </strong>
+         </p>
+       </section>
+@@ -91,15 +94,15 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+               <th colSpan={4} data-testid="statement-project-name">
+                 {project.name}
+               </th>
+-              <td data-testid="statement-project-subtotal">{formatMoney(project.subtotal)}</td>
++              <td data-testid="statement-project-subtotal">{formatMoney(project.subtotal, statement.currency)}</td>
+             </tr>
+             {project.invoices.map((invoice) => (
+               <tr key={invoice.id} data-testid={`statement-invoice-row-${invoice.id}`}>
+                 <td data-testid="statement-invoice-id">{invoice.id}</td>
+                 <td data-testid="statement-invoice-project">{invoice.projectName}</td>
+-                <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount)}</td>
++                <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount, statement.currency)}</td>
+                 <td data-testid="statement-invoice-status">{invoice.status}</td>
+-                <td data-testid="statement-invoice-due">{formatMoney(invoice.due)}</td>
++                <td data-testid="statement-invoice-due">{formatMoney(invoice.due, statement.currency)}</td>
+               </tr>
+             ))}
+           </tbody>
+@@ -109,7 +112,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+       <p>
+         Total owed:{' '}
+         <strong data-testid="client-outstanding-total">
+-          {formatMoney(statement.outstandingTotal)}
++          {formatMoney(statement.outstandingTotal, statement.currency)}
+         </strong>
+       </p>
+     </section>
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 9ee298c..adac1ee 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -3,7 +3,7 @@ import { ClientDetail } from './ClientDetail';
+ import { formatMoney } from '../../ui/money';
+ 
+ // This arm's convention: the page component owns the feature's state, data loading and layout.
+-type Client = { id: number; name: string; email: string; outstanding: number };
++type Client = { id: number; name: string; email: string; outstanding: number; currency: string };
+ 
+ // How the list is ordered: alphabetically by name, or by how much each client owes (most first).
+ type Sort = 'name' | 'outstanding';
+@@ -222,7 +222,7 @@ export function ClientsPage() {
+               <tr key={client.id} data-testid={`client-row-${client.id}`}>
+                 <td data-testid="client-name">{client.name}</td>
+                 <td data-testid="client-email">{client.email}</td>
+-                <td data-testid="client-outstanding">{formatMoney(client.outstanding)}</td>
++                <td data-testid="client-outstanding">{formatMoney(client.outstanding, client.currency)}</td>
+                 <td>
+                   <button
+                     data-testid={`client-open-${client.id}`}
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index ee9039d..e8041c2 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -5,11 +5,13 @@ import { formatMoney } from '../../ui/money';
+ // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
+ // owns its own state and reads the single /api/dashboard aggregate; it does not import other
+ // features.
+-type TopClient = { id: number; name: string; owed: number };
++type TopClient = { id: number; name: string; owed: number; currency: string };
++// Outstanding money is kept separate per currency and never added together across currencies.
++type CurrencyTotal = { currency: string; amount: number };
+ type Summary = {
+   clients: number;
+   projects: number;
+-  outstanding: number;
++  outstanding: CurrencyTotal[];
+   overdue: number;
+   topClients: TopClient[];
+ };
+@@ -29,7 +31,7 @@ export function DashboardPage() {
+ 
+   const clients = summary?.clients ?? 0;
+   const projects = summary?.projects ?? 0;
+-  const outstanding = summary?.outstanding ?? 0;
++  const outstanding = summary?.outstanding ?? [];
+   const overdue = summary?.overdue ?? 0;
+   const topClients = summary?.topClients ?? [];
+ 
+@@ -49,7 +51,15 @@ export function DashboardPage() {
+ 
+       <div data-testid="dashboard-outstanding">
+         <span>Outstanding</span>
+-        <strong data-testid="dashboard-outstanding-total">{formatMoney(outstanding)}</strong>
++        {/* Kept separate per currency — never added together across currencies. */}
++        {outstanding.map((total) => (
++          <strong
++            key={total.currency}
++            data-testid={`dashboard-outstanding-${total.currency}`}
++          >
++            {formatMoney(total.amount, total.currency)}
++          </strong>
++        ))}
+       </div>
+ 
+       <div data-testid="dashboard-overdue">
+@@ -62,7 +72,7 @@ export function DashboardPage() {
+         {topClients.map((client) => (
+           <div key={client.id} data-testid={`top-client-row-${client.id}`}>
+             <span data-testid="top-client-name">{client.name}</span>
+-            <span data-testid="top-client-amount">{formatMoney(client.owed)}</span>
++            <span data-testid="top-client-amount">{formatMoney(client.owed, client.currency)}</span>
+           </div>
+         ))}
+       </div>
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index 8ce0852..b33fe4b 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -25,6 +25,8 @@ type Invoice = {
+   status: string;
+   discountPct: number;
+   taxPct: number;
++  // The currency the client is billed in — the invoice's money is shown in it.
++  currency: string;
+ };
+ 
+ export function InvoiceLineItems({
+@@ -38,6 +40,7 @@ export function InvoiceLineItems({
+   const [status, setStatus] = useState('');
+   const [discountPct, setDiscountPct] = useState(0);
+   const [taxPct, setTaxPct] = useState(0);
++  const [currency, setCurrency] = useState('USD');
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
+   const [unit, setUnit] = useState('');
+@@ -57,6 +60,7 @@ export function InvoiceLineItems({
+       setStatus(invoice.status);
+       setDiscountPct(Number(invoice.discountPct));
+       setTaxPct(Number(invoice.taxPct));
++      setCurrency(invoice.currency);
+     }
+   }
+ 
+@@ -135,9 +139,9 @@ export function InvoiceLineItems({
+               <td data-testid="lineitem-description">{item.description}</td>
+               <td data-testid="lineitem-qty">{item.qty}</td>
+               <td data-testid="lineitem-unit">{item.unit}</td>
+-              <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice)}</td>
++              <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice, currency)}</td>
+               <td data-testid="lineitem-amount">
+-                {formatMoney(item.qty * Number(item.unitPrice))}
++                {formatMoney(item.qty * Number(item.unitPrice), currency)}
+               </td>
+               <td>
+                 <button
+@@ -185,16 +189,16 @@ export function InvoiceLineItems({
+ 
+       <dl data-testid="invoice-totals">
+         <dt>Subtotal</dt>
+-        <dd data-testid="invoice-subtotal">{formatMoney(subtotal)}</dd>
++        <dd data-testid="invoice-subtotal">{formatMoney(subtotal, currency)}</dd>
+         <dt>Discount</dt>
+-        <dd data-testid="invoice-discount">{formatMoney(discount)}</dd>
++        <dd data-testid="invoice-discount">{formatMoney(discount, currency)}</dd>
+         <dt>Tax</dt>
+-        <dd data-testid="invoice-tax">{formatMoney(tax)}</dd>
++        <dd data-testid="invoice-tax">{formatMoney(tax, currency)}</dd>
+         <dt>Total</dt>
+-        <dd data-testid="invoice-amount">{formatMoney(finalTotal)}</dd>
++        <dd data-testid="invoice-amount">{formatMoney(finalTotal, currency)}</dd>
+       </dl>
+ 
+-      <InvoicePayments invoiceId={invoiceId} onPaymentRecorded={loadInvoice} />
++      <InvoicePayments invoiceId={invoiceId} currency={currency} onPaymentRecorded={loadInvoice} />
+ 
+       <InvoiceNotes invoiceId={invoiceId} />
+     </section>
+diff --git a/src/main/frontend/features/projects/InvoicePayments.tsx b/src/main/frontend/features/projects/InvoicePayments.tsx
+index 8d95958..5234867 100644
+--- a/src/main/frontend/features/projects/InvoicePayments.tsx
++++ b/src/main/frontend/features/projects/InvoicePayments.tsx
+@@ -13,9 +13,12 @@ type Payment = {
+ 
+ export function InvoicePayments({
+   invoiceId,
++  currency = 'USD',
+   onPaymentRecorded,
+ }: {
+   invoiceId: number;
++  // The currency the client is billed in — payments are shown in it.
++  currency?: string;
+   // Recording a payment can change the invoice's worked-out status, so let the parent re-read it.
+   onPaymentRecorded?: () => void;
+ }) {
+@@ -64,7 +67,7 @@ export function InvoicePayments({
+         <tbody>
+           {payments.map((payment) => (
+             <tr key={payment.id} data-testid={`payment-row-${payment.id}`}>
+-              <td data-testid="payment-amount">{formatMoney(payment.amount)}</td>
++              <td data-testid="payment-amount">{formatMoney(payment.amount, currency)}</td>
+               <td data-testid="payment-date">{payment.date}</td>
+             </tr>
+           ))}
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 4ccb378..ce3f23f 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -16,6 +16,8 @@ type Invoice = {
+   dueDate: string;
+   // How much is still left to pay: the invoice amount minus any payments recorded against it.
+   dueAmount: number;
++  // The currency the client is billed in — the invoice's money is shown in it.
++  currency: string;
+ };
+ 
+ type Task = {
+@@ -122,6 +124,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+   }
+ 
+   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
++  // All of a project's invoices bill the one client, so they share a single currency.
++  const currency = invoices[0]?.currency ?? 'USD';
+ 
+   // Opening an invoice drills into its own detail view (line items, payments, notes); it takes
+   // over the project view so the project's own panels don't double up with the invoice's.
+@@ -235,8 +239,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         <tbody>
+           {invoices.map((invoice) => (
+             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+-              <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
+-              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount)}</td>
++              <td data-testid="invoice-amount">{formatMoney(invoice.amount, invoice.currency)}</td>
++              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount, invoice.currency)}</td>
+               <td data-testid="invoice-issued">{invoice.issuedDate}</td>
+               <td data-testid="invoice-due">{invoice.dueDate}</td>
+               <td data-testid="invoice-status">{invoice.status}</td>
+@@ -275,7 +279,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         </tbody>
+         <tfoot>
+           <tr>
+-            <td data-testid="project-invoices-total">{formatMoney(total)}</td>
++            <td data-testid="project-invoices-total">{formatMoney(total, currency)}</td>
+           </tr>
+         </tfoot>
+       </table>
+diff --git a/src/main/frontend/ui/money.ts b/src/main/frontend/ui/money.ts
+index 6998e67..241242a 100644
+--- a/src/main/frontend/ui/money.ts
++++ b/src/main/frontend/ui/money.ts
+@@ -1,8 +1,15 @@
+ // Shared money formatting primitive. Money is displayed everywhere with a currency symbol, grouped
+-// thousands and exactly two decimals, e.g. 100 -> "$100.00", 1000 -> "$1,000.00". Composed by
+-// features; not branched per-feature.
+-export function formatMoney(amount: number): string {
+-  return `$${Number(amount).toLocaleString('en-US', {
++// thousands and exactly two decimals, e.g. 100 -> "$100.00", 1000 -> "$1,000.00". Different clients
++// are paid in different currencies, so the symbol is chosen from the currency; it defaults to USD
++// when none is given. Composed by features; not branched per-feature.
++const CURRENCY_SYMBOLS: Record<string, string> = {
++  USD: '$',
++  EUR: '€',
++};
++
++export function formatMoney(amount: number, currency: string = 'USD'): string {
++  const symbol = CURRENCY_SYMBOLS[currency] ?? '$';
++  return `${symbol}${Number(amount).toLocaleString('en-US', {
+     minimumFractionDigits: 2,
+     maximumFractionDigits: 2,
+   })}`;
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 312aab8..246cf32 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -80,9 +80,12 @@ public class TestSupportController {
+             // Archived clients are tucked away: honour the fixture flag so a spec can seed a client
+             // that starts off the main list (and can then be restored back onto it).
+             boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
++            // Each client is paid in their own currency; default to USD when the fixture omits one.
++            String currency = (String) client.getOrDefault("currency", "USD");
+             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
+-            jdbc.update("INSERT INTO clients (id, name, email, archived) VALUES (?, ?, ?, ?)",
+-                    id, client.get("name"), client.get("email"), archived);
++            jdbc.update(
++                    "INSERT INTO clients (id, name, email, archived, currency) VALUES (?, ?, ?, ?, ?)",
++                    id, client.get("name"), client.get("email"), archived, currency);
+             maxClientId = Math.max(maxClientId, id);
+         }
+         if (maxClientId > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java
+index 207582a..905bad4 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ArchiveClientLogic.java
+@@ -14,7 +14,7 @@ public class ArchiveClientLogic {
+     public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
+             ObjectResponse<List<ClientView>> response) {
+         List<ClientView> views = clients.archive(Long.valueOf(clientId)).stream()
+-                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
++                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail(), c.getCurrency()))
+                 .toList();
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index fff6e48..945bad9 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -22,6 +22,9 @@ public class Client {
+     // Archived clients are tucked away: the row is kept but drops off the list and search.
+     private boolean archived;
+ 
++    // The currency the client is paid in (e.g. USD, EUR). Their money is shown in it everywhere.
++    private String currency;
++
+     public Long getId() {
+         return id;
+     }
+@@ -53,4 +56,12 @@ public class Client {
+     public void setArchived(boolean archived) {
+         this.archived = archived;
+     }
++
++    public String getCurrency() {
++        return currency;
++    }
++
++    public void setCurrency(String currency) {
++        this.currency = currency;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 006a36a..387b73f 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -63,7 +63,7 @@ public class ClientService {
+         List<ClientView> views = new ArrayList<>();
+         for (Client client : search(query)) {
+             views.add(new ClientView(client.getId(), client.getName(), client.getEmail(),
+-                    owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
++                    client.getCurrency(), owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
+         }
+         if ("name".equals(sort)) {
+             views.sort(Comparator.comparing(ClientView::getName, String.CASE_INSENSITIVE_ORDER)
+@@ -96,10 +96,41 @@ public class ClientService {
+     @Transactional(readOnly = true)
+     public List<ClientView> listArchived() {
+         return repository.findByArchivedTrueOrderByIdAsc().stream()
+-                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
++                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail(), c.getCurrency()))
+                 .toList();
+     }
+ 
++    /** One client with the currency they are paid in — what the client detail view reads. */
++    @Transactional(readOnly = true)
++    public ClientView get(Long id) {
++        if (id == null) {
++            throw new IllegalArgumentException("A client id is required");
++        }
++        Client client = repository.findById(id)
++                .orElseThrow(() -> new IllegalArgumentException("No such client: " + id));
++        return new ClientView(client.getId(), client.getName(), client.getEmail(),
++                client.getCurrency());
++    }
++
++    /**
++     * Set the currency a client is paid in (e.g. USD, EUR). Their money is shown in it everywhere.
++     * Returns the updated client.
++     */
++    @Transactional
++    public ClientView setCurrency(Long id, String currency) {
++        if (id == null) {
++            throw new IllegalArgumentException("A client id is required to set its currency");
++        }
++        if (currency == null || currency.isBlank()) {
++            throw new IllegalArgumentException("A currency is required");
++        }
++        Client client = repository.findById(id)
++                .orElseThrow(() -> new IllegalArgumentException("No such client: " + id));
++        client.setCurrency(currency.trim());
++        Client saved = repository.save(client);
++        return new ClientView(saved.getId(), saved.getName(), saved.getEmail(), saved.getCurrency());
++    }
++
+     /**
+      * Bring an archived client back: clear the flag so they return to the main list and search.
+      * Records an audit entry so the action can be checked later, and returns the clients that remain
+@@ -201,7 +232,11 @@ public class ClientService {
+         }
+         BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+-        return new ClientStatementView(invoices, projects, outstanding);
++        // The whole statement is shown in the client's own currency.
++        String currency = jdbc.queryForObject(
++                "SELECT currency FROM clients WHERE id = ?", String.class, clientId);
++        return new ClientStatementView(invoices, projects, outstanding,
++                currency == null ? "USD" : currency);
+     }
+ 
+     /** The contacts kept for a client, oldest first. */
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java b/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java
+index 69837b4..10fedbd 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientStatementView.java
+@@ -14,12 +14,20 @@ public class ClientStatementView {
+     private final List<ClientStatementInvoiceView> invoices;
+     private final List<ClientStatementProjectView> projects;
+     private final BigDecimal outstandingTotal;
++    // The currency the whole statement is shown in — the client's own currency.
++    private final String currency;
+ 
+     public ClientStatementView(List<ClientStatementInvoiceView> invoices,
+-            List<ClientStatementProjectView> projects, BigDecimal outstandingTotal) {
++            List<ClientStatementProjectView> projects, BigDecimal outstandingTotal,
++            String currency) {
+         this.invoices = invoices;
+         this.projects = projects;
+         this.outstandingTotal = outstandingTotal;
++        this.currency = currency;
++    }
++
++    public String getCurrency() {
++        return currency;
+     }
+ 
+     public List<ClientStatementInvoiceView> getInvoices() {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientView.java b/src/main/java/net/officefloor/hq/app/clients/ClientView.java
+index d4dd75e..27563b0 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientView.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientView.java
+@@ -8,18 +8,22 @@ public class ClientView {
+     private final long id;
+     private final String name;
+     private final String email;
+-    // How much the client still owes across all their invoices (amount due). The list can be sorted
+-    // by this; create/update/archive responses don't carry it, so they default to zero.
++    // The currency the client is paid in (e.g. USD, EUR). Their money is shown in it everywhere.
++    private final String currency;
++    // How much the client still owes across all their invoices (amount due), in their currency. The
++    // list can be sorted by this; create/update/archive responses don't carry it, so they default to
++    // zero.
+     private final BigDecimal outstanding;
+ 
+-    public ClientView(long id, String name, String email) {
+-        this(id, name, email, BigDecimal.ZERO);
++    public ClientView(long id, String name, String email, String currency) {
++        this(id, name, email, currency, BigDecimal.ZERO);
+     }
+ 
+-    public ClientView(long id, String name, String email, BigDecimal outstanding) {
++    public ClientView(long id, String name, String email, String currency, BigDecimal outstanding) {
+         this.id = id;
+         this.name = name;
+         this.email = email;
++        this.currency = currency == null ? "USD" : currency;
+         this.outstanding = outstanding == null ? BigDecimal.ZERO : outstanding;
+     }
+ 
+@@ -35,6 +39,10 @@ public class ClientView {
+         return email;
+     }
+ 
++    public String getCurrency() {
++        return currency;
++    }
++
+     public BigDecimal getOutstanding() {
+         return outstanding;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
+index 9aed824..22f09b7 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/CreateClientLogic.java
+@@ -10,7 +10,8 @@ public class CreateClientLogic {
+         try {
+             Client saved = clients.create(body.getName(), body.getEmail());
+             response.send(CreateClientResult
+-                    .created(new ClientView(saved.getId(), saved.getName(), saved.getEmail())));
++                    .created(new ClientView(saved.getId(), saved.getName(), saved.getEmail(),
++                            saved.getCurrency())));
+         } catch (DuplicateClientEmailException e) {
+             // Email already in use: no row added; the UI surfaces the email error.
+             response.send(CreateClientResult.emailInUse());
+diff --git a/src/main/java/net/officefloor/hq/app/clients/GetClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/GetClientLogic.java
+new file mode 100644
+index 0000000..d94de3e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/GetClientLogic.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/{clientId} — one client, including the currency they are paid in. */
++public class GetClientLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<ClientView> response) {
++        response.send(clients.get(Long.valueOf(clientId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/NewCurrency.java b/src/main/java/net/officefloor/hq/app/clients/NewCurrency.java
+new file mode 100644
+index 0000000..c08444c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/NewCurrency.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpObject;
++
++/**
++ * JSON request body for setting the currency a client is paid in. {@link HttpObject} loads it from
++ * the request entity.
++ */
++@HttpObject
++public class NewCurrency {
++
++    private String currency;
++
++    public String getCurrency() {
++        return currency;
++    }
++
++    public void setCurrency(String currency) {
++        this.currency = currency;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/SetClientCurrencyLogic.java b/src/main/java/net/officefloor/hq/app/clients/SetClientCurrencyLogic.java
+new file mode 100644
+index 0000000..b953e48
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/SetClientCurrencyLogic.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/clients/{clientId}/currency — set the currency a client is paid in, so their money is
++ * shown in it everywhere. Returns the updated client.
++ */
++public class SetClientCurrencyLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, NewCurrency body,
++            ClientService clients, ObjectResponse<ClientView> response) {
++        response.send(clients.setCurrency(Long.valueOf(clientId), body.getCurrency()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/UpdateClientLogic.java b/src/main/java/net/officefloor/hq/app/clients/UpdateClientLogic.java
+index 5aa9cc9..37f077f 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/UpdateClientLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/UpdateClientLogic.java
+@@ -11,7 +11,8 @@ public class UpdateClientLogic {
+         try {
+             Client saved = clients.update(Long.valueOf(clientId), body.getName(), body.getEmail());
+             response.send(UpdateClientResult
+-                    .updated(new ClientView(saved.getId(), saved.getName(), saved.getEmail())));
++                    .updated(new ClientView(saved.getId(), saved.getName(), saved.getEmail(),
++                            saved.getCurrency())));
+         } catch (DuplicateClientEmailException e) {
+             // Email already in use by another client: the row is unchanged; the UI surfaces the error.
+             response.send(UpdateClientResult.emailInUse());
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/CurrencyTotalView.java b/src/main/java/net/officefloor/hq/app/dashboard/CurrencyTotalView.java
+new file mode 100644
+index 0000000..3d1a54c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/dashboard/CurrencyTotalView.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.dashboard;
++
++import java.math.BigDecimal;
++
++/**
++ * One currency's slice of the home screen's outstanding money: the currency and the total owed in
++ * it. Totals are kept separate per currency and never added together across currencies.
++ */
++public class CurrencyTotalView {
++
++    private final String currency;
++    private final BigDecimal amount;
++
++    public CurrencyTotalView(String currency, BigDecimal amount) {
++        this.currency = currency;
++        this.amount = amount;
++    }
++
++    public String getCurrency() {
++        return currency;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 7e43bab..66f0e86 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -1,6 +1,5 @@
+ package net.officefloor.hq.app.dashboard;
+ 
+-import java.math.BigDecimal;
+ import java.util.List;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+@@ -29,9 +28,19 @@ public class DashboardService {
+         // What is owed is the discounted total: an invoice's percentage discount comes off its
+         // subtotal before it counts toward the outstanding figure, so the home screen shows the same
+         // money the client is actually asked to pay (matching the invoice and statement views).
+-        BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(amount * (1 - discount_pct / 100)), 0) FROM invoices WHERE status = 'SENT'",
+-                BigDecimal.class);
++        // Different clients are paid in different currencies, so the outstanding money is kept
++        // separate per currency and never added across currencies.
++        List<CurrencyTotalView> outstanding = jdbc.query(
++                "SELECT c.currency AS currency, "
++                        + "COALESCE(SUM(i.amount * (1 - i.discount_pct / 100)), 0) AS amount "
++                        + "FROM invoices i "
++                        + "JOIN projects p ON i.project_id = p.id "
++                        + "JOIN clients c ON p.client_id = c.id "
++                        + "WHERE i.status = 'SENT' "
++                        + "GROUP BY c.currency "
++                        + "ORDER BY c.currency ASC",
++                (rs, rowNum) -> new CurrencyTotalView(
++                        rs.getString("currency"), rs.getBigDecimal("amount")));
+         // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
+         // reference date (as_of); with no reference seeded it falls back to the current date.
+         long overdue = jdbc.queryForObject(
+@@ -42,17 +51,17 @@ public class DashboardService {
+         // across all their projects' invoices, highest first. Only clients that owe something appear
+         // (ties broken by id for a stable order).
+         List<TopClientView> topClients = jdbc.query(
+-                "SELECT c.id, c.name, "
++                "SELECT c.id, c.name, c.currency, "
+                         + "COALESCE(SUM(i.amount * (1 - i.discount_pct / 100)), 0) AS owed "
+                         + "FROM clients c "
+                         + "JOIN projects p ON p.client_id = c.id "
+                         + "JOIN invoices i ON i.project_id = p.id AND i.status = 'SENT' "
+-                        + "GROUP BY c.id, c.name "
++                        + "GROUP BY c.id, c.name, c.currency "
+                         + "HAVING SUM(i.amount * (1 - i.discount_pct / 100)) > 0 "
+                         + "ORDER BY owed DESC, c.id ASC "
+                         + "LIMIT 5",
+-                (rs, rowNum) -> new TopClientView(
+-                        rs.getLong("id"), rs.getString("name"), rs.getBigDecimal("owed")));
++                (rs, rowNum) -> new TopClientView(rs.getLong("id"), rs.getString("name"),
++                        rs.getBigDecimal("owed"), rs.getString("currency")));
+         return new DashboardView(clients, projects, outstanding, overdue, topClients);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+index 9f765de..62879cb 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardView.java
+@@ -1,6 +1,5 @@
+ package net.officefloor.hq.app.dashboard;
+ 
+-import java.math.BigDecimal;
+ import java.util.List;
+ 
+ /**
+@@ -11,12 +10,13 @@ public class DashboardView {
+ 
+     private final long clients;
+     private final long projects;
+-    private final BigDecimal outstanding;
++    // Outstanding money kept separate per currency — the totals are never added across currencies.
++    private final List<CurrencyTotalView> outstanding;
+     private final long overdue;
+     private final List<TopClientView> topClients;
+ 
+-    public DashboardView(long clients, long projects, BigDecimal outstanding, long overdue,
+-            List<TopClientView> topClients) {
++    public DashboardView(long clients, long projects, List<CurrencyTotalView> outstanding,
++            long overdue, List<TopClientView> topClients) {
+         this.clients = clients;
+         this.projects = projects;
+         this.outstanding = outstanding;
+@@ -32,7 +32,7 @@ public class DashboardView {
+         return projects;
+     }
+ 
+-    public BigDecimal getOutstanding() {
++    public List<CurrencyTotalView> getOutstanding() {
+         return outstanding;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java b/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java
+index 50c9962..4ac0060 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/TopClientView.java
+@@ -8,11 +8,18 @@ public class TopClientView {
+     private final long id;
+     private final String name;
+     private final BigDecimal owed;
++    // The currency the client is paid in — their figure is shown in it.
++    private final String currency;
+ 
+-    public TopClientView(long id, String name, BigDecimal owed) {
++    public TopClientView(long id, String name, BigDecimal owed, String currency) {
+         this.id = id;
+         this.name = name;
+         this.owed = owed;
++        this.currency = currency;
++    }
++
++    public String getCurrency() {
++        return currency;
+     }
+ 
+     public long getId() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 87d3870..2721344 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -18,11 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class InvoiceService {
+ 
+-    // An invoice's amount minus whatever has been paid against it is what is still left to pay.
++    // An invoice's amount minus whatever has been paid against it is what is still left to pay. The
++    // invoice's money is shown in the owning project's client's currency (joined in here).
+     private static final String DUE_AWARE_SELECT =
+             "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, "
++                    + "c.currency AS currency, "
+                     + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
+-                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
++                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i "
++                    + "JOIN projects pr ON i.project_id = pr.id "
++                    + "JOIN clients c ON pr.client_id = c.id ";
+ 
+     private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> {
+         BigDecimal amount = rs.getBigDecimal("amount");
+@@ -31,7 +35,8 @@ public class InvoiceService {
+                 deriveStatus(rs.getString("status"), amount, dueAmount),
+                 rs.getDate("issued_date").toLocalDate().toString(),
+                 rs.getDate("due_date").toLocalDate().toString(), dueAmount,
+-                rs.getBigDecimal("discount_pct"), rs.getBigDecimal("tax_pct"));
++                rs.getBigDecimal("discount_pct"), rs.getBigDecimal("tax_pct"),
++                rs.getString("currency"));
+     };
+ 
+     /**
+@@ -143,9 +148,8 @@ public class InvoiceService {
+         invoice.setDueDate(issued.plusDays(30));
+         Invoice saved = repository.save(invoice);
+         // A brand-new invoice has had nothing paid against it yet, so the whole amount is due.
+-        return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
+-                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString(),
+-                saved.getAmount(), saved.getDiscountPct(), saved.getTaxPct());
++        // Re-read it so the view carries the client's currency (joined in by find).
++        return find(saved.getId());
+     }
+ 
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+index 089cf94..62ba8e8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceView.java
+@@ -20,10 +20,12 @@ public class InvoiceView {
+     private final BigDecimal dueAmount;
+     private final BigDecimal discountPct;
+     private final BigDecimal taxPct;
++    // The currency the invoice's money is shown in — the owning project's client's currency.
++    private final String currency;
+ 
+     public InvoiceView(long id, long projectId, BigDecimal amount, String status,
+             String issuedDate, String dueDate, BigDecimal dueAmount, BigDecimal discountPct,
+-            BigDecimal taxPct) {
++            BigDecimal taxPct, String currency) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
+@@ -33,6 +35,11 @@ public class InvoiceView {
+         this.dueAmount = dueAmount;
+         this.discountPct = discountPct;
+         this.taxPct = taxPct;
++        this.currency = currency == null ? "USD" : currency;
++    }
++
++    public String getCurrency() {
++        return currency;
+     }
+ 
+     public long getId() {
+diff --git a/src/main/resources/db/migration/V37__clients_currency.sql b/src/main/resources/db/migration/V37__clients_currency.sql
+new file mode 100644
+index 0000000..61e1e77
+--- /dev/null
++++ b/src/main/resources/db/migration/V37__clients_currency.sql
+@@ -0,0 +1,4 @@
++-- Different clients are paid in different currencies. Each client carries their own currency code
++-- (e.g. USD, EUR); their money is shown in it everywhere. Defaults to USD so every existing client
++-- keeps a sensible currency until it is set.
++ALTER TABLE clients ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'USD';
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}.GET.yml
+new file mode 100644
+index 0000000..3ca7db1
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.GetClientLogic
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/currency.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/currency.POST.yml
+new file mode 100644
+index 0000000..3e2800f
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/currency.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.SetClientCurrencyLogic
