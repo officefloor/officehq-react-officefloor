@@ -1,0 +1,218 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index efa76a6..cdbab0b 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
+ // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
+ // project's invoices, shows their derived total (amounts to 2 decimals), and adds a new invoice by
+ // amount. Owns its own state and data loading (no global store); composed, not branched.
+-type Invoice = { id: number; projectId: number; amount: number };
++type Invoice = { id: number; projectId: number; amount: number; status: string };
+ 
+ function formatAmount(amount: number): string {
+   return Number(amount).toFixed(2);
+@@ -36,6 +36,14 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     await load();
+   }
+ 
++  async function pay(invoiceId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
++    if (!res.ok) {
++      return;
++    }
++    await load();
++  }
++
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+ 
+   return (
+@@ -58,12 +66,26 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+         <thead>
+           <tr>
+             <th>Amount</th>
++            <th>Status</th>
++            <th></th>
+           </tr>
+         </thead>
+         <tbody>
+           {invoices.map((inv) => (
+             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
+               <td data-testid="invoice-amount">{formatAmount(inv.amount)}</td>
++              <td data-testid="invoice-status">{inv.status}</td>
++              <td>
++                {inv.status === 'UNPAID' ? (
++                  <button
++                    type="button"
++                    data-testid={`invoice-pay-${inv.id}`}
++                    onClick={() => void pay(inv.id)}
++                  >
++                    Mark paid
++                  </button>
++                ) : null}
++              </td>
+             </tr>
+           ))}
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/CreateInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/CreateInvoiceLogic.java
+index d0ec59c..0c3fce0 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateInvoiceLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateInvoiceLogic.java
+@@ -25,6 +25,6 @@ public class CreateInvoiceLogic {
+         projects.findById(id).orElseThrow(
+                 () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing project is required"));
+         Invoice saved = invoices.save(new Invoice(id, amount));
+-        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount()));
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(), saved.getStatus()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/Invoice.java b/src/main/java/net/officefloor/hq/app/Invoice.java
+index 1df693e..a193661 100644
+--- a/src/main/java/net/officefloor/hq/app/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/Invoice.java
+@@ -22,12 +22,15 @@ public class Invoice {
+ 
+     private BigDecimal amount;
+ 
++    private String status;
++
+     public Invoice() {
+     }
+ 
+     public Invoice(Long projectId, BigDecimal amount) {
+         this.projectId = projectId;
+         this.amount = amount;
++        this.status = "UNPAID";
+     }
+ 
+     public Long getId() {
+@@ -53,4 +56,12 @@ public class Invoice {
+     public void setAmount(BigDecimal amount) {
+         this.amount = amount;
+     }
++
++    public String getStatus() {
++        return status;
++    }
++
++    public void setStatus(String status) {
++        this.status = status;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceView.java b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+index acb8afb..88f24bf 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+@@ -2,17 +2,19 @@ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
+ 
+-/** An invoice as the UI shows it: the invoice's id, its project's id, and the billed amount. */
++/** An invoice as the UI shows it: the invoice's id, its project's id, the billed amount, and its payment status. */
+ public class InvoiceView {
+ 
+     private final Long id;
+     private final Long projectId;
+     private final BigDecimal amount;
++    private final String status;
+ 
+-    public InvoiceView(Long id, Long projectId, BigDecimal amount) {
++    public InvoiceView(Long id, Long projectId, BigDecimal amount, String status) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
++        this.status = status;
+     }
+ 
+     public Long getId() {
+@@ -26,4 +28,8 @@ public class InvoiceView {
+     public BigDecimal getAmount() {
+         return amount;
+     }
++
++    public String getStatus() {
++        return status;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+index d2e95a6..6be7290 100644
+--- a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+@@ -12,7 +12,7 @@ public class ListInvoicesLogic {
+             InvoiceRepository invoices, ObjectResponse<List<InvoiceView>> response) {
+         Long id = Long.valueOf(projectId);
+         List<InvoiceView> views = invoices.findByProjectIdOrderByIdAsc(id).stream()
+-                .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount()))
++                .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), inv.getStatus()))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/PayInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/PayInvoiceLogic.java
+new file mode 100644
+index 0000000..7ca3e92
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/PayInvoiceLogic.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/invoices/{invoiceId}/pay — mark an invoice PAID and record the transition. Flips the
++ * invoice's status to PAID, then appends one audit record (INVOICE_PAID id=&lt;id&gt; amount=&lt;amount&gt;)
++ * so the owner can check back later. An unknown invoice is rejected with 400 and nothing is written.
++ */
++public class PayInvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            InvoiceRepository invoices, Audit audit, ObjectResponse<InvoiceView> response) {
++        Long id = Long.valueOf(invoiceId);
++        Invoice invoice = invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        invoice.setStatus("PAID");
++        Invoice saved = invoices.save(invoice);
++        BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_PAID id=" + saved.getId() + " amount=" + amount.toPlainString());
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(), saved.getStatus()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index efa9b01..af80289 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -61,10 +61,11 @@ public class TestSupportController {
+         List<Map<String, Object>> invoices =
+                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+         for (Map<String, Object> invoice : invoices) {
+-            jdbc.update("INSERT INTO invoice (id, project_id, amount) VALUES (?, ?, ?)",
++            Object status = invoice.getOrDefault("status", "UNPAID");
++            jdbc.update("INSERT INTO invoice (id, project_id, amount, status) VALUES (?, ?, ?, ?)",
+                     ((Number) invoice.get("id")).longValue(),
+                     ((Number) invoice.get("projectId")).longValue(),
+-                    ((Number) invoice.get("amount")));
++                    ((Number) invoice.get("amount")), status);
+         }
+     }
+ }
+diff --git a/src/main/resources/db/migration/V5__invoice_status.sql b/src/main/resources/db/migration/V5__invoice_status.sql
+new file mode 100644
+index 0000000..c69ad3a
+--- /dev/null
++++ b/src/main/resources/db/migration/V5__invoice_status.sql
+@@ -0,0 +1,4 @@
++-- Invoices gain a payment status so the owner can mark one paid. New invoices default to UNPAID;
++-- paying an invoice flips it to PAID (and audits the transition). Additive column on the existing
++-- invoice table (V4); existing rows backfill to UNPAID.
++ALTER TABLE invoice ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'UNPAID';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/pay.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/pay.POST.yml
+new file mode 100644
+index 0000000..f4befaf
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/pay.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.PayInvoiceLogic
