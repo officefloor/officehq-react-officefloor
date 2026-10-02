@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.clients;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
@@ -85,6 +86,29 @@ public class ClientService {
         Long contacts = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM contacts WHERE client_id = ?", Long.class, clientId);
         return new ClientCountsView(projects == null ? 0 : projects, contacts == null ? 0 : contacts);
+    }
+
+    /**
+     * A statement for a client: every invoice raised across all of the client's projects, gathered
+     * in one place, each with how much is still due (its amount minus whatever has been paid against
+     * it). The outstanding total is the sum of those dues — what the client still owes. Read via SQL
+     * so the clients feature stays self-contained and does not import the invoices feature's types.
+     */
+    @Transactional(readOnly = true)
+    public ClientStatementView statementFor(Long clientId) {
+        List<ClientStatementInvoiceView> invoices = jdbc.query(
+                "SELECT i.id, p.name AS project_name, i.amount, i.status, "
+                        + "i.amount - COALESCE((SELECT SUM(pay.amount) FROM payments pay "
+                        + "WHERE pay.invoice_id = i.id), 0) AS due_amount "
+                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
+                        + "WHERE p.client_id = ? ORDER BY i.id ASC",
+                (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"),
+                        rs.getString("project_name"), rs.getBigDecimal("amount"),
+                        rs.getString("status"), rs.getBigDecimal("due_amount")),
+                clientId);
+        BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new ClientStatementView(invoices, outstanding);
     }
 
     /** The contacts kept for a client, oldest first. */

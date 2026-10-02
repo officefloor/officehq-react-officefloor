@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ClientStatement } from './ClientStatement';
 
 // Opened from the clients list: a client's detail view lists the projects done for them, scoped to
 // the client via /api/clients/<id>/projects. Reuses the project-row-<id>/project-name anchors so the
@@ -20,6 +21,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
   const [emailError, setEmailError] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
 
   async function loadContacts() {
     const res = await fetch(`/api/clients/${clientId}/contacts`);
@@ -77,6 +79,15 @@ export function ClientDetail({ clientId }: { clientId: number }) {
         <dt>Contacts</dt>
         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
       </dl>
+
+      <button
+        data-testid="client-statement-open"
+        type="button"
+        onClick={() => setStatementOpen(true)}
+      >
+        Statement
+      </button>
+      {statementOpen && <ClientStatement clientId={clientId} />}
 
       <h2>Projects</h2>
       <table data-testid="client-projects-table">
