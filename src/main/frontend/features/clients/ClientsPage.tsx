@@ -1,8 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ClientDetail } from './ClientDetail';
+import { formatMoney } from '../../ui/money';
 
 // This arm's convention: the page component owns the feature's state, data loading and layout.
-type Client = { id: number; name: string; email: string };
+type Client = { id: number; name: string; email: string; outstanding: number };
+
+// How the list is ordered: alphabetically by name, or by how much each client owes (most first).
+type Sort = 'name' | 'outstanding';
 
 // A client must carry a proper email address. Keep it simple and local to the feature: a single
 // non-whitespace local part, an @, and a dotted domain.
@@ -11,6 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<Sort>('name');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -23,16 +28,18 @@ export function ClientsPage() {
   const [editEmailError, setEditEmailError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
+    const res = await fetch(
+      `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`,
+    );
     if (res.ok) {
       setClients(await res.json());
     }
   }
 
-  // Reload whenever the search term changes — the server filters by name (case-insensitive).
+  // Reload whenever the search term or chosen sort changes — the server filters and orders the list.
   useEffect(() => {
     void load();
-  }, [search]);
+  }, [search, sort]);
 
   // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
   // detail pane if it was open on the archived client, then reload the (now narrower) list.
@@ -119,6 +126,15 @@ export function ClientsPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
+      <select
+        data-testid="client-sort"
+        value={sort}
+        onChange={(e) => setSort(e.target.value as Sort)}
+      >
+        <option value="name">Name</option>
+        <option value="outstanding">Amount owed</option>
+      </select>
+
       <form data-testid="client-form" onSubmit={onSubmit}>
         <input
           data-testid="client-form-name"
@@ -148,6 +164,7 @@ export function ClientsPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th>Owed</th>
               <th></th>
             </tr>
           </thead>
@@ -156,6 +173,7 @@ export function ClientsPage() {
               <tr key={client.id} data-testid={`client-row-${client.id}`}>
                 <td data-testid="client-name">{client.name}</td>
                 <td data-testid="client-email">{client.email}</td>
+                <td data-testid="client-outstanding">{formatMoney(client.outstanding)}</td>
                 <td>
                   <button
                     data-testid={`client-open-${client.id}`}

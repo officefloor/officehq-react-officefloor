@@ -1,7 +1,11 @@
 package net.officefloor.hq.app.clients;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -44,6 +48,47 @@ public class ClientService {
             return list();
         }
         return repository.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+    }
+
+    /**
+     * The visible clients (honouring the name search), each with how much they still owe, ordered the
+     * way the list asks for: {@code "name"} alphabetically (case-insensitive), {@code "outstanding"}
+     * by most owed first, anything else by the natural id order. The amount owed is computed the same
+     * way as a client statement — each invoice's discounted total minus its payments, summed.
+     */
+    @Transactional(readOnly = true)
+    public List<ClientView> listSorted(String query, String sort) {
+        Map<Long, BigDecimal> owed = outstandingByClient();
+        List<ClientView> views = new ArrayList<>();
+        for (Client client : search(query)) {
+            views.add(new ClientView(client.getId(), client.getName(), client.getEmail(),
+                    owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
+        }
+        if ("name".equals(sort)) {
+            views.sort(Comparator.comparing(ClientView::getName, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(ClientView::getId));
+        } else if ("outstanding".equals(sort)) {
+            views.sort(Comparator.comparing(ClientView::getOutstanding).reversed()
+                    .thenComparing(ClientView::getId));
+        }
+        return views;
+    }
+
+    /** What each client still owes across all their projects' invoices, keyed by client id. */
+    private Map<Long, BigDecimal> outstandingByClient() {
+        Map<Long, BigDecimal> owed = new HashMap<>();
+        jdbc.query(
+                "SELECT p.client_id AS client_id, "
+                        + "SUM(i.amount * (1 - i.discount_pct / 100) "
+                        + "- COALESCE((SELECT SUM(pay.amount) FROM payments pay "
+                        + "WHERE pay.invoice_id = i.id), 0)) AS owed "
+                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
+                        + "GROUP BY p.client_id",
+                rs -> {
+                    BigDecimal value = rs.getBigDecimal("owed");
+                    owed.put(rs.getLong("client_id"), value == null ? BigDecimal.ZERO : value);
+                });
+        return owed;
     }
 
     /**
