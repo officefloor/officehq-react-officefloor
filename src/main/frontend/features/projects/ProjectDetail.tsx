@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { formatMoney } from '../../ui/money';
 import { InvoiceLineItems } from './InvoiceLineItems';
 import { ProjectTags } from './ProjectTags';
+import { ProjectNotes } from './ProjectNotes';
 
 // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
 // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
@@ -109,6 +110,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
   return (
     <section data-testid="project-detail">
       <ProjectTags projectId={projectId} />
+
+      <ProjectNotes projectId={projectId} />
 
       <h2>Tasks</h2>
 

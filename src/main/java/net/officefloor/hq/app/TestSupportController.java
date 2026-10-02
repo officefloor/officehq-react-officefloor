@@ -1,6 +1,7 @@
 package net.officefloor.hq.app;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -39,6 +40,7 @@ public class TestSupportController {
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
@@ -127,6 +129,22 @@ public class TestSupportController {
             long tagId = ((Number) projectTag.get("tagId")).longValue();
             jdbc.update("INSERT INTO project_tags (project_id, tag_id) VALUES (?, ?)",
                     projectId, tagId);
+        }
+
+        List<Map<String, Object>> notes =
+                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
+        long maxNoteId = 0;
+        for (Map<String, Object> note : notes) {
+            long id = ((Number) note.get("id")).longValue();
+            long targetId = ((Number) note.get("targetId")).longValue();
+            jdbc.update(
+                    "INSERT INTO notes (id, target_type, target_id, text, at) VALUES (?, ?, ?, ?, ?)",
+                    id, note.get("targetType"), targetId, note.get("text"),
+                    OffsetDateTime.parse((String) note.get("at")));
+            maxNoteId = Math.max(maxNoteId, id);
+        }
+        if (maxNoteId > 0) {
+            jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + (maxNoteId + 1));
         }
 
         List<Map<String, Object>> invoices =
