@@ -35,6 +35,7 @@ public class TestSupportController {
         audit.clear();
         // Disable FK checks so a referenced parent (clients) can be truncated alongside its child.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE line_items RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
@@ -108,10 +109,21 @@ public class TestSupportController {
         List<Map<String, Object>> invoices =
                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
         long maxInvoiceId = 0;
+        long maxLineItemId = 0;
         for (Map<String, Object> invoice : invoices) {
             long id = ((Number) invoice.get("id")).longValue();
             long projectId = ((Number) invoice.get("projectId")).longValue();
-            double amount = ((Number) invoice.get("amount")).doubleValue();
+            // An invoice is itemised: its amount is derived as the sum of each line's qty * price.
+            // A fixture may still pass an explicit amount for a line-item-less invoice.
+            List<Map<String, Object>> lineItems =
+                    (List<Map<String, Object>>) invoice.getOrDefault("lineItems", List.of());
+            double amount = lineItems.isEmpty() && invoice.get("amount") != null
+                    ? ((Number) invoice.get("amount")).doubleValue()
+                    : 0;
+            for (Map<String, Object> lineItem : lineItems) {
+                amount += ((Number) lineItem.get("qty")).doubleValue()
+                        * ((Number) lineItem.get("unitPrice")).doubleValue();
+            }
             String status = (String) invoice.getOrDefault("status", "UNPAID");
             Object issuedDate = invoice.getOrDefault("issuedDate", LocalDate.now().toString());
             Object dueDate = invoice.getOrDefault("dueDate", LocalDate.now().toString());
@@ -119,9 +131,20 @@ public class TestSupportController {
                     "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date) VALUES (?, ?, ?, ?, ?, ?)",
                     id, projectId, amount, status, issuedDate, dueDate);
             maxInvoiceId = Math.max(maxInvoiceId, id);
+            for (Map<String, Object> lineItem : lineItems) {
+                long lineItemId = ((Number) lineItem.get("id")).longValue();
+                jdbc.update(
+                        "INSERT INTO line_items (id, invoice_id, description, qty, unit_price) VALUES (?, ?, ?, ?, ?)",
+                        lineItemId, id, lineItem.get("description"),
+                        ((Number) lineItem.get("qty")).intValue(), lineItem.get("unitPrice"));
+                maxLineItemId = Math.max(maxLineItemId, lineItemId);
+            }
         }
         if (maxInvoiceId > 0) {
             jdbc.execute("ALTER TABLE invoices ALTER COLUMN id RESTART WITH " + (maxInvoiceId + 1));
+        }
+        if (maxLineItemId > 0) {
+            jdbc.execute("ALTER TABLE line_items ALTER COLUMN id RESTART WITH " + (maxLineItemId + 1));
         }
     }
 }

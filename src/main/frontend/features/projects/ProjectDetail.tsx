@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { formatMoney } from '../../ui/money';
+import { InvoiceLineItems } from './InvoiceLineItems';
 
 // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
 // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
@@ -25,6 +26,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState(false);
+  const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch(`/api/projects/${projectId}/invoices`);
@@ -130,6 +132,16 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
       <h2>Invoices</h2>
 
+      {openInvoiceId !== null ? (
+        <InvoiceLineItems
+          invoiceId={openInvoiceId}
+          onBack={() => {
+            setOpenInvoiceId(null);
+            void load();
+          }}
+        />
+      ) : (
+      <>
       <form data-testid="invoice-form" onSubmit={onSubmit}>
         <input
           data-testid="invoice-form-amount"
@@ -169,6 +181,13 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
               <td data-testid="invoice-due">{invoice.dueDate}</td>
               <td data-testid="invoice-status">{invoice.status}</td>
               <td>
+                <button
+                  data-testid={`invoice-open-${invoice.id}`}
+                  type="button"
+                  onClick={() => setOpenInvoiceId(invoice.id)}
+                >
+                  Open
+                </button>
                 {/* Lifecycle: a DRAFT can be sent; only a SENT invoice can be paid. */}
                 {invoice.status === 'DRAFT' && (
                   <button
@@ -198,6 +217,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           </tr>
         </tfoot>
       </table>
+      </>
+      )}
     </section>
   );
 }

@@ -19,11 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class InvoiceService {
 
     private final InvoiceRepository repository;
+    private final LineItemRepository lineItemRepository;
     private final JdbcTemplate jdbc;
     private final Audit audit;
 
-    public InvoiceService(InvoiceRepository repository, JdbcTemplate jdbc, Audit audit) {
+    public InvoiceService(InvoiceRepository repository, LineItemRepository lineItemRepository,
+            JdbcTemplate jdbc, Audit audit) {
         this.repository = repository;
+        this.lineItemRepository = lineItemRepository;
         this.jdbc = jdbc;
         this.audit = audit;
     }
@@ -117,6 +120,47 @@ public class InvoiceService {
         audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
                 + invoice.getAmount().setScale(2));
         return invoice;
+    }
+
+    /** The line items of an invoice, in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<LineItemView> listLineItems(Long invoiceId) {
+        return jdbc.query(
+                "SELECT id, invoice_id, description, qty, unit_price FROM line_items WHERE invoice_id = ? ORDER BY id ASC",
+                (rs, i) -> new LineItemView(rs.getLong("id"), rs.getLong("invoice_id"),
+                        rs.getString("description"), rs.getInt("qty"),
+                        rs.getBigDecimal("unit_price")),
+                invoiceId);
+    }
+
+    /**
+     * Add one line item to an invoice, then re-derive the invoice's amount as the sum of each line's
+     * quantity times unit price so the stored total stays in step. Returns the invoice's line items.
+     */
+    @Transactional
+    public List<LineItemView> addLineItem(Long invoiceId, NewLineItem body) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        if (body == null || body.getDescription() == null || body.getDescription().isBlank()) {
+            throw new IllegalArgumentException("A line item requires a description");
+        }
+        if (body.getQty() == null || body.getQty() <= 0) {
+            throw new IllegalArgumentException("A line item requires a quantity greater than zero");
+        }
+        if (body.getUnitPrice() == null || body.getUnitPrice().signum() < 0) {
+            throw new IllegalArgumentException("A line item requires a unit price that is not negative");
+        }
+        LineItem lineItem = new LineItem();
+        lineItem.setInvoiceId(invoiceId);
+        lineItem.setDescription(body.getDescription());
+        lineItem.setQty(body.getQty());
+        lineItem.setUnitPrice(body.getUnitPrice());
+        lineItemRepository.save(lineItem);
+        jdbc.update(
+                "UPDATE invoices SET amount = COALESCE((SELECT SUM(qty * unit_price) FROM line_items WHERE invoice_id = ?), 0) WHERE id = ?",
+                invoiceId, invoiceId);
+        return listLineItems(invoiceId);
     }
 
     private InvoiceView find(Long invoiceId) {
