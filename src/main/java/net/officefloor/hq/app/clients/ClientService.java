@@ -44,7 +44,8 @@ public class ClientService {
     @Transactional(readOnly = true)
     public List<ClientProjectView> projectsFor(Long clientId) {
         return jdbc.query(
-                "SELECT id, name FROM projects WHERE client_id = ? ORDER BY id ASC",
+                "SELECT id, name FROM projects WHERE client_id = ? AND archived = FALSE "
+                        + "ORDER BY id ASC",
                 (rs, i) -> new ClientProjectView(rs.getLong("id"), rs.getString("name")),
                 clientId);
     }
@@ -56,7 +57,8 @@ public class ClientService {
     @Transactional(readOnly = true)
     public ClientCountsView countsFor(Long clientId) {
         Long projects = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM projects WHERE client_id = ?", Long.class, clientId);
+                "SELECT COUNT(*) FROM projects WHERE client_id = ? AND archived = FALSE",
+                Long.class, clientId);
         Long contacts = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM contacts WHERE client_id = ?", Long.class, clientId);
         return new ClientCountsView(projects == null ? 0 : projects, contacts == null ? 0 : contacts);

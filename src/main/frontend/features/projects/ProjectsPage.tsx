@@ -13,9 +13,10 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   async function loadProjects() {
-    const res = await fetch('/api/projects');
+    const res = await fetch(showArchived ? '/api/projects?includeArchived=true' : '/api/projects');
     if (res.ok) {
       setProjects(await res.json());
     }
@@ -32,6 +33,21 @@ export function ProjectsPage() {
     void loadProjects();
     void loadClients();
   }, []);
+
+  // Re-fetch when the archived toggle flips so tucked-away projects appear or disappear.
+  useEffect(() => {
+    void loadProjects();
+  }, [showArchived]);
+
+  async function onArchive(id: number) {
+    const res = await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
+    if (res.ok) {
+      if (openProjectId === id) {
+        setOpenProjectId(null);
+      }
+      await loadProjects();
+    }
+  }
 
   async function onDelete(id: number) {
     const res = await fetch(`/api/projects/${id}/delete`, { method: 'POST' });
@@ -85,6 +101,14 @@ export function ProjectsPage() {
         </button>
       </form>
 
+      <button
+        data-testid="projects-show-archived"
+        type="button"
+        onClick={() => setShowArchived((shown) => !shown)}
+      >
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
       {projects.length === 0 ? (
         <p data-testid="projects-empty">No projects yet.</p>
       ) : (
@@ -108,6 +132,13 @@ export function ProjectsPage() {
                     onClick={() => setOpenProjectId(project.id)}
                   >
                     Open
+                  </button>
+                  <button
+                    data-testid={`project-archive-${project.id}`}
+                    type="button"
+                    onClick={() => void onArchive(project.id)}
+                  >
+                    Archive
                   </button>
                   <button
                     data-testid={`project-delete-${project.id}`}
