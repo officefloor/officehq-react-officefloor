@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index a58b9af..d367ff3 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -25,6 +25,17 @@ export function ProjectsPage() {
+     void load();
+   }, []);
+ 
++  async function remove(projectId: number) {
++    const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
++    if (!res.ok) {
++      return;
++    }
++    if (openProjectId === projectId) {
++      setOpenProjectId(null);
++    }
++    await load();
++  }
++
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     const res = await fetch('/api/projects', {
+@@ -91,6 +102,13 @@ export function ProjectsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`project-delete-${p.id}`}
++                    onClick={() => void remove(p.id)}
++                  >
++                    Delete
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/DeleteProjectLogic.java b/src/main/java/net/officefloor/hq/app/DeleteProjectLogic.java
+new file mode 100644
+index 0000000..531e6a3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/DeleteProjectLogic.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * DELETE /api/projects/{projectId} — remove a project the owner no longer needs, then append one
++ * audit record (PROJECT_DELETED id=&lt;id&gt;) so there is a record it happened, and echo back the
++ * removed project. An unknown project is rejected with 400 and nothing is written.
++ */
++public class DeleteProjectLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId,
++            ProjectRepository projects, ClientRepository clients, Audit audit,
++            ObjectResponse<ProjectView> response) {
++        Long id = Long.valueOf(projectId);
++        Project project = projects.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing project is required"));
++        String clientName = clients.findById(project.getClientId()).map(Client::getName).orElse(null);
++        projects.deleteById(id);
++        audit.record("PROJECT_DELETED id=" + id);
++        response.send(new ProjectView(id, project.getName(), project.getClientId(), clientName));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}.DELETE.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}.DELETE.yml
+new file mode 100644
+index 0000000..d061208
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}.DELETE.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.DeleteProjectLogic
