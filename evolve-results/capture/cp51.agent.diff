@@ -1,0 +1,149 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 97aa371..6c0406d 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -18,6 +18,10 @@ export function ClientsPage() {
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState('');
+   const [search, setSearch] = useState('');
++  // How the list is ordered: by name (A–Z) or by how much each client owes (most first).
++  const [sort, setSort] = useState<'name' | 'outstanding'>('name');
++  // Per-client outstanding totals, keyed by client id, for the "owes" ordering.
++  const [outstanding, setOutstanding] = useState<Record<number, number>>({});
+   const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
+   // The client currently being corrected from the list, plus the edited field values.
+@@ -29,6 +33,9 @@ export function ClientsPage() {
+   async function load() {
+     const res = await fetch('/api/clients');
+     setClients(await res.json());
++    const owed = await fetch('/api/clients/outstanding');
++    const rows: { id: number; outstanding: number }[] = await owed.json();
++    setOutstanding(Object.fromEntries(rows.map((r) => [r.id, Number(r.outstanding)])));
+   }
+ 
+   useEffect(() => {
+@@ -109,7 +116,13 @@ export function ClientsPage() {
+ 
+   // Case-insensitive filter on the client name; an empty box shows every client.
+   const q = search.trim().toLowerCase();
+-  const shown = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
++  const filtered = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
++  // Order the filtered rows: alphabetically by name, or by how much each client owes (most first).
++  const shown = [...filtered].sort((a, b) =>
++    sort === 'outstanding'
++      ? (outstanding[b.id] ?? 0) - (outstanding[a.id] ?? 0)
++      : a.name.localeCompare(b.name),
++  );
+ 
+   return (
+     <section data-testid="clients-section">
+@@ -145,6 +158,15 @@ export function ClientsPage() {
+         onChange={(e) => setSearch(e.target.value)}
+       />
+ 
++      <select
++        data-testid="client-sort"
++        value={sort}
++        onChange={(e) => setSort(e.target.value as 'name' | 'outstanding')}
++      >
++        <option value="name">Name</option>
++        <option value="outstanding">Amount owed</option>
++      </select>
++
+       {shown.length === 0 ? (
+         <p data-testid="clients-empty">No clients yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/ClientOutstandingLogic.java b/src/main/java/net/officefloor/hq/app/ClientOutstandingLogic.java
+new file mode 100644
+index 0000000..935dbb0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientOutstandingLogic.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/clients/outstanding — how much each active client owes, so the clients list can be ordered
++ * by it. For every active client this sums, across all of that client's projects' invoices, what is
++ * still due on each (the invoice's discounted total minus everything paid against it) — the same
++ * "money owed" figure the client statement totals ({@link ClientStatementLogic}).
++ */
++public class ClientOutstandingLogic {
++
++    public void service(ClientRepository clients, ProjectRepository projects,
++            InvoiceRepository invoices, PaymentRepository payments,
++            ObjectResponse<List<ClientOutstandingView>> response) {
++        List<ClientOutstandingView> rows = new ArrayList<>();
++        for (Client client : clients.findByArchivedFalseOrderByIdAsc()) {
++            BigDecimal outstanding = BigDecimal.ZERO;
++            for (Project project : projects.findByClientIdOrderByIdAsc(client.getId())) {
++                for (Invoice inv : invoices.findByProjectIdOrderByIdAsc(project.getId())) {
++                    BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
++                            .map(Payment::getAmount)
++                            .reduce(BigDecimal.ZERO, BigDecimal::add);
++                    outstanding = outstanding.add(inv.getDiscountedAmount().subtract(paid));
++                }
++            }
++            rows.add(new ClientOutstandingView(client.getId(), outstanding));
++        }
++        response.send(rows);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientOutstandingView.java b/src/main/java/net/officefloor/hq/app/ClientOutstandingView.java
+new file mode 100644
+index 0000000..22c44dd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientOutstandingView.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * How much one client owes: their id paired with their outstanding total — the sum, across every one
++ * of that client's invoices (gathered from all of their projects), of what is still due on each (the
++ * invoice's discounted total minus everything paid against it). Lets the clients list be ordered by
++ * how much each client owes without the list page re-deriving the figure per client.
++ */
++public class ClientOutstandingView {
++
++    private final Long id;
++    private final BigDecimal outstanding;
++
++    public ClientOutstandingView(Long id, BigDecimal outstanding) {
++        this.id = id;
++        this.outstanding = outstanding;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public BigDecimal getOutstanding() {
++        return outstanding;
++    }
++}
+diff --git a/src/main/resources/db/migration/V32__invoice_project_index.sql b/src/main/resources/db/migration/V32__invoice_project_index.sql
+new file mode 100644
+index 0000000..c453194
+--- /dev/null
++++ b/src/main/resources/db/migration/V32__invoice_project_index.sql
+@@ -0,0 +1,5 @@
++-- Sorting clients by how much they owe sums, per client, each of that client's invoices (gathered
++-- across all of their projects) net of its payments. That walk loads every project's invoices by
++-- project_id, so index invoice by its owning project to keep the per-project lookup cheap as the
++-- invoice table grows. Additive index on the existing invoice table (V4); no column or data change.
++CREATE INDEX IF NOT EXISTS idx_invoice_project_id ON invoice (project_id);
+diff --git a/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml b/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml
+new file mode 100644
+index 0000000..1d033a4
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/outstanding.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ClientOutstandingLogic
