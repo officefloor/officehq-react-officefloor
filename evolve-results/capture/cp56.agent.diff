@@ -1,0 +1,570 @@
+diff --git a/src/main/frontend/features/clients/ClientPayment.tsx b/src/main/frontend/features/clients/ClientPayment.tsx
+new file mode 100644
+index 0000000..eba15d8
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientPayment.tsx
+@@ -0,0 +1,143 @@
++import React, { useEffect, useState } from 'react';
++
++// Record a single lump sum a client paid and split it across several of their open invoices, rendered
++// inside the clients feature when a client is opened. Opening the form (client-record-payment) reads
++// the client's statement for the invoices that still owe something, then takes the lump amount, the
++// date, and a per-invoice share (payment-alloc-<invoiceId>). Submitting posts the lump and its
++// allocations; the server settles each invoice from its share so the balances come out right. Owns its
++// own state and data loading (no global store); composed, not branched.
++type StatementInvoice = {
++  id: number;
++  projectId: number;
++  amount: number;
++  due: number;
++  status: string;
++};
++
++export function ClientPayment({ clientId }: { clientId: number }) {
++  const [open, setOpen] = useState(false);
++  const [invoices, setInvoices] = useState<StatementInvoice[]>([]);
++  const [amount, setAmount] = useState('');
++  const [date, setDate] = useState('');
++  // The share entered against each invoice, keyed by invoice id (blank = nothing allocated there).
++  const [allocs, setAllocs] = useState<Record<number, string>>({});
++  const [error, setError] = useState('');
++
++  // Collapse and reset the form when the opened client changes, so it opens fresh per client.
++  useEffect(() => {
++    setOpen(false);
++    setInvoices([]);
++    setAmount('');
++    setDate('');
++    setAllocs({});
++    setError('');
++  }, [clientId]);
++
++  async function openForm() {
++    const res = await fetch(`/api/clients/${clientId}/statement`);
++    if (!res.ok) {
++      return;
++    }
++    const statement: { invoices: StatementInvoice[] } = await res.json();
++    // Only invoices that still owe something can take a share of the payment.
++    setInvoices(statement.invoices.filter((inv) => inv.status !== 'VOID' && Number(inv.due) > 0));
++    setOpen(true);
++  }
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    const total = Number(amount);
++    if (!(total > 0) || !date.trim()) {
++      setError('An amount greater than zero and a date are required');
++      return;
++    }
++    const allocations = invoices
++      .map((inv) => ({ invoiceId: inv.id, amount: Number(allocs[inv.id] ?? '') }))
++      .filter((a) => a.amount > 0);
++    if (allocations.length === 0) {
++      setError('Allocate the payment across at least one invoice');
++      return;
++    }
++    const allocated = allocations.reduce((sum, a) => sum + a.amount, 0);
++    if (Math.abs(allocated - total) > 0.001) {
++      setError('The allocations must add up to the payment amount');
++      return;
++    }
++    setError('');
++    const res = await fetch(`/api/clients/${clientId}/payments`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ amount: total, date, allocations }),
++    });
++    if (!res.ok) {
++      setError('The payment could not be recorded');
++      return;
++    }
++    setOpen(false);
++    setAmount('');
++    setDate('');
++    setAllocs({});
++  }
++
++  return (
++    <section data-testid="client-payment">
++      <button type="button" data-testid="client-record-payment" onClick={() => void openForm()}>
++        Record payment
++      </button>
++
++      {open ? (
++        <form data-testid="payment-form" onSubmit={onSubmit}>
++          <input
++            data-testid="payment-form-amount"
++            placeholder="Amount"
++            value={amount}
++            onChange={(e) => setAmount(e.target.value)}
++          />
++          <input
++            data-testid="payment-form-date"
++            placeholder="Date"
++            value={date}
++            onChange={(e) => setDate(e.target.value)}
++          />
++
++          <table data-testid="payment-alloc-table">
++            <thead>
++              <tr>
++                <th>Invoice</th>
++                <th>Due</th>
++                <th>Allocate</th>
++              </tr>
++            </thead>
++            <tbody>
++              {invoices.map((inv) => (
++                <tr key={inv.id} data-testid={`payment-alloc-row-${inv.id}`}>
++                  <td>{inv.id}</td>
++                  <td>{inv.due}</td>
++                  <td>
++                    <input
++                      data-testid={`payment-alloc-${inv.id}`}
++                      placeholder="0"
++                      value={allocs[inv.id] ?? ''}
++                      onChange={(e) =>
++                        setAllocs((prev) => ({ ...prev, [inv.id]: e.target.value }))
++                      }
++                    />
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++
++          <button type="submit" data-testid="payment-form-submit">
++            Record payment
++          </button>
++          {error ? (
++            <p data-testid="payment-form-error" role="alert">
++              {error}
++            </p>
++          ) : null}
++        </form>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 6c0406d..87061fb 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { ClientSummary } from './ClientSummary';
+ import { ClientStatement } from './ClientStatement';
++import { ClientPayment } from './ClientPayment';
+ import { ClientProjects } from './ClientProjects';
+ import { ClientContacts } from './ClientContacts';
+ 
+@@ -239,6 +240,7 @@ export function ClientsPage() {
+ 
+       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientStatement clientId={openClientId} /> : null}
++      {openClientId !== null ? <ClientPayment clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+       {openClientId !== null ? <ClientContacts clientId={openClientId} /> : null}
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/AllocatePaymentLogic.java b/src/main/java/net/officefloor/hq/app/AllocatePaymentLogic.java
+new file mode 100644
+index 0000000..509fcbb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/AllocatePaymentLogic.java
+@@ -0,0 +1,96 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/clients/{clientId}/payments — record a single lump sum a client paid and split it across
++ * several of that client's invoices. The lump is stored once ({@link ClientPayment}); each allocated
++ * share becomes an ordinary {@link Payment} against its invoice, so every invoice's balance and
++ * derived status ({@link InvoiceStatus}) comes out right — just as a single payment would settle one.
++ * The allocated shares must add up to the lump amount, each share must be positive, and every targeted
++ * invoice must belong to the client. A bad amount/date, empty or mismatched allocations, or an invoice
++ * that is not the client's, is rejected with 400 and nothing is written.
++ */
++public class AllocatePaymentLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId,
++            @RequestBody NewClientPayment newPayment, ClientRepository clients,
++            ProjectRepository projects, InvoiceRepository invoices, PaymentRepository payments,
++            ClientPaymentRepository clientPayments, Audit audit,
++            ObjectResponse<ClientPaymentView> response) {
++        Long id = Long.valueOf(clientId);
++        clients.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing client is required"));
++
++        BigDecimal amount = newPayment.getAmount();
++        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An amount greater than zero is required");
++        }
++        String date = newPayment.getDate();
++        if (date == null || date.isBlank()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A payment date is required");
++        }
++        LocalDate paidDate;
++        try {
++            paidDate = LocalDate.parse(date.trim());
++        } catch (DateTimeParseException e) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A valid payment date is required");
++        }
++
++        List<NewClientPayment.Allocation> allocations = newPayment.getAllocations();
++        if (allocations == null || allocations.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "At least one invoice allocation is required");
++        }
++
++        // Which invoices are the client's — an allocation may only target one of them.
++        Set<Long> clientInvoiceIds = new HashSet<>();
++        for (Project project : projects.findByClientIdOrderByIdAsc(id)) {
++            for (Invoice inv : invoices.findByProjectIdOrderByIdAsc(project.getId())) {
++                clientInvoiceIds.add(inv.getId());
++            }
++        }
++
++        BigDecimal allocated = BigDecimal.ZERO;
++        for (NewClientPayment.Allocation allocation : allocations) {
++            Long invoiceId = allocation.getInvoiceId();
++            BigDecimal share = allocation.getAmount();
++            if (invoiceId == null || !clientInvoiceIds.contains(invoiceId)) {
++                throw new HttpException(HttpStatus.BAD_REQUEST,
++                        "Each allocation must target one of the client's invoices");
++            }
++            if (share == null || share.compareTo(BigDecimal.ZERO) <= 0) {
++                throw new HttpException(HttpStatus.BAD_REQUEST,
++                        "Each allocation amount must be greater than zero");
++            }
++            allocated = allocated.add(share);
++        }
++        if (allocated.compareTo(amount) != 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST,
++                    "The allocations must add up to the payment amount");
++        }
++
++        // Record the lump once, then settle each invoice with its share, linked back to the lump.
++        ClientPayment lump = clientPayments.save(new ClientPayment(id, amount, paidDate));
++        for (NewClientPayment.Allocation allocation : allocations) {
++            payments.save(new Payment(allocation.getInvoiceId(), allocation.getAmount(), paidDate,
++                    lump.getId()));
++        }
++        audit.record("PAYMENT_ALLOCATED id=" + lump.getId() + " amount="
++                + amount.setScale(2, RoundingMode.HALF_UP).toPlainString() + " invoices="
++                + allocations.size());
++        response.send(new ClientPaymentView(lump.getId(), id, amount, paidDate.toString(),
++                allocations.size()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientPayment.java b/src/main/java/net/officefloor/hq/app/ClientPayment.java
+new file mode 100644
+index 0000000..0d7b37e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientPayment.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * A single lump sum a client paid at once, to be split across several of that client's invoices: the
++ * owning client's id, how much was paid and the date it was paid. Each share of the lump is an
++ * ordinary {@link Payment} that points back here. Maps to {@code client_payment} (V34).
++ */
++@Entity
++@Table(name = "client_payment")
++public class ClientPayment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    private BigDecimal amount;
++
++    @Column(name = "paid_date")
++    private LocalDate paidDate;
++
++    public ClientPayment() {
++    }
++
++    public ClientPayment(Long clientId, BigDecimal amount, LocalDate paidDate) {
++        this.clientId = clientId;
++        this.amount = amount;
++        this.paidDate = paidDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public LocalDate getPaidDate() {
++        return paidDate;
++    }
++
++    public void setPaidDate(LocalDate paidDate) {
++        this.paidDate = paidDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientPaymentRepository.java b/src/main/java/net/officefloor/hq/app/ClientPaymentRepository.java
+new file mode 100644
+index 0000000..09f3ca0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientPaymentRepository.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link ClientPayment}. A Spring bean, injected into the OfficeFloor logic classes. */
++public interface ClientPaymentRepository extends JpaRepository<ClientPayment, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientPaymentView.java b/src/main/java/net/officefloor/hq/app/ClientPaymentView.java
+new file mode 100644
+index 0000000..3fc0d58
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientPaymentView.java
+@@ -0,0 +1,45 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * A recorded lump client payment as the UI sees it: its id, the owning client's id, the lump amount,
++ * the date it was paid (ISO {@code yyyy-MM-dd}) and how many invoices the lump was split across.
++ */
++public class ClientPaymentView {
++
++    private final Long id;
++    private final Long clientId;
++    private final BigDecimal amount;
++    private final String date;
++    private final int allocationCount;
++
++    public ClientPaymentView(Long id, Long clientId, BigDecimal amount, String date,
++            int allocationCount) {
++        this.id = id;
++        this.clientId = clientId;
++        this.amount = amount;
++        this.date = date;
++        this.allocationCount = allocationCount;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public int getAllocationCount() {
++        return allocationCount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/NewClientPayment.java b/src/main/java/net/officefloor/hq/app/NewClientPayment.java
+new file mode 100644
+index 0000000..3778299
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/NewClientPayment.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * Request body for recording a lump payment a client made and splitting it across their invoices: how
++ * much the client paid in total (amount), the date they paid it (date, ISO {@code yyyy-MM-dd}) and how
++ * that lump is allocated — a share (amount) against each invoice (invoiceId). The allocated shares
++ * must add up to the lump amount.
++ */
++public class NewClientPayment {
++
++    private BigDecimal amount;
++
++    private String date;
++
++    private List<Allocation> allocations;
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public void setDate(String date) {
++        this.date = date;
++    }
++
++    public List<Allocation> getAllocations() {
++        return allocations;
++    }
++
++    public void setAllocations(List<Allocation> allocations) {
++        this.allocations = allocations;
++    }
++
++    /** One share of the lump: how much (amount) goes against which invoice (invoiceId). */
++    public static class Allocation {
++
++        private Long invoiceId;
++
++        private BigDecimal amount;
++
++        public Long getInvoiceId() {
++            return invoiceId;
++        }
++
++        public void setInvoiceId(Long invoiceId) {
++            this.invoiceId = invoiceId;
++        }
++
++        public BigDecimal getAmount() {
++            return amount;
++        }
++
++        public void setAmount(BigDecimal amount) {
++            this.amount = amount;
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/Payment.java b/src/main/java/net/officefloor/hq/app/Payment.java
+index 1402a19..3190249 100644
+--- a/src/main/java/net/officefloor/hq/app/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/Payment.java
+@@ -29,6 +29,11 @@ public class Payment {
+     @Column(name = "paid_date")
+     private LocalDate paidDate;
+ 
++    // The lump {@link ClientPayment} this payment is a share of, or null for a standalone payment
++    // recorded directly against a single invoice (V34).
++    @Column(name = "client_payment_id")
++    private Long clientPaymentId;
++
+     public Payment() {
+     }
+ 
+@@ -38,6 +43,13 @@ public class Payment {
+         this.paidDate = paidDate;
+     }
+ 
++    public Payment(Long invoiceId, BigDecimal amount, LocalDate paidDate, Long clientPaymentId) {
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++        this.paidDate = paidDate;
++        this.clientPaymentId = clientPaymentId;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -69,4 +81,12 @@ public class Payment {
+     public void setPaidDate(LocalDate paidDate) {
+         this.paidDate = paidDate;
+     }
++
++    public Long getClientPaymentId() {
++        return clientPaymentId;
++    }
++
++    public void setClientPaymentId(Long clientPaymentId) {
++        this.clientPaymentId = clientPaymentId;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 155add9..64653a6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -41,6 +41,7 @@ public class TestSupportController {
+         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE client_payment RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE line_item RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+diff --git a/src/main/resources/db/migration/V34__client_payment.sql b/src/main/resources/db/migration/V34__client_payment.sql
+new file mode 100644
+index 0000000..2da4031
+--- /dev/null
++++ b/src/main/resources/db/migration/V34__client_payment.sql
+@@ -0,0 +1,14 @@
++-- Client payment: a single lump sum a client pays at once, split (allocated) across several of that
++-- client's open invoices. The lump is recorded here (client_id, amount, paid_date); each share of it
++-- is an ordinary payment row (V19) that now also points back at the lump it came from via
++-- client_payment_id. An invoice's balance is still just its billed amount minus every payment against
++-- it, so allocations settle invoices through the same derived status as a single payment does.
++CREATE TABLE client_payment (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT NOT NULL REFERENCES client(id),
++    amount    DECIMAL(12, 2) NOT NULL,
++    paid_date DATE NOT NULL
++);
++
++ALTER TABLE payment
++    ADD COLUMN client_payment_id BIGINT NULL REFERENCES client_payment(id);
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/payments.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/payments.POST.yml
+new file mode 100644
+index 0000000..9fd873f
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/payments.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.AllocatePaymentLogic
