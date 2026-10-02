@@ -1,0 +1,45 @@
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 27f4a0e..f2afdbb 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -99,14 +99,20 @@ public class ClientService {
+      */
+     @Transactional(readOnly = true)
+     public ClientStatementView statementFor(Long clientId) {
++        // The amount owed on an invoice is its discounted total — the percentage discount comes off
++        // the subtotal before anything is owed — so both the per-invoice amount and what is still due
++        // (that discounted total minus payments) reflect the discount, matching the invoice and
++        // dashboard views.
+         List<ClientStatementInvoiceView> invoices = jdbc.query(
+-                "SELECT i.id, p.name AS project_name, i.amount, i.status, "
+-                        + "i.amount - COALESCE((SELECT SUM(pay.amount) FROM payments pay "
++                "SELECT i.id, p.name AS project_name, "
++                        + "i.amount * (1 - i.discount_pct / 100) AS net_amount, i.status, "
++                        + "i.amount * (1 - i.discount_pct / 100) "
++                        + "- COALESCE((SELECT SUM(pay.amount) FROM payments pay "
+                         + "WHERE pay.invoice_id = i.id), 0) AS due_amount "
+                         + "FROM invoices i JOIN projects p ON i.project_id = p.id "
+                         + "WHERE p.client_id = ? ORDER BY i.id ASC",
+                 (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"),
+-                        rs.getString("project_name"), rs.getBigDecimal("amount"),
++                        rs.getString("project_name"), rs.getBigDecimal("net_amount"),
+                         rs.getString("status"), rs.getBigDecimal("due_amount")),
+                 clientId);
+         BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index 2028cc3..7e48a2d 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -25,8 +25,11 @@ public class DashboardService {
+     public DashboardView summary() {
+         long clients = jdbc.queryForObject("SELECT COUNT(*) FROM clients", Long.class);
+         long projects = jdbc.queryForObject("SELECT COUNT(*) FROM projects", Long.class);
++        // What is owed is the discounted total: an invoice's percentage discount comes off its
++        // subtotal before it counts toward the outstanding figure, so the home screen shows the same
++        // money the client is actually asked to pay (matching the invoice and statement views).
+         BigDecimal outstanding = jdbc.queryForObject(
+-                "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
++                "SELECT COALESCE(SUM(amount * (1 - discount_pct / 100)), 0) FROM invoices WHERE status = 'SENT'",
+                 BigDecimal.class);
+         // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
+         // reference date (as_of); with no reference seeded it falls back to the current date.
