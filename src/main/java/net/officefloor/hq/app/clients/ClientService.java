@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -149,20 +150,35 @@ public class ClientService {
         // (that discounted total minus payments) reflect the discount, matching the invoice and
         // dashboard views.
         List<ClientStatementInvoiceView> invoices = jdbc.query(
-                "SELECT i.id, p.name AS project_name, "
+                "SELECT i.id, p.id AS project_id, p.name AS project_name, "
                         + "i.amount * (1 - i.discount_pct / 100) AS net_amount, i.status, "
                         + "i.amount * (1 - i.discount_pct / 100) "
                         + "- COALESCE((SELECT SUM(pay.amount) FROM payments pay "
                         + "WHERE pay.invoice_id = i.id), 0) AS due_amount "
                         + "FROM invoices i JOIN projects p ON i.project_id = p.id "
-                        + "WHERE p.client_id = ? ORDER BY i.id ASC",
-                (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"),
+                        + "WHERE p.client_id = ? ORDER BY p.id ASC, i.id ASC",
+                (rs, i) -> new ClientStatementInvoiceView(rs.getLong("id"), rs.getLong("project_id"),
                         rs.getString("project_name"), rs.getBigDecimal("net_amount"),
                         rs.getString("status"), rs.getBigDecimal("due_amount")),
                 clientId);
+        // Group the invoices under the job (project) they were raised against, keeping the ordered
+        // first-seen project order, so the statement can show each job with a subtotal of what is
+        // still due on it. The subtotals sum to the outstanding total below.
+        Map<Long, List<ClientStatementInvoiceView>> byProject = new LinkedHashMap<>();
+        for (ClientStatementInvoiceView invoice : invoices) {
+            byProject.computeIfAbsent(invoice.getProjectId(), k -> new ArrayList<>()).add(invoice);
+        }
+        List<ClientStatementProjectView> projects = new ArrayList<>();
+        for (List<ClientStatementInvoiceView> group : byProject.values()) {
+            BigDecimal subtotal = group.stream().map(ClientStatementInvoiceView::getDue)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            ClientStatementInvoiceView first = group.get(0);
+            projects.add(new ClientStatementProjectView(first.getProjectId(), first.getProjectName(),
+                    subtotal, group));
+        }
         BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ClientStatementView(invoices, outstanding);
+        return new ClientStatementView(invoices, projects, outstanding);
     }
 
     /** The contacts kept for a client, oldest first. */

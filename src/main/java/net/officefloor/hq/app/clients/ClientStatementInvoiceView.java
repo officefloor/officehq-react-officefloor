@@ -3,21 +3,24 @@ package net.officefloor.hq.app.clients;
 import java.math.BigDecimal;
 
 /**
- * JSON response shape for one line of a client's statement: the invoice id, the NAME of the project
- * it was raised against, its money amount, its lifecycle stage, and how much is still due on it
- * (amount minus whatever has been paid against it).
+ * JSON response shape for one line of a client's statement: the invoice id, the id and NAME of the
+ * project (job) it was raised against, its money amount, its lifecycle stage, and how much is still
+ * due on it (amount minus whatever has been paid against it). The project id lets the statement
+ * group invoices under the job they belong to.
  */
 public class ClientStatementInvoiceView {
 
     private final long id;
+    private final long projectId;
     private final String projectName;
     private final BigDecimal amount;
     private final String status;
     private final BigDecimal due;
 
-    public ClientStatementInvoiceView(long id, String projectName, BigDecimal amount, String status,
-            BigDecimal due) {
+    public ClientStatementInvoiceView(long id, long projectId, String projectName, BigDecimal amount,
+            String status, BigDecimal due) {
         this.id = id;
+        this.projectId = projectId;
         this.projectName = projectName;
         this.amount = amount;
         this.status = status;
@@ -26,6 +29,10 @@ public class ClientStatementInvoiceView {
 
     public long getId() {
         return id;
+    }
+
+    public long getProjectId() {
+        return projectId;
     }
 
     public String getProjectName() {

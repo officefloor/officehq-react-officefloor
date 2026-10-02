@@ -1,23 +1,36 @@
 import { useEffect, useState } from 'react';
 import { formatMoney } from '../../ui/money';
 
-// A statement for a client: all of that client's invoices gathered in one place, with the total
-// they still owe (the sum of what is due across their invoices). Scoped to the client via
-// /api/clients/<id>/statement. Opened on demand from the client detail view.
+// A statement for a client: all of that client's invoices, grouped under the job (project) they were
+// raised against with a subtotal of what is still due per job, plus the total they still owe (the
+// sum of what is due across their invoices — equal to the job subtotals added up). Scoped to the
+// client via /api/clients/<id>/statement. Opened on demand from the client detail view.
 type StatementInvoice = {
   id: number;
+  projectId: number;
   projectName: string;
   amount: number;
   status: string;
   due: number;
 };
+type StatementProject = {
+  id: number;
+  name: string;
+  subtotal: number;
+  invoices: StatementInvoice[];
+};
 type Statement = {
   invoices: StatementInvoice[];
+  projects: StatementProject[];
   outstandingTotal: number;
 };
 
 export function ClientStatement({ clientId }: { clientId: number }) {
-  const [statement, setStatement] = useState<Statement>({ invoices: [], outstandingTotal: 0 });
+  const [statement, setStatement] = useState<Statement>({
+    invoices: [],
+    projects: [],
+    outstandingTotal: 0,
+  });
 
   useEffect(() => {
     async function load() {
@@ -42,17 +55,25 @@ export function ClientStatement({ clientId }: { clientId: number }) {
             <th>Due</th>
           </tr>
         </thead>
-        <tbody>
-          {statement.invoices.map((invoice) => (
-            <tr key={invoice.id} data-testid={`statement-invoice-row-${invoice.id}`}>
-              <td data-testid="statement-invoice-id">{invoice.id}</td>
-              <td data-testid="statement-invoice-project">{invoice.projectName}</td>
-              <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount)}</td>
-              <td data-testid="statement-invoice-status">{invoice.status}</td>
-              <td data-testid="statement-invoice-due">{formatMoney(invoice.due)}</td>
+        {statement.projects.map((project) => (
+          <tbody key={project.id} data-testid={`statement-project-${project.id}`}>
+            <tr data-testid="statement-project-header">
+              <th colSpan={4} data-testid="statement-project-name">
+                {project.name}
+              </th>
+              <td data-testid="statement-project-subtotal">{formatMoney(project.subtotal)}</td>
             </tr>
-          ))}
-        </tbody>
+            {project.invoices.map((invoice) => (
+              <tr key={invoice.id} data-testid={`statement-invoice-row-${invoice.id}`}>
+                <td data-testid="statement-invoice-id">{invoice.id}</td>
+                <td data-testid="statement-invoice-project">{invoice.projectName}</td>
+                <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount)}</td>
+                <td data-testid="statement-invoice-status">{invoice.status}</td>
+                <td data-testid="statement-invoice-due">{formatMoney(invoice.due)}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
       </table>
 
       <p>
