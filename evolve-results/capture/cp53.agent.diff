@@ -1,0 +1,337 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index f25525a..83c4e58 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -12,6 +12,7 @@ type Project = {
+   clientId: number;
+   clientName: string;
+   status: ProjectStatus;
++  code: string;
+ };
+ type Tag = { id: number; name: string };
+ 
+@@ -25,6 +26,8 @@ export function ProjectsPage() {
+   const [name, setName] = useState('');
+   const [clientId, setClientId] = useState('');
+   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
++  const [code, setCode] = useState('');
++  const [codeError, setCodeError] = useState<string | null>(null);
+   const [tagFilter, setTagFilter] = useState('');
+   const [statusFilter, setStatusFilter] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+@@ -102,15 +105,24 @@ export function ProjectsPage() {
+ 
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
++    setCodeError(null);
+     const res = await fetch('/api/projects', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
++      body: JSON.stringify({ name, clientId: Number(clientId), status, code }),
+     });
+     if (res.ok) {
++      // No two jobs can share a reference code: the server rejects the duplicate and adds no row.
++      const result = (await res.json()) as { codeInUse?: boolean };
++      if (result.codeInUse) {
++        setCodeError('That code is already in use.');
++        return;
++      }
+       setName('');
+       setClientId('');
+       setStatus('ACTIVE');
++      setCode('');
++      setCodeError(null);
+       await loadProjects();
+     }
+   }
+@@ -149,6 +161,13 @@ export function ProjectsPage() {
+             </option>
+           ))}
+         </select>
++        <input
++          data-testid="project-form-code"
++          placeholder="Code"
++          value={code}
++          onChange={(e) => setCode(e.target.value)}
++        />
++        {codeError && <p data-testid="project-form-code-error">{codeError}</p>}
+         <button data-testid="project-form-submit" type="submit">
+           Add job
+         </button>
+@@ -195,6 +214,7 @@ export function ProjectsPage() {
+           <thead>
+             <tr>
+               <th>Name</th>
++              <th>Code</th>
+               <th>Client</th>
+               <th>Status</th>
+               <th></th>
+@@ -204,6 +224,7 @@ export function ProjectsPage() {
+             {projects.map((project) => (
+               <tr key={project.id} data-testid={`project-row-${project.id}`}>
+                 <td data-testid="project-name">{project.name}</td>
++                <td data-testid="project-code">{project.code}</td>
+                 <td data-testid="project-client">{project.clientName}</td>
+                 <td data-testid="project-status">{project.status}</td>
+                 <td>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 455111f..fcb5ff4 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -85,9 +85,10 @@ public class TestSupportController {
+             String status = (String) project.getOrDefault("status", "ACTIVE");
+             boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
+             double budget = ((Number) project.getOrDefault("budget", 0)).doubleValue();
++            String code = (String) project.get("code");
+             jdbc.update(
+-                    "INSERT INTO projects (id, name, client_id, status, archived, budget) VALUES (?, ?, ?, ?, ?, ?)",
+-                    id, project.get("name"), clientId, status, archived, budget);
++                    "INSERT INTO projects (id, name, client_id, status, archived, budget, code) VALUES (?, ?, ?, ?, ?, ?, ?)",
++                    id, project.get("name"), clientId, status, archived, budget, code);
+             maxProjectId = Math.max(maxProjectId, id);
+         }
+         if (maxProjectId > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java b/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java
+index 1728287..ee9f3ec 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java
++++ b/src/main/java/net/officefloor/hq/app/projects/CreateProjectLogic.java
+@@ -2,10 +2,18 @@ package net.officefloor.hq.app.projects;
+ 
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** POST /api/projects — add a project for a client from the JSON body and return the created row. */
++/** POST /api/projects — add a project for a client from the JSON body and return the result. */
+ public class CreateProjectLogic {
+ 
+-    public void service(NewProject body, ProjectService projects, ObjectResponse<ProjectView> response) {
+-        response.send(projects.create(body.getName(), body.getClientId(), body.getStatus()));
++    public void service(NewProject body, ProjectService projects,
++            ObjectResponse<CreateProjectResult> response) {
++        try {
++            response.send(CreateProjectResult.created(
++                    projects.create(body.getName(), body.getClientId(), body.getStatus(),
++                            body.getCode())));
++        } catch (DuplicateProjectCodeException e) {
++            // Code already in use: no row added; the UI surfaces the code error.
++            response.send(CreateProjectResult.codeInUse());
++        }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/projects/CreateProjectResult.java b/src/main/java/net/officefloor/hq/app/projects/CreateProjectResult.java
+new file mode 100644
+index 0000000..c90fcd1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/CreateProjectResult.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.projects;
++
++/**
++ * JSON response shape for creating a project. Either the row was created ({@code project} set), or
++ * it was rejected because another project already uses that reference code ({@code codeInUse} true)
++ * — the UI branches on this to surface the duplicate-code error without adding a row.
++ */
++public class CreateProjectResult {
++
++    private final ProjectView project;
++    private final boolean codeInUse;
++
++    private CreateProjectResult(ProjectView project, boolean codeInUse) {
++        this.project = project;
++        this.codeInUse = codeInUse;
++    }
++
++    public static CreateProjectResult created(ProjectView project) {
++        return new CreateProjectResult(project, false);
++    }
++
++    public static CreateProjectResult codeInUse() {
++        return new CreateProjectResult(null, true);
++    }
++
++    public ProjectView getProject() {
++        return project;
++    }
++
++    public boolean isCodeInUse() {
++        return codeInUse;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/DuplicateProjectCodeException.java b/src/main/java/net/officefloor/hq/app/projects/DuplicateProjectCodeException.java
+new file mode 100644
+index 0000000..6f893e9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/projects/DuplicateProjectCodeException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.projects;
++
++/** Raised when creating a project whose reference code is already used by another project. */
++public class DuplicateProjectCodeException extends RuntimeException {
++
++    public DuplicateProjectCodeException(String code) {
++        super("A project already uses code " + code);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/NewProject.java b/src/main/java/net/officefloor/hq/app/projects/NewProject.java
+index 2e5f4b1..3d3b663 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/NewProject.java
++++ b/src/main/java/net/officefloor/hq/app/projects/NewProject.java
+@@ -9,6 +9,7 @@ public class NewProject {
+     private String name;
+     private Long clientId;
+     private String status;
++    private String code;
+ 
+     public String getName() {
+         return name;
+@@ -33,4 +34,12 @@ public class NewProject {
+     public void setStatus(String status) {
+         this.status = status;
+     }
++
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/projects/Project.java b/src/main/java/net/officefloor/hq/app/projects/Project.java
+index 17a776c..7495deb 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/Project.java
++++ b/src/main/java/net/officefloor/hq/app/projects/Project.java
+@@ -23,6 +23,8 @@ public class Project {
+ 
+     private String status;
+ 
++    private String code;
++
+     public Long getId() {
+         return id;
+     }
+@@ -54,4 +56,12 @@ public class Project {
+     public void setStatus(String status) {
+         this.status = status;
+     }
++
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java
+index 1942eab..35992cd 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectRepository.java
+@@ -4,4 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ /** Data access for {@link Project}. */
+ public interface ProjectRepository extends JpaRepository<Project, Long> {
++
++    /** Whether any project already carries the given reference code (codes are unique). */
++    boolean existsByCode(String code);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectService.java b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+index d53521d..c923282 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+@@ -76,7 +76,7 @@ public class ProjectService {
+     @Transactional(readOnly = true)
+     public List<ProjectView> list(boolean includeArchived, Long tagId, String status) {
+         StringBuilder sql = new StringBuilder(
+-                "SELECT p.id, p.name, p.client_id, p.status, c.name AS client_name "
++                "SELECT p.id, p.name, p.client_id, p.status, p.code, c.name AS client_name "
+                         + "FROM projects p JOIN clients c ON p.client_id = c.id ");
+         List<Object> args = new java.util.ArrayList<>();
+         if (tagId != null) {
+@@ -98,29 +98,39 @@ public class ProjectService {
+         return jdbc.query(sql.toString(),
+                 (rs, i) -> new ProjectView(rs.getLong("id"), rs.getString("name"),
+                         rs.getLong("client_id"), rs.getString("client_name"),
+-                        rs.getString("status")),
++                        rs.getString("status"), rs.getString("code")),
+                 args.toArray());
+     }
+ 
+     @Transactional
+-    public ProjectView create(String name, Long clientId, String status) {
++    public ProjectView create(String name, Long clientId, String status, String code) {
+         if (name == null || name.isBlank()) {
+             throw new IllegalArgumentException("A project requires a name");
+         }
+         if (clientId == null) {
+             throw new IllegalArgumentException("A project requires a client");
+         }
++        if (code == null || code.isBlank()) {
++            throw new IllegalArgumentException("A project requires a reference code");
++        }
++        String projectCode = code.trim();
++        // No two projects can share a reference code (also enforced by the projects_code_unique
++        // constraint); reject the duplicate before saving so the UI can flag it.
++        if (repository.existsByCode(projectCode)) {
++            throw new DuplicateProjectCodeException(projectCode);
++        }
+         // Default to ACTIVE when the caller doesn't pick a status, matching the column default.
+         String projectStatus = (status == null || status.isBlank()) ? "ACTIVE" : status;
+         Project project = new Project();
+         project.setName(name);
+         project.setClientId(clientId);
+         project.setStatus(projectStatus);
++        project.setCode(projectCode);
+         Project saved = repository.save(project);
+         String clientName = jdbc.queryForObject(
+                 "SELECT name FROM clients WHERE id = ?", String.class, clientId);
+         return new ProjectView(saved.getId(), saved.getName(), clientId, clientName,
+-                saved.getStatus());
++                saved.getStatus(), saved.getCode());
+     }
+ 
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectView.java b/src/main/java/net/officefloor/hq/app/projects/ProjectView.java
+index 50b7551..e68b713 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/ProjectView.java
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectView.java
+@@ -8,13 +8,16 @@ public class ProjectView {
+     private final long clientId;
+     private final String clientName;
+     private final String status;
++    private final String code;
+ 
+-    public ProjectView(long id, String name, long clientId, String clientName, String status) {
++    public ProjectView(long id, String name, long clientId, String clientName, String status,
++            String code) {
+         this.id = id;
+         this.name = name;
+         this.clientId = clientId;
+         this.clientName = clientName;
+         this.status = status;
++        this.code = code;
+     }
+ 
+     public long getId() {
+@@ -36,4 +39,8 @@ public class ProjectView {
+     public String getStatus() {
+         return status;
+     }
++
++    public String getCode() {
++        return code;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V35__projects_code.sql b/src/main/resources/db/migration/V35__projects_code.sql
+new file mode 100644
+index 0000000..ce67e2f
+--- /dev/null
++++ b/src/main/resources/db/migration/V35__projects_code.sql
+@@ -0,0 +1,7 @@
++-- Each project (job) carries a short reference code set when it is created. No two jobs may share
++-- one, so enforce uniqueness in the schema (mirrors the service and front-end guards). Nullable so
++-- the add is safe on any existing rows; new projects always supply a code.
++ALTER TABLE projects ADD COLUMN code VARCHAR(32);
++
++ALTER TABLE projects
++    ADD CONSTRAINT projects_code_unique UNIQUE (code);
