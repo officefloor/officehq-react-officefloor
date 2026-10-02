@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index b4e8279..efde863 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
+ 
+ // The dashboard feature owns its own state and data loading (no global store). It is a read-only home
+ // summary: how many clients and projects there are, and how much money is still owed (the sum of
+-// every UNPAID invoice across all projects, served pre-computed by /api/dashboard).
++// every SENT invoice across all projects — drafts and paid invoices are excluded, served
++// pre-computed by /api/dashboard).
+ type Summary = {
+   clientsCount: number;
+   projectsCount: number;
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardLogic.java b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+index 6cbd8fb..19b7b18 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardLogic.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+@@ -5,7 +5,9 @@ import net.officefloor.web.ObjectResponse;
+ 
+ /**
+  * GET /api/dashboard — the home summary: the number of clients and projects, and the outstanding
+- * total (the sum of every UNPAID invoice's amount across all projects — the money still owed).
++ * total (the money still owed). An invoice counts towards what is owed only once it has actually
++ * been SENT to the client: a DRAFT has not been issued yet, and a PAID invoice is settled, so both
++ * are excluded. The total is the sum of every SENT invoice's amount across all projects.
+  */
+ public class DashboardLogic {
+ 
+@@ -13,7 +15,7 @@ public class DashboardLogic {
+             InvoiceRepository invoices, ObjectResponse<DashboardView> response) {
+         long clientsCount = clients.count();
+         long projectsCount = projects.count();
+-        BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("UNPAID").stream()
++        BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("SENT").stream()
+                 .map(Invoice::getAmount)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+         response.send(new DashboardView(clientsCount, projectsCount, outstandingTotal));
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+index 2fcb84e..d3f6f6e 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceRepository.java
+@@ -15,6 +15,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+     /** A project's invoices, earliest due date first (id as a stable tie-breaker). */
+     List<Invoice> findByProjectIdOrderByDueDateAscIdAsc(Long projectId);
+ 
+-    /** Every invoice with the given status (e.g. UNPAID), oldest first — used to total what is owed. */
++    /** Every invoice with the given status (e.g. SENT), oldest first — used to total what is owed. */
+     List<Invoice> findByStatusOrderByIdAsc(String status);
+ }
+diff --git a/src/main/resources/db/migration/V11__invoice_status_index.sql b/src/main/resources/db/migration/V11__invoice_status_index.sql
+new file mode 100644
+index 0000000..3df540d
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__invoice_status_index.sql
+@@ -0,0 +1,4 @@
++-- The dashboard totals the money owed by reading every SENT invoice across all projects (grouped by
++-- status). Add a supporting index so that status lookup stays cheap as invoices accumulate. Additive
++-- and non-destructive: no column or constraint change, just a new index on the existing invoice table.
++CREATE INDEX idx_invoice_status ON invoice (status);
