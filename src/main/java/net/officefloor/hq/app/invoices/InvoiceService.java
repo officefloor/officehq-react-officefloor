@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,14 +28,17 @@ public class InvoiceService {
         this.audit = audit;
     }
 
+    /** Every invoice across all projects; narrowed to a single lifecycle stage when {@code status} is given. */
     @Transactional(readOnly = true)
-    public List<AllInvoiceView> listAll() {
-        return jdbc.query(
-                "SELECT i.id, i.amount, i.status, p.name AS project_name "
-                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
-                        + "ORDER BY i.id ASC",
-                (rs, i) -> new AllInvoiceView(rs.getLong("id"), rs.getString("project_name"),
-                        rs.getBigDecimal("amount"), rs.getString("status")));
+    public List<AllInvoiceView> listAll(String status) {
+        RowMapper<AllInvoiceView> mapper = (rs, i) -> new AllInvoiceView(rs.getLong("id"),
+                rs.getString("project_name"), rs.getBigDecimal("amount"), rs.getString("status"));
+        String base = "SELECT i.id, i.amount, i.status, p.name AS project_name "
+                + "FROM invoices i JOIN projects p ON i.project_id = p.id ";
+        if (status == null || status.isBlank()) {
+            return jdbc.query(base + "ORDER BY i.id ASC", mapper);
+        }
+        return jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC", mapper, status.trim());
     }
 
     @Transactional(readOnly = true)
