@@ -1,0 +1,26 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index ac0a351..b4e8279 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -10,7 +10,7 @@ type Summary = {
+ };
+ 
+ function formatAmount(amount: number): string {
+-  return Number(amount).toFixed(2);
++  return `$${Number(amount).toFixed(2)}`;
+ }
+ 
+ export function DashboardPage() {
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index cdbab0b..b2cbaba 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
+ type Invoice = { id: number; projectId: number; amount: number; status: string };
+ 
+ function formatAmount(amount: number): string {
+-  return Number(amount).toFixed(2);
++  return `$${Number(amount).toFixed(2)}`;
+ }
+ 
+ export function ProjectInvoices({ projectId }: { projectId: number }) {
