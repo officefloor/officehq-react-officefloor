@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 615573b..93f7bb3 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -26,6 +26,7 @@ export function ProjectsPage() {
+   const [clientId, setClientId] = useState('');
+   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
+   const [tagFilter, setTagFilter] = useState('');
++  const [statusFilter, setStatusFilter] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
+ 
+@@ -37,6 +38,9 @@ export function ProjectsPage() {
+     if (tagFilter) {
+       params.set('tagId', tagFilter);
+     }
++    if (statusFilter) {
++      params.set('status', statusFilter);
++    }
+     const query = params.toString();
+     const res = await fetch(query ? `/api/projects?${query}` : '/api/projects');
+     if (res.ok) {
+@@ -69,7 +73,7 @@ export function ProjectsPage() {
+   // overwriting the narrowed list.
+   useEffect(() => {
+     void loadProjects();
+-  }, [showArchived, tagFilter]);
++  }, [showArchived, tagFilter, statusFilter]);
+ 
+   async function onArchive(id: number) {
+     const res = await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
+@@ -153,6 +157,19 @@ export function ProjectsPage() {
+         {showArchived ? 'Hide archived' : 'Show archived'}
+       </button>
+ 
++      <select
++        data-testid="project-status-filter"
++        value={statusFilter}
++        onChange={(e) => setStatusFilter(e.target.value)}
++      >
++        <option value="">All statuses</option>
++        {PROJECT_STATUSES.map((value) => (
++          <option key={value} value={value}>
++            {value}
++          </option>
++        ))}
++      </select>
++
+       <select
+         data-testid="project-tag-filter"
+         value={tagFilter}
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectService.java b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+index 7c5ba33..90df7e3 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectService.java
+@@ -49,6 +49,16 @@ public class ProjectService {
+      */
+     @Transactional(readOnly = true)
+     public List<ProjectView> list(boolean includeArchived, Long tagId) {
++        return list(includeArchived, tagId, null);
++    }
++
++    /**
++     * List projects with their client's name, optionally narrowed to a single lifecycle status (the
++     * UI's "filter by status" picker: ACTIVE, ON_HOLD or FINISHED). A null {@code status} means no
++     * status filter — list every project the archived and tag filters allow.
++     */
++    @Transactional(readOnly = true)
++    public List<ProjectView> list(boolean includeArchived, Long tagId, String status) {
+         StringBuilder sql = new StringBuilder(
+                 "SELECT p.id, p.name, p.client_id, p.status, c.name AS client_name "
+                         + "FROM projects p JOIN clients c ON p.client_id = c.id ");
+@@ -57,8 +67,16 @@ public class ProjectService {
+             sql.append("JOIN project_tags pt ON pt.project_id = p.id AND pt.tag_id = ? ");
+             args.add(tagId);
+         }
++        List<String> conditions = new java.util.ArrayList<>();
+         if (!includeArchived) {
+-            sql.append("WHERE p.archived = FALSE ");
++            conditions.add("p.archived = FALSE");
++        }
++        if (status != null) {
++            conditions.add("p.status = ?");
++            args.add(status);
++        }
++        if (!conditions.isEmpty()) {
++            sql.append("WHERE ").append(String.join(" AND ", conditions)).append(' ');
+         }
+         sql.append("ORDER BY p.id ASC");
+         return jdbc.query(sql.toString(),
+diff --git a/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java b/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java
+index 0b8d51e..2bfd6eb 100644
+--- a/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/projects/ProjectsLogic.java
+@@ -12,8 +12,10 @@ public class ProjectsLogic {
+ 
+     public void service(@HttpQueryParameter("includeArchived") String includeArchived,
+             @HttpQueryParameter("tagId") String tagId,
++            @HttpQueryParameter("status") String status,
+             ProjectService projects, ObjectResponse<List<ProjectView>> response) {
+         Long tag = (tagId == null || tagId.isBlank()) ? null : Long.valueOf(tagId.trim());
+-        response.send(projects.list(Boolean.parseBoolean(includeArchived), tag));
++        String statusFilter = (status == null || status.isBlank()) ? null : status.trim();
++        response.send(projects.list(Boolean.parseBoolean(includeArchived), tag, statusFilter));
+     }
+ }
