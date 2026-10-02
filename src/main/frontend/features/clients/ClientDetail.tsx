@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 // email, role), scoped the same way via /api/clients/<id>/contacts, with a form to add one.
 type Project = { id: number; name: string };
 type Contact = { id: number; name: string; email: string; role: string };
+type Counts = { projects: number; contacts: number };
 
 // A contact must carry a proper email address too, same guard as clients: a single non-whitespace
 // local part, an @, and a dotted domain.
@@ -14,6 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function ClientDetail({ clientId }: { clientId: number }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [counts, setCounts] = useState<Counts>({ projects: 0, contacts: 0 });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
@@ -26,6 +28,14 @@ export function ClientDetail({ clientId }: { clientId: number }) {
     }
   }
 
+  // The at-a-glance counts of projects and contacts come from the server, counted in SQL.
+  async function loadCounts() {
+    const res = await fetch(`/api/clients/${clientId}/counts`);
+    if (res.ok) {
+      setCounts(await res.json());
+    }
+  }
+
   useEffect(() => {
     async function load() {
       const res = await fetch(`/api/clients/${clientId}/projects`);
@@ -35,6 +45,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
     }
     void load();
     void loadContacts();
+    void loadCounts();
   }, [clientId]);
 
   async function onAddContact(event: FormEvent) {
@@ -54,11 +65,19 @@ export function ClientDetail({ clientId }: { clientId: number }) {
       setEmail('');
       setRole('');
       await loadContacts();
+      await loadCounts();
     }
   }
 
   return (
     <section data-testid="client-detail">
+      <dl data-testid="client-counts">
+        <dt>Projects</dt>
+        <dd data-testid="client-projects-count">{counts.projects}</dd>
+        <dt>Contacts</dt>
+        <dd data-testid="client-contacts-count">{counts.contacts}</dd>
+      </dl>
+
       <h2>Projects</h2>
       <table data-testid="client-projects-table">
         <thead>

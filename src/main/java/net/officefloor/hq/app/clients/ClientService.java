@@ -49,6 +49,19 @@ public class ClientService {
                 clientId);
     }
 
+    /**
+     * At-a-glance counts for a client's page: how many projects and contacts they have. Counts in
+     * SQL so a large client doesn't have to ship its full project/contact lists just to be tallied.
+     */
+    @Transactional(readOnly = true)
+    public ClientCountsView countsFor(Long clientId) {
+        Long projects = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM projects WHERE client_id = ?", Long.class, clientId);
+        Long contacts = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM contacts WHERE client_id = ?", Long.class, clientId);
+        return new ClientCountsView(projects == null ? 0 : projects, contacts == null ? 0 : contacts);
+    }
+
     /** The contacts kept for a client, oldest first. */
     @Transactional(readOnly = true)
     public List<ClientContactView> contactsFor(Long clientId) {
