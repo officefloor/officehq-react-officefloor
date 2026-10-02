@@ -1,12 +1,16 @@
 package net.officefloor.hq.app.clients;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Business logic for clients. Each call runs in its own transaction. */
 @Service
 public class ClientService {
+
+    // A client must carry a proper email address (mirrors the front-end guard).
+    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final ClientRepository repository;
 
@@ -21,6 +25,9 @@ public class ClientService {
 
     @Transactional
     public Client create(String name, String email) {
+        if (email == null || !EMAIL.matcher(email).matches()) {
+            throw new IllegalArgumentException("A client requires a valid email address");
+        }
         Client client = new Client();
         client.setName(name);
         client.setEmail(email);

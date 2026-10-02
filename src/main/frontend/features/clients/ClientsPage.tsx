@@ -3,10 +3,15 @@ import { useEffect, useState, type FormEvent } from 'react';
 // This arm's convention: the page component owns the feature's state, data loading and layout.
 type Client = { id: number; name: string; email: string };
 
+// A client must carry a proper email address. Keep it simple and local to the feature: a single
+// non-whitespace local part, an @, and a dotted domain.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState(false);
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -21,6 +26,11 @@ export function ClientsPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!EMAIL_RE.test(email)) {
+      setEmailError(true);
+      return;
+    }
+    setEmailError(false);
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,6 +60,11 @@ export function ClientsPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="client-form-email-error">
+            Enter a valid email address.
+          </p>
+        )}
         <button data-testid="client-form-submit" type="submit">
           Add client
         </button>
