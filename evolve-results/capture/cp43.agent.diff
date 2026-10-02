@@ -1,0 +1,204 @@
+diff --git a/src/main/frontend/features/search/GlobalSearch.tsx b/src/main/frontend/features/search/GlobalSearch.tsx
+new file mode 100644
+index 0000000..3d49d60
+--- /dev/null
++++ b/src/main/frontend/features/search/GlobalSearch.tsx
+@@ -0,0 +1,63 @@
++import React, { useEffect, useState } from 'react';
++
++// One search box across the whole book: it queries the server's /api/search and shows the matches
++// grouped by kind — clients under one heading, projects under another. This feature owns its own
++// state and data loading (no global store); it is composed into the shell so it is always on hand.
++type Client = { id: number; name: string; email: string };
++type Project = { id: number; name: string; clientId: number; clientName: string };
++type Results = { clients: Client[]; projects: Project[] };
++
++const EMPTY: Results = { clients: [], projects: [] };
++
++export function GlobalSearch() {
++  const [query, setQuery] = useState('');
++  const [results, setResults] = useState<Results>(EMPTY);
++
++  useEffect(() => {
++    const q = query.trim();
++    if (!q) {
++      setResults(EMPTY);
++      return;
++    }
++    let live = true;
++    void (async () => {
++      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
++      const data: Results = res.ok ? await res.json() : EMPTY;
++      if (live) setResults(data);
++    })();
++    return () => {
++      live = false;
++    };
++  }, [query]);
++
++  return (
++    <section data-testid="global-search-section">
++      <input
++        data-testid="global-search"
++        placeholder="Search clients and projects"
++        value={query}
++        onChange={(e) => setQuery(e.target.value)}
++      />
++
++      <div data-testid="search-clients">
++        <h2>Clients</h2>
++        {results.clients.map((c) => (
++          <div key={c.id} data-testid={`client-row-${c.id}`}>
++            <span data-testid="client-name">{c.name}</span>
++            <span data-testid="client-email">{c.email}</span>
++          </div>
++        ))}
++      </div>
++
++      <div data-testid="search-projects">
++        <h2>Projects</h2>
++        {results.projects.map((p) => (
++          <div key={p.id} data-testid={`project-row-${p.id}`}>
++            <span data-testid="project-name">{p.name}</span>
++            <span data-testid="project-client">{p.clientName}</span>
++          </div>
++        ))}
++      </div>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/main.tsx b/src/main/frontend/main.tsx
+index df885ac..1302ff3 100644
+--- a/src/main/frontend/main.tsx
++++ b/src/main/frontend/main.tsx
+@@ -1,6 +1,7 @@
+ import React, { useState } from 'react';
+ import { createRoot } from 'react-dom/client';
+ import { routes } from './router/routes';
++import { GlobalSearch } from './features/search/GlobalSearch';
+ 
+ // Minimal base shell. The opinionated conventions (file-based routing under router/, closed
+ // primitives under ui/, no global store, scoped styles) are how checkpoints add features additively
+@@ -13,6 +14,7 @@ function App() {
+ 
+   return (
+     <div data-testid="app-root">
++      <GlobalSearch />
+       <nav data-testid="app-nav">
+         {routes.map((r) => (
+           <button
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index fe1a667..bf538d4 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -11,4 +11,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** The active (not archived) clients, oldest first — archived ones drop off the list. */
+     List<Client> findByArchivedFalseOrderByIdAsc();
++
++    /** Active clients whose name contains the query (case-insensitive), oldest first — for search. */
++    List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 08c975a..269acd5 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -17,4 +17,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** How many projects one client has — for the client's at-a-glance counts. */
+     long countByClientId(Long clientId);
++
++    /** Active projects whose name contains the query (case-insensitive), oldest first — for search. */
++    List<Project> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/SearchLogic.java b/src/main/java/net/officefloor/hq/app/SearchLogic.java
+new file mode 100644
+index 0000000..b4105d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SearchLogic.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++import net.officefloor.web.HttpQueryParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/search?q=... — one search box across the whole book. Matches active clients and active
++ * projects whose name contains the query (case-insensitive), grouped by kind. A blank query matches
++ * nothing, so the box starts empty.
++ */
++public class SearchLogic {
++
++    public void service(@HttpQueryParameter("q") String q, ClientRepository clients,
++            ProjectRepository projects, ObjectResponse<SearchView> response) {
++        String query = q == null ? "" : q.trim();
++        if (query.isEmpty()) {
++            response.send(new SearchView(List.of(), List.of()));
++            return;
++        }
++        List<Client> matchedClients =
++                clients.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query);
++        Map<Long, String> clientNames = clients.findAll().stream()
++                .collect(Collectors.toMap(Client::getId, Client::getName));
++        List<ProjectView> matchedProjects =
++                projects.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query).stream()
++                        .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
++                                clientNames.get(p.getClientId())))
++                        .collect(Collectors.toList());
++        response.send(new SearchView(matchedClients, matchedProjects));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/SearchView.java b/src/main/java/net/officefloor/hq/app/SearchView.java
+new file mode 100644
+index 0000000..9f9f476
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SearchView.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++
++/**
++ * The result of one global search: the matching clients and the matching projects, kept as two
++ * groups so the UI can show each kind under its own heading.
++ */
++public class SearchView {
++
++    private final List<Client> clients;
++    private final List<ProjectView> projects;
++
++    public SearchView(List<Client> clients, List<ProjectView> projects) {
++        this.clients = clients;
++        this.projects = projects;
++    }
++
++    public List<Client> getClients() {
++        return clients;
++    }
++
++    public List<ProjectView> getProjects() {
++        return projects;
++    }
++}
+diff --git a/src/main/resources/db/migration/V27__search_name_index.sql b/src/main/resources/db/migration/V27__search_name_index.sql
+new file mode 100644
+index 0000000..4f8f2ad
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__search_name_index.sql
+@@ -0,0 +1,5 @@
++-- One global search box looks across clients and projects by name (case-insensitive contains).
++-- Index the name columns so that lookup stays cheap as both tables grow. Additive indexes on the
++-- existing client (V1) and project (V3) tables; no data change.
++CREATE INDEX IF NOT EXISTS idx_client_name ON client (name);
++CREATE INDEX IF NOT EXISTS idx_project_name ON project (name);
+diff --git a/src/main/resources/officefloor/rest/api/search.GET.yml b/src/main/resources/officefloor/rest/api/search.GET.yml
+new file mode 100644
+index 0000000..7d3c5e1
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/search.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.SearchLogic
