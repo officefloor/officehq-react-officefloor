@@ -1,0 +1,72 @@
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+index 436fc39..598ef2c 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+@@ -26,12 +26,17 @@ public class ClientStatementLogic {
+                 BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
+                         .map(Payment::getAmount)
+                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+-                BigDecimal due = inv.getAmount().subtract(paid);
+-                String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
+-                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
++                // The invoice's final total (its discount already taken off) is what is billed and
++                // owed, so the statement's amount, what is still due, and the paid/partial status all
++                // work from the discounted total rather than the undiscounted subtotal.
++                BigDecimal billed = inv.getDiscountedAmount();
++                BigDecimal due = billed.subtract(paid);
++                String status = InvoiceStatus.derive(inv.getStatus(), billed, paid);
++                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), billed, due,
+                         status,
+                         inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+-                        inv.getDueDate() == null ? null : inv.getDueDate().toString()));
++                        inv.getDueDate() == null ? null : inv.getDueDate().toString(),
++                        inv.getDiscountPct()));
+                 outstandingTotal = outstandingTotal.add(due);
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/DashboardLogic.java b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+index 348c80b..ed7828f 100644
+--- a/src/main/java/net/officefloor/hq/app/DashboardLogic.java
++++ b/src/main/java/net/officefloor/hq/app/DashboardLogic.java
+@@ -8,7 +8,8 @@ import net.officefloor.web.ObjectResponse;
+  * GET /api/dashboard — the home summary: the number of clients and projects, the outstanding total
+  * (the money still owed) and how many SENT invoices are overdue. An invoice counts towards what is
+  * owed only once it has actually been SENT to the client: a DRAFT has not been issued yet, and a PAID
+- * invoice is settled, so both are excluded. The total is the sum of every SENT invoice's amount. An
++ * invoice is settled, so both are excluded. The total is the sum of every SENT invoice's final total
++ * (its discount already taken off), so the money owed reflects the discount. An
+  * invoice is overdue when it is SENT and its due date has passed relative to the dashboard's
+  * reference ("as of") date; that date comes from the dashboard_config row, falling back to today.
+  */
+@@ -20,7 +21,7 @@ public class DashboardLogic {
+         long clientsCount = clients.count();
+         long projectsCount = projects.count();
+         BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("SENT").stream()
+-                .map(Invoice::getAmount)
++                .map(Invoice::getDiscountedAmount)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+         LocalDate asOf = config.findById(1L)
+                 .map(DashboardConfig::getAsOf)
+diff --git a/src/main/java/net/officefloor/hq/app/Invoice.java b/src/main/java/net/officefloor/hq/app/Invoice.java
+index 30ce000..76179c2 100644
+--- a/src/main/java/net/officefloor/hq/app/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/Invoice.java
+@@ -98,4 +98,18 @@ public class Invoice {
+     public void setDiscountPct(int discountPct) {
+         this.discountPct = discountPct;
+     }
++
++    /**
++     * The invoice's final total — the stored {@code amount} (the undiscounted subtotal of its line
++     * items, per V30) with the owner's percentage discount taken off. This is what is actually owed,
++     * so it is what every "money owed" read should total. Division by 100 is exact, so no rounding.
++     */
++    public BigDecimal getDiscountedAmount() {
++        if (amount == null) {
++            return null;
++        }
++        BigDecimal discount = amount.multiply(BigDecimal.valueOf(discountPct))
++                .divide(BigDecimal.valueOf(100));
++        return amount.subtract(discount);
++    }
+ }
