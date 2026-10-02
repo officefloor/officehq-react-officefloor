@@ -5,7 +5,13 @@ import { ProjectTasks } from './ProjectTasks';
 // The projects feature owns its own state, data loading and layout (no global store). It lists every
 // project with its client's NAME (a cross-entity join surfaced in the UI) and adds a new project by
 // name + chosen client. The client select's option values are client ids.
-type Project = { id: number; name: string; clientId: number; clientName: string };
+type Project = {
+  id: number;
+  name: string;
+  clientId: number;
+  clientName: string;
+  archived: boolean;
+};
 type Client = { id: number; name: string; email: string };
 
 export function ProjectsPage() {
@@ -14,6 +20,7 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   async function load() {
     const [pRes, cRes] = await Promise.all([fetch('/api/projects'), fetch('/api/clients')]);
@@ -27,6 +34,19 @@ export function ProjectsPage() {
 
   async function remove(projectId: number) {
     const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      return;
+    }
+    if (openProjectId === projectId) {
+      setOpenProjectId(null);
+    }
+    await load();
+  }
+
+  // Archiving tucks a project away: it drops off the list unless archived ones are revealed, and is
+  // retained (the server keeps the row, just flagged). Delete still removes a project outright.
+  async function archive(projectId: number) {
+    const res = await fetch(`/api/projects/${projectId}/archive`, { method: 'POST' });
     if (!res.ok) {
       return;
     }
@@ -79,9 +99,20 @@ export function ProjectsPage() {
         </button>
       </form>
 
-      {projects.length === 0 ? (
-        <p data-testid="projects-empty">No projects yet.</p>
-      ) : (
+      <button
+        type="button"
+        data-testid="projects-show-archived"
+        aria-pressed={showArchived}
+        onClick={() => setShowArchived((s) => !s)}
+      >
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
+      {(() => {
+        const visible = showArchived ? projects : projects.filter((p) => !p.archived);
+        return visible.length === 0 ? (
+          <p data-testid="projects-empty">No projects yet.</p>
+        ) : (
         <table data-testid="projects-table">
           <thead>
             <tr>
@@ -90,7 +121,7 @@ export function ProjectsPage() {
             </tr>
           </thead>
           <tbody>
-            {projects.map((p) => (
+            {visible.map((p) => (
               <tr key={p.id} data-testid={`project-row-${p.id}`}>
                 <td data-testid="project-name">{p.name}</td>
                 <td data-testid="project-client">{p.clientName}</td>
@@ -104,6 +135,13 @@ export function ProjectsPage() {
                   </button>
                   <button
                     type="button"
+                    data-testid={`project-archive-${p.id}`}
+                    onClick={() => void archive(p.id)}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
                     data-testid={`project-delete-${p.id}`}
                     onClick={() => void remove(p.id)}
                   >
@@ -114,7 +152,8 @@ export function ProjectsPage() {
             ))}
           </tbody>
         </table>
-      )}
+        );
+      })()}
 
       {openProjectId !== null ? (
         <>
