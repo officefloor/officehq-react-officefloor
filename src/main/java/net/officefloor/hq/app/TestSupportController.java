@@ -37,6 +37,7 @@ public class TestSupportController {
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
@@ -87,6 +88,21 @@ public class TestSupportController {
         }
         if (maxContactId > 0) {
             jdbc.execute("ALTER TABLE contacts ALTER COLUMN id RESTART WITH " + (maxContactId + 1));
+        }
+
+        List<Map<String, Object>> tasks =
+                (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
+        long maxTaskId = 0;
+        for (Map<String, Object> task : tasks) {
+            long id = ((Number) task.get("id")).longValue();
+            long projectId = ((Number) task.get("projectId")).longValue();
+            boolean done = Boolean.TRUE.equals(task.getOrDefault("done", Boolean.FALSE));
+            jdbc.update("INSERT INTO tasks (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+                    id, projectId, task.get("title"), done);
+            maxTaskId = Math.max(maxTaskId, id);
+        }
+        if (maxTaskId > 0) {
+            jdbc.execute("ALTER TABLE tasks ALTER COLUMN id RESTART WITH " + (maxTaskId + 1));
         }
 
         List<Map<String, Object>> invoices =

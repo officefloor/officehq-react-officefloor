@@ -13,8 +13,16 @@ type Invoice = {
   dueDate: string;
 };
 
+type Task = {
+  id: number;
+  projectId: number;
+  title: string;
+  done: boolean;
+};
+
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState(false);
 
@@ -25,9 +33,25 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     }
   }
 
+  async function loadTasks() {
+    const res = await fetch(`/api/projects/${projectId}/tasks`);
+    if (res.ok) {
+      setTasks(await res.json());
+    }
+  }
+
   useEffect(() => {
     void load();
+    void loadTasks();
   }, [projectId]);
+
+  // Tick a task off (or back on): toggles OPEN <-> DONE and reloads the list.
+  async function onToggleTask(taskId: number) {
+    const res = await fetch(`/api/tasks/${taskId}/toggle`, { method: 'POST' });
+    if (res.ok) {
+      await loadTasks();
+    }
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -75,6 +99,35 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
   return (
     <section data-testid="project-detail">
+      <h2>Tasks</h2>
+
+      <table data-testid="project-tasks-table">
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.map((task) => (
+            <tr key={task.id} data-testid={`task-row-${task.id}`}>
+              <td data-testid="task-title">{task.title}</td>
+              <td data-testid="task-status">{task.done ? 'DONE' : 'OPEN'}</td>
+              <td>
+                <button
+                  data-testid={`task-toggle-${task.id}`}
+                  type="button"
+                  onClick={() => onToggleTask(task.id)}
+                >
+                  {task.done ? 'Reopen' : 'Tick off'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
       <h2>Invoices</h2>
 
       <form data-testid="invoice-form" onSubmit={onSubmit}>
