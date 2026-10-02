@@ -35,6 +35,7 @@ public class TestSupportController {
         // project references client via FK; H2 refuses TRUNCATE on a referenced table, so drop
         // referential integrity for the duration of the clear, then restore it.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project_tag RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
@@ -71,6 +72,23 @@ public class TestSupportController {
                     ((Number) task.get("id")).longValue(),
                     ((Number) task.get("projectId")).longValue(), task.get("title"),
                     Boolean.TRUE.equals(done));
+        }
+        List<Map<String, Object>> notes =
+                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
+        long maxNoteId = 0;
+        for (Map<String, Object> note : notes) {
+            long noteId = ((Number) note.get("id")).longValue();
+            maxNoteId = Math.max(maxNoteId, noteId);
+            jdbc.update(
+                    "INSERT INTO note (id, target_type, target_id, body, at) VALUES (?, ?, ?, ?, ?)",
+                    noteId, note.get("targetType"),
+                    ((Number) note.get("targetId")).longValue(), note.get("text"),
+                    java.sql.Timestamp.from(java.time.Instant.parse(note.get("at").toString())));
+        }
+        if (maxNoteId > 0) {
+            // Seeding explicit ids does not advance H2's IDENTITY sequence, so a note created later
+            // through the API would collide on id=1. Nudge the sequence past the seeded ids.
+            jdbc.execute("ALTER TABLE note ALTER COLUMN id RESTART WITH " + (maxNoteId + 1));
         }
         List<Map<String, Object>> tags =
                 (List<Map<String, Object>>) fixture.getOrDefault("tags", List.of());
