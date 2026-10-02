@@ -20,6 +20,12 @@ export function ClientsPage() {
   const [search, setSearch] = useState('');
   const [openClientId, setOpenClientId] = useState<number | null>(null);
 
+  // The client currently being corrected from the list, plus the edited field values.
+  const [editingClientId, setEditingClientId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editError, setEditError] = useState('');
+
   async function load() {
     const res = await fetch('/api/clients');
     setClients(await res.json());
@@ -62,6 +68,42 @@ export function ClientsPage() {
   // Tuck a client away: archive it so it drops off this list and the search while being retained.
   async function onArchive(id: number) {
     await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
+    await load();
+  }
+
+  // Open the inline edit form for a client, pre-filled with its current name and email.
+  function onEdit(c: Client) {
+    setEditingClientId(c.id);
+    setEditName(c.name);
+    setEditEmail(c.email);
+    setEditError('');
+  }
+
+  // Save the corrected name and email for the client being edited.
+  async function onEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (editingClientId === null) return;
+
+    if (!EMAIL.test(editEmail.trim())) {
+      setEditError('A proper email address is required');
+      return;
+    }
+    setEditError('');
+
+    const res = await fetch(`/api/clients/${editingClientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editName, email: editEmail.trim() }),
+    });
+    if (!res.ok) {
+      setEditError(
+        res.status === 409
+          ? 'A client with this email already exists'
+          : 'A proper email address is required',
+      );
+      return;
+    }
+    setEditingClientId(null);
     await load();
   }
 
@@ -129,6 +171,13 @@ export function ClientsPage() {
                   </button>
                   <button
                     type="button"
+                    data-testid={`client-edit-${c.id}`}
+                    onClick={() => onEdit(c)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
                     data-testid={`client-archive-${c.id}`}
                     onClick={() => void onArchive(c.id)}
                   >
@@ -139,6 +188,31 @@ export function ClientsPage() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {editingClientId !== null && (
+        <form data-testid="client-edit-form" onSubmit={onEditSubmit}>
+          <input
+            data-testid="client-edit-form-name"
+            placeholder="Name"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+          <input
+            data-testid="client-edit-form-email"
+            placeholder="Email"
+            value={editEmail}
+            onChange={(e) => setEditEmail(e.target.value)}
+          />
+          {editError && (
+            <p data-testid="client-edit-form-error" role="alert">
+              {editError}
+            </p>
+          )}
+          <button type="submit" data-testid="client-edit-form-submit">
+            Save client
+          </button>
+        </form>
       )}
 
       {openClientId !== null ? <ClientSummary clientId={openClientId} /> : null}

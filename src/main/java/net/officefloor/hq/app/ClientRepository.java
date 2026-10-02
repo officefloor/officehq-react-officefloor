@@ -17,4 +17,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     /** Whether any client already holds this email (case-insensitive) — emails must be unique. */
     boolean existsByEmailIgnoreCase(String email);
+
+    /** Whether a DIFFERENT client already holds this email — for validating an edit of this client. */
+    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
 }
