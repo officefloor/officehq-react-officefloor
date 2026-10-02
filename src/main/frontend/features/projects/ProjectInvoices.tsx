@@ -93,6 +93,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     await load();
   }
 
+  // Cancel (void) an invoice sent by mistake: it reads VOID and stops counting toward what is owed.
+  async function cancel(invoiceId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}/void`, { method: 'POST' });
+    if (!res.ok) {
+      return;
+    }
+    await load();
+  }
+
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
 
   if (openInvoiceId !== null) {
@@ -176,6 +185,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
                     onClick={() => void send(inv.id)}
                   >
                     Send
+                  </button>
+                ) : null}
+                {inv.status === 'SENT' ? (
+                  <button
+                    type="button"
+                    data-testid={`invoice-cancel-${inv.id}`}
+                    onClick={() => void cancel(inv.id)}
+                  >
+                    Cancel
                   </button>
                 ) : null}
               </td>
