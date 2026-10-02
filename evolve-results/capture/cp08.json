@@ -1,0 +1,182 @@
+{
+  "checkpoint": 8,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp08_dashboard",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "I want a home screen. Show me how many clients and projects I have. Show me how much money I\nam still owed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nI want a home screen. Show me how many clients and projects I have. Show me how much money I\nam still owed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "48832e5163a8c7aed8a7987bad3f9927d81e98a5",
+  "reset_sha": "",
+  "preagent_sha": "09bc4b07075311a03e8fe4f153e6c760deabd7e4",
+  "prev_sha": "09bc4b07075311a03e8fe4f153e6c760deabd7e4",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6940869999999999,
+    "input_tokens": 30,
+    "output_tokens": 6855,
+    "cache_read_tokens": 451566,
+    "cache_creation_tokens": 29557,
+    "num_turns": 17,
+    "duration_ms": 112134,
+    "duration_api_ms": 95333,
+    "model": "claude-opus-4-8",
+    "session_id": "220bb642-e511-41d1-8b97-ce1399100d08",
+    "stop_reason": "success",
+    "result_text": "The test passes. Let me summarize what I implemented.\n\nI added a **home screen (dashboard)** as a full-stack, additive, local change:\n\n**Database** (`src/main/resources/db/migration/V8__invoices_status_index.sql`)\n- New Flyway migration adding an index on `invoices(status)`, supporting the unpaid-total lookup. No existing migration was edited.\n\n**Server** (new `dashboard` feature package)\n- `DashboardService` \u2014 a cross-feature aggregate that reads the other features' tables via SQL (not their Java types): `COUNT(*)` of clients and projects, and `COALESCE(SUM(amount), 0)` of `UNPAID` invoices.\n- `DashboardView` \u2014 JSON response shape (`clients`, `projects`, `outstanding`).\n- `DashboardLogic` \u2014 the OfficeFloor `service(...)` method.\n- `rest/api/dashboard.GET.yml` \u2014 a new endpoint file under `/api/` so it bypasses the SPA fallback. One file per endpoint, no central router edit.\n\n**Front-end** (new `features/dashboard/`)\n- `route.tsx` \u2014 self-registers the route (`id: dashboard` \u2192 `nav-dashboard`), discovered by the existing glob in `router/routes.ts`; no central file edited.\n- `DashboardPage.tsx` \u2014 owns its own state, fetches `/api/dashboard`, and renders the three anchors the spec asserts: `dashboard-clients-count`, `dashboard-projects-count`, and `dashboard-outstanding-total` (formatted to two decimals \u2192 `300.00`).\n\nThe test (`e2e/specs/acceptance.spec.ts`) passes: counts `2`/`2` and outstanding `300.00` (100 + 200 unpaid; the 50 PAID invoice excluded). No pinned scaffolding or the spec was touched.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.6940869999999999,
+        "num_turns": 17,
+        "duration_ms": 112134,
+        "duration_api_ms": 95333,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp08.agent.jsonl",
+  "agent_diff_file": "cp08.agent.diff",
+  "build_log_file": "cp08.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 14,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true,
+      "cp07_client_detail_projects.spec.ts::lists the client's projects": true,
+      "cp08_dashboard.spec.ts::shows counts and the outstanding total": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 614,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 318,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 220,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 215,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 270,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 325,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 400,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 384,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 372,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 405,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_client_detail_projects.spec.ts::lists the client's projects",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 207,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_dashboard.spec.ts::shows counts and the outstanding total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
