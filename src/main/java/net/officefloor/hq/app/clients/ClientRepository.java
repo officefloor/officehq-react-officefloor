@@ -13,4 +13,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     // Two clients can never share an email — the guard the create path checks before saving.
     boolean existsByEmail(String email);
+
+    // The same guard for an edit: another client (not this one) must not already hold the email.
+    boolean existsByEmailAndIdNot(String email, Long id);
 }

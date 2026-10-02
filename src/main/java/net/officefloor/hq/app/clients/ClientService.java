@@ -159,6 +159,37 @@ public class ClientService {
                 saved.getEmail(), saved.getRole(), saved.isPrimary());
     }
 
+    /**
+     * Correct a client's name and/or email. Validates the email like the create path and keeps the
+     * no-two-clients-share-an-email rule (allowing the client to keep its own email). Records an
+     * audit entry so the correction can be checked later, and returns the updated row.
+     */
+    @Transactional
+    public Client update(Long id, String name, String email) {
+        if (id == null) {
+            throw new IllegalArgumentException("A client id is required to update");
+        }
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("A client requires a name");
+        }
+        if (email == null || !EMAIL.matcher(email).matches()) {
+            throw new IllegalArgumentException("A client requires a valid email address");
+        }
+        Client client = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such client: " + id));
+        // Two clients can never share an email (also enforced by the clients_email_unique
+        // constraint); reject the duplicate before saving so the UI can flag it. The client may
+        // keep its own existing email.
+        if (repository.existsByEmailAndIdNot(email, id)) {
+            throw new DuplicateClientEmailException(email);
+        }
+        client.setName(name);
+        client.setEmail(email);
+        Client saved = repository.save(client);
+        audit.record("CLIENT_UPDATED id=" + id);
+        return saved;
+    }
+
     @Transactional
     public Client create(String name, String email) {
         if (email == null || !EMAIL.matcher(email).matches()) {
