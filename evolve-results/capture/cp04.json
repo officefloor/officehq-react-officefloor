@@ -1,0 +1,142 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp04_project_invoices",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "When I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nWhen I open a project I want to see its invoices. Show me what they add up to. Let me add a\nnew invoice for an amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "22dd7a30395012badd429c69fdefe1823b9fcae9",
+  "reset_sha": "",
+  "preagent_sha": "cbe07e133da6212bffe3d3e87ff6323ad1018596",
+  "prev_sha": "cbe07e133da6212bffe3d3e87ff6323ad1018596",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0898539999999999,
+    "input_tokens": 56,
+    "output_tokens": 12582,
+    "cache_read_tokens": 897032,
+    "cache_creation_tokens": 32532,
+    "num_turns": 42,
+    "duration_ms": 201765,
+    "duration_api_ms": 182167,
+    "model": "claude-opus-4-8",
+    "session_id": "5efad15f-f6c3-4e82-8a4c-6de651bbba5b",
+    "stop_reason": "success",
+    "result_text": "Both tests pass. Let me verify I didn't break anything by confirming the full output succeeded (build + both specs green).\n\nThe change is complete and verified. Both `@core` specs pass:\n- **a project shows its invoices and their total** \u2014 lists seeded invoices with `100.00`/`50.00` and derived total `150.00`\n- **adds an invoice to a project** \u2014 posts `250`, re-renders one row at `250.00` with total `250.00`\n\n## What I implemented (full-stack, additive)\n\n**Database** \u2014 `V4__invoices.sql`: new `invoice` table (`id`, `project_id` FK \u2192 `project`, `amount DECIMAL(12,2)`).\n\n**Server (OfficeFloor on Spring Boot)** \u2014 one new YAML + logic class per endpoint, plus plain beans:\n- `GET /api/projects/{projectId}/invoices` \u2192 `ListInvoicesLogic` (project's invoices, oldest first)\n- `POST /api/projects/{projectId}/invoices` \u2192 `CreateInvoiceLogic` (validates amount + existing project, 400 otherwise)\n- `Invoice` entity, `InvoiceRepository`, `InvoiceView`, `NewInvoice`\n- Path params injected via OfficeFloor's `@HttpPathParameter`\n\n**Seed support** \u2014 extended `TestSupportController` to insert `invoices` by explicit fixture ids via `JdbcTemplate`, and to `TRUNCATE ... RESTART IDENTITY` the `invoice` table on reset (before `project`/`client`).\n\n**Front-end** \u2014 new `ProjectInvoices.tsx` (owns its own state/loading): invoices table, derived total, add-invoice form. `ProjectsPage` gets a `project-open-<id>` button per row that opens the detail view. No edits to the shared router or `ui/`.\n\nAll testids match the spec exactly (`project-open-<id>`, `project-invoices-table`, `invoice-row-<id>` \u2192 `invoice-amount`, `project-invoices-total`, `invoice-form-amount`, `invoice-form-submit`); amounts render with 2 decimals. The spec asserts no audit records, so none were added.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.0898539999999999,
+        "num_turns": 42,
+        "duration_ms": 201765,
+        "duration_api_ms": 182167,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": "cp04.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 9,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 618,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 313,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 203,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 282,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 330,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 321,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 376,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
