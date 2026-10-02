@@ -1,0 +1,310 @@
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index 8db5bb4..60bb065 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -16,6 +16,7 @@ type Project = {
+   archived: boolean;
+   status: string;
+   tagIds: number[];
++  code: string;
+ };
+ type Client = { id: number; name: string; email: string };
+ type Tag = { id: number; name: string };
+@@ -31,6 +32,8 @@ export function ProjectsPage() {
+   const [clientId, setClientId] = useState('');
+   const [status, setStatus] = useState('ACTIVE');
+   const [budget, setBudget] = useState('');
++  const [code, setCode] = useState('');
++  const [codeError, setCodeError] = useState('');
+   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+   const [showArchived, setShowArchived] = useState(false);
+   const [filterTagId, setFilterTagId] = useState('');
+@@ -77,6 +80,15 @@ export function ProjectsPage() {
+ 
+   async function onSubmit(e: React.FormEvent) {
+     e.preventDefault();
++
++    // Every job needs a reference code — block the save and surface the error if it is missing, so
++    // no row is created.
++    if (code.trim() === '') {
++      setCodeError('A reference code is required');
++      return;
++    }
++    setCodeError('');
++
+     const res = await fetch('/api/projects', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -85,15 +97,23 @@ export function ProjectsPage() {
+         clientId: Number(clientId),
+         status,
+         budget: budget === '' ? 0 : Number(budget),
++        code: code.trim(),
+       }),
+     });
+     if (!res.ok) {
++      // A 409 means the code is already taken by another job; anything else is a bad code.
++      setCodeError(
++        res.status === 409
++          ? 'A job with this code already exists'
++          : 'A reference code is required',
++      );
+       return;
+     }
+     setName('');
+     setClientId('');
+     setStatus('ACTIVE');
+     setBudget('');
++    setCode('');
+     await load();
+   }
+ 
+@@ -137,6 +157,17 @@ export function ProjectsPage() {
+           value={budget}
+           onChange={(e) => setBudget(e.target.value)}
+         />
++        <input
++          data-testid="project-form-code"
++          placeholder="Reference code"
++          value={code}
++          onChange={(e) => setCode(e.target.value)}
++        />
++        {codeError && (
++          <p data-testid="project-form-code-error" role="alert">
++            {codeError}
++          </p>
++        )}
+         <button type="submit" data-testid="project-form-submit">
+           Add job
+         </button>
+@@ -191,6 +222,7 @@ export function ProjectsPage() {
+         <table data-testid="projects-table">
+           <thead>
+             <tr>
++              <th>Code</th>
+               <th>Name</th>
+               <th>Client</th>
+               <th>Status</th>
+@@ -199,6 +231,7 @@ export function ProjectsPage() {
+           <tbody>
+             {visible.map((p) => (
+               <tr key={p.id} data-testid={`project-row-${p.id}`}>
++                <td data-testid="project-code">{p.code}</td>
+                 <td data-testid="project-name">{p.name}</td>
+                 <td data-testid="project-client">{p.clientName}</td>
+                 <td data-testid="project-status">{p.status}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java b/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
+index a11569a..72c345f 100644
+--- a/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
++++ b/src/main/java/net/officefloor/hq/app/CreateProjectLogic.java
+@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.RequestBody;
+ /**
+  * POST /api/projects — add a project for the chosen client, echo back the saved row with the
+  * client's name. A project must name an existing client; an unknown or missing client id is
+- * rejected with 400 and never persisted.
++ * rejected with 400 and never persisted. It must also carry a reference code: a blank code is
++ * rejected with 400, and a code already in use by another project is rejected with 409 so two
++ * projects can never share one (schema check in V33).
+  */
+ public class CreateProjectLogic {
+ 
+@@ -21,10 +23,20 @@ public class CreateProjectLogic {
+         }
+         Client client = clients.findById(clientId).orElseThrow(
+                 () -> new HttpException(HttpStatus.BAD_REQUEST, "A client is required"));
++        String code = newProject.getCode() == null ? "" : newProject.getCode().trim();
++        if (code.isEmpty()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A reference code is required");
++        }
++        if (projects.existsByCodeIgnoreCase(code)) {
++            throw new HttpException(HttpStatus.CONFLICT,
++                    "A project with this code already exists");
++        }
+         String status = newProject.getStatus() == null ? "ACTIVE" : newProject.getStatus();
+         BigDecimal budget = newProject.getBudget() == null ? BigDecimal.ZERO : newProject.getBudget();
+-        Project saved = projects.save(new Project(newProject.getName(), clientId, status, budget));
++        Project saved =
++                projects.save(new Project(newProject.getName(), clientId, status, budget, code));
+         response.send(new ProjectView(saved.getId(), saved.getName(), client.getId(),
+-                client.getName(), saved.getStatus()));
++                client.getName(), saved.isArchived(), saved.getStatus(), java.util.List.of(),
++                saved.getCode()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+index 79ac9cd..334db3f 100644
+--- a/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListProjectsLogic.java
+@@ -19,7 +19,7 @@ public class ListProjectsLogic {
+         List<ProjectView> views = projects.findAllByOrderByIdAsc().stream()
+                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
+                         clientNames.get(p.getClientId()), p.isArchived(), p.getStatus(),
+-                        tagIdsByProject.getOrDefault(p.getId(), List.of())))
++                        tagIdsByProject.getOrDefault(p.getId(), List.of()), p.getCode()))
+                 .collect(Collectors.toList());
+         response.send(views);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/NewProject.java b/src/main/java/net/officefloor/hq/app/NewProject.java
+index 7c1f6f2..7c3463e 100644
+--- a/src/main/java/net/officefloor/hq/app/NewProject.java
++++ b/src/main/java/net/officefloor/hq/app/NewProject.java
+@@ -13,6 +13,8 @@ public class NewProject {
+ 
+     private BigDecimal budget;
+ 
++    private String code;
++
+     public String getName() {
+         return name;
+     }
+@@ -44,4 +46,12 @@ public class NewProject {
+     public void setBudget(BigDecimal budget) {
+         this.budget = budget;
+     }
++
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/Project.java b/src/main/java/net/officefloor/hq/app/Project.java
+index d56edcd..ec96b47 100644
+--- a/src/main/java/net/officefloor/hq/app/Project.java
++++ b/src/main/java/net/officefloor/hq/app/Project.java
+@@ -29,6 +29,9 @@ public class Project {
+     /** The budget set against this project; what has been invoiced is compared to it (V23). */
+     private BigDecimal budget;
+ 
++    /** The short reference code set when the project is created; unique across projects (V33). */
++    private String code;
++
+     public Project() {
+     }
+ 
+@@ -41,11 +44,16 @@ public class Project {
+     }
+ 
+     public Project(String name, Long clientId, String status, BigDecimal budget) {
++        this(name, clientId, status, budget, "");
++    }
++
++    public Project(String name, Long clientId, String status, BigDecimal budget, String code) {
+         this.name = name;
+         this.clientId = clientId;
+         this.archived = false;
+         this.status = status;
+         this.budget = budget;
++        this.code = code;
+     }
+ 
+     public Long getId() {
+@@ -95,4 +103,12 @@ public class Project {
+     public void setBudget(BigDecimal budget) {
+         this.budget = budget;
+     }
++
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 269acd5..1888b58 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -20,4 +20,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** Active projects whose name contains the query (case-insensitive), oldest first — for search. */
+     List<Project> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
++
++    /** Whether any project already holds this reference code (case-insensitive) — codes are unique. */
++    boolean existsByCodeIgnoreCase(String code);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectView.java b/src/main/java/net/officefloor/hq/app/ProjectView.java
+index 7aa3f37..08d7c0f 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectView.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectView.java
+@@ -16,17 +16,23 @@ public class ProjectView {
+     private final boolean archived;
+     private final String status;
+     private final List<Long> tagIds;
++    private final String code;
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName) {
+-        this(id, name, clientId, clientName, false, "ACTIVE", List.of());
++        this(id, name, clientId, clientName, false, "ACTIVE", List.of(), "");
+     }
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName, String status) {
+-        this(id, name, clientId, clientName, false, status, List.of());
++        this(id, name, clientId, clientName, false, status, List.of(), "");
+     }
+ 
+     public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
+             String status, List<Long> tagIds) {
++        this(id, name, clientId, clientName, archived, status, tagIds, "");
++    }
++
++    public ProjectView(Long id, String name, Long clientId, String clientName, boolean archived,
++            String status, List<Long> tagIds, String code) {
+         this.id = id;
+         this.name = name;
+         this.clientId = clientId;
+@@ -34,6 +40,7 @@ public class ProjectView {
+         this.archived = archived;
+         this.status = status;
+         this.tagIds = tagIds;
++        this.code = code;
+     }
+ 
+     public Long getId() {
+@@ -63,4 +70,8 @@ public class ProjectView {
+     public List<Long> getTagIds() {
+         return tagIds;
+     }
++
++    public String getCode() {
++        return code;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ff3c006..755a964 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -73,11 +73,13 @@ public class TestSupportController {
+             Object budgetValue = project.get("budget");
+             java.math.BigDecimal budget = budgetValue == null ? java.math.BigDecimal.ZERO
+                     : new java.math.BigDecimal(budgetValue.toString());
++            Object code = project.getOrDefault("code", "");
+             jdbc.update(
+-                    "INSERT INTO project (id, name, client_id, status, archived, budget) "
+-                            + "VALUES (?, ?, ?, ?, ?, ?)",
++                    "INSERT INTO project (id, name, client_id, status, archived, budget, code) "
++                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     ((Number) project.get("id")).longValue(), project.get("name"),
+-                    ((Number) project.get("clientId")).longValue(), status, archived, budget);
++                    ((Number) project.get("clientId")).longValue(), status, archived, budget,
++                    code == null ? "" : code.toString());
+         }
+         List<Map<String, Object>> tasks =
+                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
+diff --git a/src/main/resources/db/migration/V33__project_code.sql b/src/main/resources/db/migration/V33__project_code.sql
+new file mode 100644
+index 0000000..15b631c
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__project_code.sql
+@@ -0,0 +1,8 @@
++-- Each project carries a short reference code, set when it is created, unique across all projects so
++-- no two projects share one (mirrors the client email uniqueness in V28). Enforce uniqueness at the
++-- schema level as defence-in-depth behind the server and UI checks.
++ALTER TABLE project
++    ADD COLUMN code VARCHAR(255) NOT NULL DEFAULT '';
++
++ALTER TABLE project
++    ADD CONSTRAINT project_code_unique UNIQUE (code);
