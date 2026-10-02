@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 0489eb0..3f8e4d2 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -3,10 +3,15 @@ import { useEffect, useState, type FormEvent } from 'react';
+ // This arm's convention: the page component owns the feature's state, data loading and layout.
+ type Client = { id: number; name: string; email: string };
+ 
++// A client must carry a proper email address. Keep it simple and local to the feature: a single
++// non-whitespace local part, an @, and a dotted domain.
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
++  const [emailError, setEmailError] = useState(false);
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -21,6 +26,11 @@ export function ClientsPage() {
+ 
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
++    if (!EMAIL_RE.test(email)) {
++      setEmailError(true);
++      return;
++    }
++    setEmailError(false);
+     const res = await fetch('/api/clients', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -50,6 +60,11 @@ export function ClientsPage() {
+           value={email}
+           onChange={(e) => setEmail(e.target.value)}
+         />
++        {emailError && (
++          <p data-testid="client-form-email-error">
++            Enter a valid email address.
++          </p>
++        )}
+         <button data-testid="client-form-submit" type="submit">
+           Add client
+         </button>
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index f22baed..700bac6 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import java.util.List;
++import java.util.regex.Pattern;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -8,6 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class ClientService {
+ 
++    // A client must carry a proper email address (mirrors the front-end guard).
++    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
++
+     private final ClientRepository repository;
+ 
+     public ClientService(ClientRepository repository) {
+@@ -21,6 +25,9 @@ public class ClientService {
+ 
+     @Transactional
+     public Client create(String name, String email) {
++        if (email == null || !EMAIL.matcher(email).matches()) {
++            throw new IllegalArgumentException("A client requires a valid email address");
++        }
+         Client client = new Client();
+         client.setName(name);
+         client.setEmail(email);
+diff --git a/src/main/resources/db/migration/V2__client_email_required.sql b/src/main/resources/db/migration/V2__client_email_required.sql
+new file mode 100644
+index 0000000..e7280ae
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__client_email_required.sql
+@@ -0,0 +1,5 @@
++-- Every client needs a proper email address: enforce it in the schema too, so a bad address can
++-- never be persisted regardless of entry point. Mirrors the front-end and service guards.
++ALTER TABLE clients
++    ADD CONSTRAINT clients_email_format
++    CHECK (REGEXP_LIKE(email, '^[^\s@]+@[^\s@]+\.[^\s@]+$'));
