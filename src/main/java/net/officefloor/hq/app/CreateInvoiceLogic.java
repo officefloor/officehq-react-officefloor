@@ -21,6 +21,9 @@ public class CreateInvoiceLogic {
         if (amount == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "An amount is required");
         }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "An amount greater than zero is required");
+        }
         Long id = Long.valueOf(projectId);
         projects.findById(id).orElseThrow(
                 () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing project is required"));

@@ -12,6 +12,7 @@ function formatAmount(amount: number): string {
 export function ProjectInvoices({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [amount, setAmount] = useState('');
+  const [error, setError] = useState('');
 
   async function load() {
     const res = await fetch(`/api/projects/${projectId}/invoices`);
@@ -24,6 +25,12 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const value = Number(amount);
+    if (!(value > 0)) {
+      setError('Amount must be greater than zero');
+      return;
+    }
+    setError('');
     const res = await fetch(`/api/projects/${projectId}/invoices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -60,6 +67,11 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         <button type="submit" data-testid="invoice-form-submit">
           Add invoice
         </button>
+        {error ? (
+          <p data-testid="invoice-form-amount-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </form>
 
       <table data-testid="project-invoices-table">
