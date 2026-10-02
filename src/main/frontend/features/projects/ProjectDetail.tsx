@@ -24,6 +24,8 @@ type Task = {
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  // Which tasks to show: all of them, just the open ones, or just the finished ones.
+  const [taskFilter, setTaskFilter] = useState('');
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState(false);
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
@@ -36,7 +38,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
   }
 
   async function loadTasks() {
-    const res = await fetch(`/api/projects/${projectId}/tasks`);
+    const query = taskFilter ? `?filter=${encodeURIComponent(taskFilter)}` : '';
+    const res = await fetch(`/api/projects/${projectId}/tasks${query}`);
     if (res.ok) {
       setTasks(await res.json());
     }
@@ -44,8 +47,11 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     void load();
-    void loadTasks();
   }, [projectId]);
+
+  useEffect(() => {
+    void loadTasks();
+  }, [projectId, taskFilter]);
 
   // Tick a task off (or back on): toggles OPEN <-> DONE and reloads the list.
   async function onToggleTask(taskId: number) {
@@ -102,6 +108,19 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
   return (
     <section data-testid="project-detail">
       <h2>Tasks</h2>
+
+      <label>
+        Show
+        <select
+          data-testid="task-filter"
+          value={taskFilter}
+          onChange={(e) => setTaskFilter(e.target.value)}
+        >
+          <option value="">All tasks</option>
+          <option value="OPEN">Open</option>
+          <option value="DONE">Done</option>
+        </select>
+      </label>
 
       <table data-testid="project-tasks-table">
         <thead>
