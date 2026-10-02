@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { InvoiceLineItems } from './InvoiceLineItems';
+import { InvoicePayments } from './InvoicePayments';
 
 // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
 // project's invoices, shows their derived total (amounts to 2 decimals), and adds a new invoice by
@@ -89,6 +90,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
             void load();
           }}
         />
+        <InvoicePayments invoiceId={openInvoiceId} />
       </section>
     );
   }

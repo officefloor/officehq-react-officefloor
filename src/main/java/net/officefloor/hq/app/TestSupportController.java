@@ -39,6 +39,7 @@ public class TestSupportController {
         jdbc.execute("TRUNCATE TABLE project_tag RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE line_item RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
@@ -154,6 +155,23 @@ public class TestSupportController {
                         ((Number) lineItem.get("qty")).intValue(),
                         new java.math.BigDecimal(lineItem.get("unitPrice").toString()));
             }
+        }
+        List<Map<String, Object>> payments =
+                (List<Map<String, Object>>) fixture.getOrDefault("payments", List.of());
+        long maxPaymentId = 0;
+        for (Map<String, Object> payment : payments) {
+            long paymentId = ((Number) payment.get("id")).longValue();
+            maxPaymentId = Math.max(maxPaymentId, paymentId);
+            jdbc.update(
+                    "INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
+                    paymentId, ((Number) payment.get("invoiceId")).longValue(),
+                    new java.math.BigDecimal(payment.get("amount").toString()),
+                    java.sql.Date.valueOf(payment.get("date").toString()));
+        }
+        if (maxPaymentId > 0) {
+            // Seeding explicit ids does not advance H2's IDENTITY sequence, so a payment created later
+            // through the API would collide on id=1. Nudge the sequence past the seeded ids.
+            jdbc.execute("ALTER TABLE payment ALTER COLUMN id RESTART WITH " + (maxPaymentId + 1));
         }
     }
 }
