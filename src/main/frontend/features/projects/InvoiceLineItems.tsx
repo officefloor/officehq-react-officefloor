@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
 
 // An opened invoice's line items, rendered inside the projects feature. The owner lists the things
-// being charged for — each with a description, how many, and the price each — and the invoice total
-// is worked out for them (the sum of each line's quantity times unit price). Owns its own state and
-// data loading (no global store); composed, not branched.
+// being charged for — each with a description, how many, the unit that quantity is measured in, and
+// the price each — and the amount for each line (and the invoice total) is worked out for them (the
+// sum of each line's quantity times unit price). Owns its own state and data loading (no global
+// store); composed, not branched.
 type LineItem = {
   id: number;
   invoiceId: number;
   description: string;
   quantity: number;
+  unit: string;
   unitPrice: number;
 };
 
@@ -29,11 +31,13 @@ export function InvoiceLineItems({
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
+  const [unit, setUnit] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editQty, setEditQty] = useState('');
+  const [editUnit, setEditUnit] = useState('');
   const [editUnitPrice, setEditUnitPrice] = useState('');
   const [editError, setEditError] = useState('');
 
@@ -58,13 +62,14 @@ export function InvoiceLineItems({
     const res = await fetch(`/api/invoices/${invoiceId}/lineitems`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, quantity, unitPrice: price }),
+      body: JSON.stringify({ description, quantity, unit, unitPrice: price }),
     });
     if (!res.ok) {
       return;
     }
     setDescription('');
     setQty('');
+    setUnit('');
     setUnitPrice('');
     await load();
   }
@@ -73,6 +78,7 @@ export function InvoiceLineItems({
     setEditingId(li.id);
     setEditDescription(li.description);
     setEditQty(String(li.quantity));
+    setEditUnit(li.unit);
     setEditUnitPrice(String(li.unitPrice));
     setEditError('');
   }
@@ -93,7 +99,7 @@ export function InvoiceLineItems({
     const res = await fetch(`/api/invoices/${invoiceId}/lineitems/${lineItemId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: editDescription, quantity, unitPrice: price }),
+      body: JSON.stringify({ description: editDescription, quantity, unit: editUnit, unitPrice: price }),
     });
     if (!res.ok) {
       return;
@@ -139,6 +145,12 @@ export function InvoiceLineItems({
           onChange={(e) => setQty(e.target.value)}
         />
         <input
+          data-testid="lineitem-form-unit"
+          placeholder="Unit"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+        />
+        <input
           data-testid="lineitem-form-unitprice"
           placeholder="Price each"
           value={unitPrice}
@@ -159,8 +171,9 @@ export function InvoiceLineItems({
           <tr>
             <th>Description</th>
             <th>How many</th>
+            <th>Unit</th>
             <th>Price each</th>
-            <th>Line total</th>
+            <th>Amount</th>
             <th></th>
           </tr>
         </thead>
@@ -186,6 +199,14 @@ export function InvoiceLineItems({
                 </td>
                 <td>
                   <input
+                    data-testid="lineitem-edit-unit"
+                    placeholder="Unit"
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value)}
+                  />
+                </td>
+                <td>
+                  <input
                     data-testid="lineitem-edit-unitprice"
                     placeholder="Price each"
                     value={editUnitPrice}
@@ -193,7 +214,9 @@ export function InvoiceLineItems({
                   />
                 </td>
                 <td data-testid="lineitem-total">
-                  {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
+                  <span data-testid="lineitem-amount">
+                    {formatAmount(Number(editQty || 0) * Number(editUnitPrice || 0))}
+                  </span>
                 </td>
                 <td>
                   <button
@@ -221,9 +244,12 @@ export function InvoiceLineItems({
               <tr key={li.id} data-testid={`lineitem-row-${li.id}`}>
                 <td data-testid="lineitem-description">{li.description}</td>
                 <td data-testid="lineitem-qty">{li.quantity}</td>
+                <td data-testid="lineitem-unit">{li.unit}</td>
                 <td data-testid="lineitem-unitprice">{formatAmount(li.unitPrice)}</td>
                 <td data-testid="lineitem-total">
-                  {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
+                  <span data-testid="lineitem-amount">
+                    {formatAmount(Number(li.quantity) * Number(li.unitPrice))}
+                  </span>
                 </td>
                 <td>
                   <button
@@ -247,7 +273,7 @@ export function InvoiceLineItems({
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={3}>Total</td>
+            <td colSpan={4}>Total</td>
             <td data-testid="invoice-amount">{formatAmount(total)}</td>
             <td></td>
           </tr>

@@ -33,7 +33,9 @@ public class CreateLineItemLogic {
         if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price of zero or more is required");
         }
-        LineItem saved = lineItems.save(new LineItem(id, description.trim(), quantity, unitPrice));
+        String unit = newLineItem.getUnit() == null ? "" : newLineItem.getUnit().trim();
+        LineItem saved =
+                lineItems.save(new LineItem(id, description.trim(), quantity, unit, unitPrice));
 
         // Keep the invoice's amount in step with its line items: the total the owner is charging.
         BigDecimal amount = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
@@ -43,6 +45,6 @@ public class CreateLineItemLogic {
         invoices.save(invoice);
 
         response.send(new LineItemView(saved.getId(), saved.getInvoiceId(), saved.getDescription(),
-                saved.getQuantity(), saved.getUnitPrice()));
+                saved.getQuantity(), saved.getUnit(), saved.getUnitPrice()));
     }
 }

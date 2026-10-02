@@ -163,12 +163,15 @@ public class TestSupportController {
                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
                     dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
             for (Map<String, Object> lineItem : lineItems) {
+                Object unit = lineItem.getOrDefault("unit", "");
                 jdbc.update(
-                        "INSERT INTO line_item (id, invoice_id, description, quantity, unit_price) "
-                                + "VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO line_item "
+                                + "(id, invoice_id, description, quantity, unit, unit_price) "
+                                + "VALUES (?, ?, ?, ?, ?, ?)",
                         ((Number) lineItem.get("id")).longValue(), invoiceId,
                         lineItem.get("description"),
                         ((Number) lineItem.get("qty")).intValue(),
+                        unit == null ? "" : unit.toString(),
                         new java.math.BigDecimal(lineItem.get("unitPrice").toString()));
             }
         }

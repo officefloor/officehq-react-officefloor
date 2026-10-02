@@ -42,8 +42,10 @@ public class UpdateLineItemLogic {
         if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "A unit price of zero or more is required");
         }
+        String unit = newLineItem.getUnit() == null ? "" : newLineItem.getUnit().trim();
         lineItem.setDescription(description.trim());
         lineItem.setQuantity(quantity);
+        lineItem.setUnit(unit);
         lineItem.setUnitPrice(unitPrice);
         LineItem saved = lineItems.save(lineItem);
 
@@ -55,6 +57,6 @@ public class UpdateLineItemLogic {
         invoices.save(invoice);
 
         response.send(new LineItemView(saved.getId(), saved.getInvoiceId(), saved.getDescription(),
-                saved.getQuantity(), saved.getUnitPrice()));
+                saved.getQuantity(), saved.getUnit(), saved.getUnitPrice()));
     }
 }

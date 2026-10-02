@@ -16,7 +16,7 @@ public class ListLineItemsLogic {
         Long id = Long.valueOf(invoiceId);
         List<LineItemView> views = lineItems.findByInvoiceIdOrderByIdAsc(id).stream()
                 .map(li -> new LineItemView(li.getId(), li.getInvoiceId(), li.getDescription(),
-                        li.getQuantity(), li.getUnitPrice()))
+                        li.getQuantity(), li.getUnit(), li.getUnitPrice()))
                 .collect(Collectors.toList());
         response.send(views);
     }

@@ -28,16 +28,20 @@ public class LineItem {
 
     private int quantity;
 
+    private String unit;
+
     @Column(name = "unit_price")
     private BigDecimal unitPrice;
 
     public LineItem() {
     }
 
-    public LineItem(Long invoiceId, String description, int quantity, BigDecimal unitPrice) {
+    public LineItem(Long invoiceId, String description, int quantity, String unit,
+            BigDecimal unitPrice) {
         this.invoiceId = invoiceId;
         this.description = description;
         this.quantity = quantity;
+        this.unit = unit;
         this.unitPrice = unitPrice;
     }
 
@@ -71,6 +75,14 @@ public class LineItem {
 
     public void setQuantity(int quantity) {
         this.quantity = quantity;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public void setUnit(String unit) {
+        this.unit = unit;
     }
 
     public BigDecimal getUnitPrice() {

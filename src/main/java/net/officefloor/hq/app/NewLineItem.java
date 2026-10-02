@@ -4,13 +4,15 @@ import java.math.BigDecimal;
 
 /**
  * Request body for adding a line item to an invoice: what is being charged for (description), how
- * many (quantity) and the price of each (unitPrice).
+ * many (quantity), the unit that quantity is measured in (unit) and the price of each (unitPrice).
  */
 public class NewLineItem {
 
     private String description;
 
     private Integer quantity;
+
+    private String unit;
 
     private BigDecimal unitPrice;
 
@@ -28,6 +30,14 @@ public class NewLineItem {
 
     public void setQuantity(Integer quantity) {
         this.quantity = quantity;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public void setUnit(String unit) {
+        this.unit = unit;
     }
 
     public BigDecimal getUnitPrice() {
