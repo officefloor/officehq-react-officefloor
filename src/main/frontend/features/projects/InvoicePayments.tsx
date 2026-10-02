@@ -15,7 +15,13 @@ function formatAmount(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
 
-export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
+export function InvoicePayments({
+  invoiceId,
+  onRecorded,
+}: {
+  invoiceId: number;
+  onRecorded?: () => void;
+}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
@@ -49,6 +55,8 @@ export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
     setAmount('');
     setDate('');
     await load();
+    // The invoice's status is derived from its payments, so let the opener re-read it.
+    onRecorded?.();
   }
 
   return (

@@ -27,8 +27,10 @@ public class ListInvoicesLogic {
                             .map(Payment::getAmount)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
                     BigDecimal due = inv.getAmount().subtract(paid);
+                    // Status follows the payments: PAID once covered, PARTIAL once some is paid.
+                    String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
                     return new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
-                            inv.getStatus(),
+                            status,
                             inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
                             inv.getDueDate() == null ? null : inv.getDueDate().toString());
                 })

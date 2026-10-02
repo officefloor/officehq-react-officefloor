@@ -4,9 +4,11 @@ import { InvoicePayments } from './InvoicePayments';
 
 // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
 // project's invoices, shows their derived total (amounts to 2 decimals), and adds a new invoice by
-// amount. Opening an invoice (invoice-open-<id>) shows its line items — the things being charged for
-// — in place of the list. Owns its own state and data loading (no global store); composed, not
-// branched.
+// amount. Each invoice's status is worked out from the payments recorded against it — PARTIAL once
+// some is paid, PAID once covered — rather than being flipped to paid by hand. Opening an invoice
+// (invoice-open-<id>) shows its derived status, its line items — the things being charged for — and
+// its payments in place of the list. Owns its own state and data loading (no global store);
+// composed, not branched.
 type Invoice = {
   id: number;
   projectId: number;
@@ -27,15 +29,33 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
   const [error, setError] = useState('');
   const [sort, setSort] = useState<'id' | 'due'>('id');
   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+  const [openStatus, setOpenStatus] = useState('');
 
   async function load(order: 'id' | 'due' = sort) {
     const res = await fetch(`/api/projects/${projectId}/invoices?sort=${order}`);
     setInvoices(await res.json());
   }
 
+  // The opened invoice's status is derived from its payments, so re-read it on open and whenever a
+  // payment is recorded against it.
+  async function loadInvoice(invoiceId: number) {
+    const res = await fetch(`/api/invoices/${invoiceId}`);
+    if (!res.ok) {
+      return;
+    }
+    const inv: Invoice = await res.json();
+    setOpenStatus(inv.status);
+  }
+
   useEffect(() => {
     void load();
   }, [projectId]);
+
+  useEffect(() => {
+    if (openInvoiceId !== null) {
+      void loadInvoice(openInvoiceId);
+    }
+  }, [openInvoiceId]);
 
   async function sortByDue() {
     setSort('due');
@@ -70,20 +90,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     await load();
   }
 
-  async function pay(invoiceId: number) {
-    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
-    if (!res.ok) {
-      return;
-    }
-    await load();
-  }
-
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
 
   if (openInvoiceId !== null) {
     return (
       <section data-testid="project-invoices">
         <h2>Invoices</h2>
+        <p>
+          Status: <span data-testid="invoice-status">{openStatus}</span>
+        </p>
         <InvoiceLineItems
           invoiceId={openInvoiceId}
           onClose={() => {
@@ -91,7 +106,10 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
             void load();
           }}
         />
-        <InvoicePayments invoiceId={openInvoiceId} />
+        <InvoicePayments
+          invoiceId={openInvoiceId}
+          onRecorded={() => void loadInvoice(openInvoiceId)}
+        />
       </section>
     );
   }
@@ -155,15 +173,6 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
                     onClick={() => void send(inv.id)}
                   >
                     Send
-                  </button>
-                ) : null}
-                {inv.status === 'SENT' ? (
-                  <button
-                    type="button"
-                    data-testid={`invoice-pay-${inv.id}`}
-                    onClick={() => void pay(inv.id)}
-                  >
-                    Mark paid
                   </button>
                 ) : null}
               </td>
