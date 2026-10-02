@@ -1,0 +1,84 @@
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 7cf6c03..948f72f 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -15,9 +15,13 @@ function formatAmount(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+ }
+ 
++const PAGE_SIZE = 10;
++
+ export function AllInvoicesPage() {
+   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
+   const [statusFilter, setStatusFilter] = useState('');
++  // The full list is large, so it is shown a page at a time with next/previous controls.
++  const [page, setPage] = useState(1);
+ 
+   useEffect(() => {
+     async function load() {
+@@ -29,10 +33,16 @@ export function AllInvoicesPage() {
+ 
+   // Distinct stages present, so the filter offers exactly the stages the list can show.
+   const statuses = Array.from(new Set(invoices.map((inv) => inv.status))).sort();
+-  const visible = statusFilter
++  const filtered = statusFilter
+     ? invoices.filter((inv) => inv.status === statusFilter)
+     : invoices;
+ 
++  // Clamp the page to the available range so changing the filter can't strand us on an empty page.
++  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
++  const currentPage = Math.min(page, pageCount);
++  const start = (currentPage - 1) * PAGE_SIZE;
++  const visible = filtered.slice(start, start + PAGE_SIZE);
++
+   return (
+     <section data-testid="invoices-section">
+       <h1>Invoices</h1>
+@@ -42,7 +52,10 @@ export function AllInvoicesPage() {
+         <select
+           data-testid="invoice-status-filter"
+           value={statusFilter}
+-          onChange={(e) => setStatusFilter(e.target.value)}
++          onChange={(e) => {
++            setStatusFilter(e.target.value);
++            setPage(1);
++          }}
+         >
+           <option value="">All</option>
+           {statuses.map((status) => (
+@@ -53,7 +66,7 @@ export function AllInvoicesPage() {
+         </select>
+       </label>
+ 
+-      {visible.length === 0 ? (
++      {filtered.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+         <table data-testid="all-invoices-table">
+@@ -75,6 +88,26 @@ export function AllInvoicesPage() {
+           </tbody>
+         </table>
+       )}
++
++      <nav data-testid="invoice-pagination">
++        <button
++          type="button"
++          data-testid="invoice-page-prev"
++          disabled={currentPage <= 1}
++          onClick={() => setPage((p) => Math.max(1, p - 1))}
++        >
++          Previous
++        </button>
++        <span data-testid="invoice-page-label">{currentPage}</span>
++        <button
++          type="button"
++          data-testid="invoice-page-next"
++          disabled={currentPage >= pageCount}
++          onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
++        >
++          Next
++        </button>
++      </nav>
+     </section>
+   );
+ }
