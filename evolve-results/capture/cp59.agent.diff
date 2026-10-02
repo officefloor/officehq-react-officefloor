@@ -1,0 +1,46 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index af0ceb1..bc274bf 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -56,6 +56,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+       </button>
+ 
+       {statement ? (
++       <>
+         <table data-testid="client-statement-table">
+           <thead>
+             <tr>
+@@ -100,6 +101,33 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+             </tr>
+           </tfoot>
+         </table>
++
++        {/* A clean, printable summary of the statement: each job's invoices listed plainly with
++            what is still owed, closing on the grand total the client owes across everything. This
++            is the "print this and hand it over" view; the grand total is the outstanding total
++            (what is still due across all of their invoices). */}
++        <section data-testid="statement-print-view">
++          <h2>Statement summary</h2>
++          {statement.groups.map((group) => (
++            <div key={group.projectId} data-testid={`statement-print-project-${group.projectId}`}>
++              <h3 data-testid="statement-print-project-name">{group.projectName}</h3>
++              <ul>
++                {group.invoices.map((inv) => (
++                  <li key={inv.id} data-testid={`statement-print-invoice-${inv.id}`}>
++                    Invoice #{inv.id}: {formatAmount(inv.due)} due
++                  </li>
++                ))}
++              </ul>
++            </div>
++          ))}
++          <p>
++            <span>Grand total owed</span>{' '}
++            <strong data-testid="statement-grand-total">
++              {formatAmount(statement.outstandingTotal)}
++            </strong>
++          </p>
++        </section>
++       </>
+       ) : null}
+     </section>
+   );
