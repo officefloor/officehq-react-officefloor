@@ -1,0 +1,279 @@
+diff --git a/src/main/frontend/features/projects/InvoicePayments.tsx b/src/main/frontend/features/projects/InvoicePayments.tsx
+index a0760e9..2af491e 100644
+--- a/src/main/frontend/features/projects/InvoicePayments.tsx
++++ b/src/main/frontend/features/projects/InvoicePayments.tsx
+@@ -15,7 +15,13 @@ function formatAmount(amount: number): string {
+   return `$${Number(amount).toFixed(2)}`;
+ }
+ 
+-export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
++export function InvoicePayments({
++  invoiceId,
++  onRecorded,
++}: {
++  invoiceId: number;
++  onRecorded?: () => void;
++}) {
+   const [payments, setPayments] = useState<Payment[]>([]);
+   const [amount, setAmount] = useState('');
+   const [date, setDate] = useState('');
+@@ -49,6 +55,8 @@ export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
+     setAmount('');
+     setDate('');
+     await load();
++    // The invoice's status is derived from its payments, so let the opener re-read it.
++    onRecorded?.();
+   }
+ 
+   return (
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index 7c66011..e7c7485 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -4,9 +4,11 @@ import { InvoicePayments } from './InvoicePayments';
+ 
+ // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
+ // project's invoices, shows their derived total (amounts to 2 decimals), and adds a new invoice by
+-// amount. Opening an invoice (invoice-open-<id>) shows its line items — the things being charged for
+-// — in place of the list. Owns its own state and data loading (no global store); composed, not
+-// branched.
++// amount. Each invoice's status is worked out from the payments recorded against it — PARTIAL once
++// some is paid, PAID once covered — rather than being flipped to paid by hand. Opening an invoice
++// (invoice-open-<id>) shows its derived status, its line items — the things being charged for — and
++// its payments in place of the list. Owns its own state and data loading (no global store);
++// composed, not branched.
+ type Invoice = {
+   id: number;
+   projectId: number;
+@@ -27,16 +29,34 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+   const [error, setError] = useState('');
+   const [sort, setSort] = useState<'id' | 'due'>('id');
+   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
++  const [openStatus, setOpenStatus] = useState('');
+ 
+   async function load(order: 'id' | 'due' = sort) {
+     const res = await fetch(`/api/projects/${projectId}/invoices?sort=${order}`);
+     setInvoices(await res.json());
+   }
+ 
++  // The opened invoice's status is derived from its payments, so re-read it on open and whenever a
++  // payment is recorded against it.
++  async function loadInvoice(invoiceId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}`);
++    if (!res.ok) {
++      return;
++    }
++    const inv: Invoice = await res.json();
++    setOpenStatus(inv.status);
++  }
++
+   useEffect(() => {
+     void load();
+   }, [projectId]);
+ 
++  useEffect(() => {
++    if (openInvoiceId !== null) {
++      void loadInvoice(openInvoiceId);
++    }
++  }, [openInvoiceId]);
++
+   async function sortByDue() {
+     setSort('due');
+     await load('due');
+@@ -70,20 +90,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     await load();
+   }
+ 
+-  async function pay(invoiceId: number) {
+-    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
+-    if (!res.ok) {
+-      return;
+-    }
+-    await load();
+-  }
+-
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+ 
+   if (openInvoiceId !== null) {
+     return (
+       <section data-testid="project-invoices">
+         <h2>Invoices</h2>
++        <p>
++          Status: <span data-testid="invoice-status">{openStatus}</span>
++        </p>
+         <InvoiceLineItems
+           invoiceId={openInvoiceId}
+           onClose={() => {
+@@ -91,7 +106,10 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+             void load();
+           }}
+         />
+-        <InvoicePayments invoiceId={openInvoiceId} />
++        <InvoicePayments
++          invoiceId={openInvoiceId}
++          onRecorded={() => void loadInvoice(openInvoiceId)}
++        />
+       </section>
+     );
+   }
+@@ -157,15 +175,6 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+                     Send
+                   </button>
+                 ) : null}
+-                {inv.status === 'SENT' ? (
+-                  <button
+-                    type="button"
+-                    data-testid={`invoice-pay-${inv.id}`}
+-                    onClick={() => void pay(inv.id)}
+-                  >
+-                    Mark paid
+-                  </button>
+-                ) : null}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java
+new file mode 100644
+index 0000000..43d7ba6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/invoices/{invoiceId} — a single invoice as the UI shows it, including how much is still
++ * owing ({@code due}) and its payment status derived from the payments recorded against it. An
++ * unknown invoice is rejected with 400. Used by an opened invoice to show its current status.
++ */
++public class GetInvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            InvoiceRepository invoices, PaymentRepository payments,
++            ObjectResponse<InvoiceView> response) {
++        Long id = Long.valueOf(invoiceId);
++        Invoice inv = invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(id).stream()
++                .map(Payment::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        BigDecimal due = inv.getAmount().subtract(paid);
++        String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
++        response.send(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due, status,
++                inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
++                inv.getDueDate() == null ? null : inv.getDueDate().toString()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/InvoiceStatus.java
+new file mode 100644
+index 0000000..09577ef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/InvoiceStatus.java
+@@ -0,0 +1,25 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * Works out an invoice's payment status from what has actually been paid against it, rather than the
++ * owner flipping it by hand: PAID once payments cover the billed amount, PARTIAL once some (but not
++ * all) is paid, otherwise the invoice's stored lifecycle status (e.g. a sent, unpaid invoice reads
++ * SENT). Shared by the reads that surface an invoice's status.
++ */
++final class InvoiceStatus {
++
++    private InvoiceStatus() {
++    }
++
++    static String derive(String storedStatus, BigDecimal amount, BigDecimal paid) {
++        if (amount != null && amount.signum() > 0 && paid.compareTo(amount) >= 0) {
++            return "PAID";
++        }
++        if (paid.signum() > 0) {
++            return "PARTIAL";
++        }
++        return storedStatus;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+index 9334656..a78aef5 100644
+--- a/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListInvoicesLogic.java
+@@ -27,8 +27,10 @@ public class ListInvoicesLogic {
+                             .map(Payment::getAmount)
+                             .reduce(BigDecimal.ZERO, BigDecimal::add);
+                     BigDecimal due = inv.getAmount().subtract(paid);
++                    // Status follows the payments: PAID once covered, PARTIAL once some is paid.
++                    String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
+                     return new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
+-                            inv.getStatus(),
++                            status,
+                             inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+                             inv.getDueDate() == null ? null : inv.getDueDate().toString());
+                 })
+diff --git a/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java b/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java
+index 130c9f7..0437044 100644
+--- a/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java
++++ b/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.time.format.DateTimeParseException;
+ import net.officefloor.server.http.HttpException;
+@@ -11,14 +12,17 @@ import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /**
+  * POST /api/invoices/{invoiceId}/payments — record a payment (amount and date) a client has made
+- * against an existing invoice, and echo back the saved payment. A non-positive amount, a
+- * missing/unparseable date, or an unknown invoice, is rejected with 400 and nothing is written.
++ * against an existing invoice, and echo back the saved payment. Appends one audit record
++ * (PAYMENT_RECORDED id=&lt;id&gt; amount=&lt;amount&gt;); recording payments is what drives an invoice's
++ * derived status ({@link InvoiceStatus}), replacing flipping it to paid by hand. A non-positive
++ * amount, a missing/unparseable date, or an unknown invoice, is rejected with 400 and nothing is
++ * written.
+  */
+ public class RecordPaymentLogic {
+ 
+     public void service(@HttpPathParameter("invoiceId") String invoiceId,
+             @RequestBody NewPayment newPayment, InvoiceRepository invoices,
+-            PaymentRepository payments, ObjectResponse<PaymentView> response) {
++            PaymentRepository payments, Audit audit, ObjectResponse<PaymentView> response) {
+         Long id = Long.valueOf(invoiceId);
+         invoices.findById(id).orElseThrow(
+                 () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
+@@ -37,6 +41,8 @@ public class RecordPaymentLogic {
+             throw new HttpException(HttpStatus.BAD_REQUEST, "A valid payment date is required");
+         }
+         Payment saved = payments.save(new Payment(id, amount, paidDate));
++        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
++                + saved.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString());
+         response.send(new PaymentView(saved.getId(), saved.getInvoiceId(), saved.getAmount(),
+                 saved.getPaidDate().toString()));
+     }
+diff --git a/src/main/resources/db/migration/V20__payment_invoice_index.sql b/src/main/resources/db/migration/V20__payment_invoice_index.sql
+new file mode 100644
+index 0000000..bc9b115
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__payment_invoice_index.sql
+@@ -0,0 +1,5 @@
++-- An invoice's payment status is now derived from its payments: each read of a project's invoices
++-- (and of a single opened invoice) sums that invoice's payments to work out whether it is PAID,
++-- PARTIAL or still owing. Index payment by its owning invoice so those per-invoice aggregations stay
++-- cheap. Additive index on the existing payment table (V19); no column or data change.
++CREATE INDEX idx_payment_invoice_id ON payment (invoice_id);
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml
+new file mode 100644
+index 0000000..6d1422c
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.GetInvoiceLogic
