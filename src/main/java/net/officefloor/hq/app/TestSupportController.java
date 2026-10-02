@@ -35,6 +35,7 @@ public class TestSupportController {
         // project references client via FK; H2 refuses TRUNCATE on a referenced table, so drop
         // referential integrity for the duration of the clear, then restore it.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE dashboard_config");
         jdbc.execute("TRUNCATE TABLE note RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project_tag RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
@@ -52,6 +53,12 @@ public class TestSupportController {
     @PostMapping("/seed")
     @SuppressWarnings("unchecked")
     public void seed(@RequestBody Map<String, Object> fixture) {
+        Object asOf = fixture.get("asOf");
+        if (asOf != null) {
+            // The dashboard's reference date for deciding which SENT invoices are overdue (V24).
+            jdbc.update("INSERT INTO dashboard_config (id, as_of) VALUES (1, ?)",
+                    java.sql.Date.valueOf(asOf.toString()));
+        }
         List<Map<String, Object>> clients =
                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
         for (Map<String, Object> client : clients) {

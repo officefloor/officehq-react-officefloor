@@ -1,5 +1,6 @@
 package net.officefloor.hq.app;
 
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -17,4 +18,10 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     /** Every invoice with the given status (e.g. SENT), oldest first — used to total what is owed. */
     List<Invoice> findByStatusOrderByIdAsc(String status);
+
+    /**
+     * How many invoices with the given status fell due before {@code date} — i.e. are overdue as of
+     * that reference date (strictly before, so an invoice due on the date itself is not yet overdue).
+     */
+    long countByStatusAndDueDateBefore(String status, LocalDate date);
 }

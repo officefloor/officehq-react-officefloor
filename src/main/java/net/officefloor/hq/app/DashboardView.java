@@ -2,17 +2,23 @@ package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
 
-/** The home dashboard summary: how many clients and projects there are, and the total still owed. */
+/**
+ * The home dashboard summary: how many clients and projects there are, the total still owed, and how
+ * many SENT invoices are overdue (past their due date as of the dashboard's reference date).
+ */
 public class DashboardView {
 
     private final long clientsCount;
     private final long projectsCount;
     private final BigDecimal outstandingTotal;
+    private final long overdueCount;
 
-    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal) {
+    public DashboardView(long clientsCount, long projectsCount, BigDecimal outstandingTotal,
+            long overdueCount) {
         this.clientsCount = clientsCount;
         this.projectsCount = projectsCount;
         this.outstandingTotal = outstandingTotal;
+        this.overdueCount = overdueCount;
     }
 
     public long getClientsCount() {
@@ -25,5 +31,9 @@ public class DashboardView {
 
     public BigDecimal getOutstandingTotal() {
         return outstandingTotal;
+    }
+
+    public long getOverdueCount() {
+        return overdueCount;
     }
 }

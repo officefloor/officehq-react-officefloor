@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 
 // The dashboard feature owns its own state and data loading (no global store). It is a read-only home
-// summary: how many clients and projects there are, and how much money is still owed (the sum of
-// every SENT invoice across all projects — drafts and paid invoices are excluded, served
-// pre-computed by /api/dashboard).
+// summary: how many clients and projects there are, how much money is still owed (the sum of
+// every SENT invoice across all projects — drafts and paid invoices are excluded), and how many
+// SENT invoices are overdue (past their due date as of the dashboard's reference date). All served
+// pre-computed by /api/dashboard.
 type Summary = {
   clientsCount: number;
   projectsCount: number;
   outstandingTotal: number;
+  overdueCount: number;
 };
 
 function formatAmount(amount: number): string {
@@ -40,6 +42,9 @@ export function DashboardPage() {
         <dd data-testid="dashboard-outstanding-total">
           {summary ? formatAmount(summary.outstandingTotal) : ''}
         </dd>
+
+        <dt>Overdue</dt>
+        <dd data-testid="dashboard-overdue-count">{summary ? summary.overdueCount : ''}</dd>
       </dl>
     </section>
   );
