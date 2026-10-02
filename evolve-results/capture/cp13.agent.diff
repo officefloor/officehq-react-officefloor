@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 0f61eb8..801ae3e 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -57,6 +57,13 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+     }
+   }
+ 
++  async function onSend(invoiceId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}/send`, { method: 'POST' });
++    if (res.ok) {
++      await load();
++    }
++  }
++
+   async function onPay(invoiceId: number) {
+     const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
+     if (res.ok) {
+@@ -109,7 +116,17 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+               <td data-testid="invoice-due">{invoice.dueDate}</td>
+               <td data-testid="invoice-status">{invoice.status}</td>
+               <td>
+-                {invoice.status !== 'PAID' && (
++                {/* Lifecycle: a DRAFT can be sent; only a SENT invoice can be paid. */}
++                {invoice.status === 'DRAFT' && (
++                  <button
++                    data-testid={`invoice-send-${invoice.id}`}
++                    type="button"
++                    onClick={() => onSend(invoice.id)}
++                  >
++                    Send
++                  </button>
++                )}
++                {invoice.status === 'SENT' && (
+                   <button
+                     data-testid={`invoice-pay-${invoice.id}`}
+                     type="button"
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index ee639c9..81577d3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -23,8 +23,8 @@ public class Invoice {
+ 
+     private BigDecimal amount;
+ 
+-    /** Payment status; defaults to UNPAID until the invoice is marked paid. */
+-    private String status = "UNPAID";
++    /** Lifecycle status: DRAFT -> SENT -> PAID. A new invoice starts as a DRAFT. */
++    private String status = "DRAFT";
+ 
+     /** The date the invoice was issued (sent out). */
+     @Column(name = "issued_date")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 62d1aa4..0b2ad03 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -72,21 +72,46 @@ public class InvoiceService {
+                 saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString());
+     }
+ 
++    @Transactional
++    public InvoiceView send(Long invoiceId) {
++        if (invoiceId == null) {
++            throw new IllegalArgumentException("An invoice id is required");
++        }
++        InvoiceView current = find(invoiceId);
++        if (!"DRAFT".equals(current.getStatus())) {
++            throw new IllegalStateException("Only a draft invoice can be sent");
++        }
++        jdbc.update("UPDATE invoices SET status = 'SENT' WHERE id = ?", invoiceId);
++        InvoiceView invoice = find(invoiceId);
++        audit.record("INVOICE_SENT id=" + invoice.getId() + " amount="
++                + invoice.getAmount().setScale(2));
++        return invoice;
++    }
++
+     @Transactional
+     public InvoiceView pay(Long invoiceId) {
+         if (invoiceId == null) {
+             throw new IllegalArgumentException("An invoice id is required");
+         }
++        InvoiceView current = find(invoiceId);
++        // Payment is only allowed once an invoice has been sent.
++        if (!"SENT".equals(current.getStatus())) {
++            throw new IllegalStateException("An invoice can only be paid once it has been sent");
++        }
+         jdbc.update("UPDATE invoices SET status = 'PAID' WHERE id = ?", invoiceId);
+-        InvoiceView invoice = jdbc.queryForObject(
++        InvoiceView invoice = find(invoiceId);
++        audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
++                + invoice.getAmount().setScale(2));
++        return invoice;
++    }
++
++    private InvoiceView find(Long invoiceId) {
++        return jdbc.queryForObject(
+                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
+                 (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+                         rs.getBigDecimal("amount"), rs.getString("status"),
+                         rs.getDate("issued_date").toLocalDate().toString(),
+                         rs.getDate("due_date").toLocalDate().toString()),
+                 invoiceId);
+-        audit.record("INVOICE_PAID id=" + invoice.getId() + " amount="
+-                + invoice.getAmount().setScale(2));
+-        return invoice;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/SendInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/invoices/SendInvoiceLogic.java
+new file mode 100644
+index 0000000..911b7cd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/SendInvoiceLogic.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.invoices;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/invoices/{invoiceId}/send — send a draft invoice and return the updated row. */
++public class SendInvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId, InvoiceService invoices,
++            ObjectResponse<InvoiceView> response) {
++        response.send(invoices.send(Long.valueOf(invoiceId)));
++    }
++}
+diff --git a/src/main/resources/db/migration/V12__invoice_draft_default.sql b/src/main/resources/db/migration/V12__invoice_draft_default.sql
+new file mode 100644
+index 0000000..195e1db
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__invoice_draft_default.sql
+@@ -0,0 +1,4 @@
++-- Invoices now move through a lifecycle: DRAFT -> SENT -> PAID. A newly created invoice starts as a
++-- DRAFT; it becomes SENT when it is sent out, and PAID once payment is taken. New rows default to
++-- DRAFT going forward.
++ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'DRAFT';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/send.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/send.POST.yml
+new file mode 100644
+index 0000000..58e6ca0
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/send.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoices.SendInvoiceLogic
