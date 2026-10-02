@@ -7,12 +7,17 @@ import { useEffect, useState, type FormEvent } from 'react';
 type Project = { id: number; name: string };
 type Contact = { id: number; name: string; email: string; role: string };
 
+// A contact must carry a proper email address too, same guard as clients: a single non-whitespace
+// local part, an @, and a dotted domain.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function ClientDetail({ clientId }: { clientId: number }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
+  const [emailError, setEmailError] = useState(false);
 
   async function loadContacts() {
     const res = await fetch(`/api/clients/${clientId}/contacts`);
@@ -34,6 +39,11 @@ export function ClientDetail({ clientId }: { clientId: number }) {
 
   async function onAddContact(event: FormEvent) {
     event.preventDefault();
+    if (!EMAIL_RE.test(email)) {
+      setEmailError(true);
+      return;
+    }
+    setEmailError(false);
     const res = await fetch(`/api/clients/${clientId}/contacts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,6 +114,11 @@ export function ClientDetail({ clientId }: { clientId: number }) {
           value={role}
           onChange={(e) => setRole(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="contact-form-email-error">
+            Enter a valid email address.
+          </p>
+        )}
         <button data-testid="contact-form-submit" type="submit">
           Add contact
         </button>

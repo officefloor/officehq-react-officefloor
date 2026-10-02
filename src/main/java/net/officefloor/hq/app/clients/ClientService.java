@@ -66,6 +66,9 @@ public class ClientService {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("A contact requires a name");
         }
+        if (email == null || !EMAIL.matcher(email).matches()) {
+            throw new IllegalArgumentException("A contact requires a valid email address");
+        }
         Contact contact = new Contact();
         contact.setClientId(clientId);
         contact.setName(name);
