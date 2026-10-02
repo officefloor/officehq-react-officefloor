@@ -32,7 +32,12 @@ public class TestSupportController {
     @PostMapping("/reset")
     public void reset() {
         audit.clear();
+        // project references client via FK; H2 refuses TRUNCATE on a referenced table, so drop
+        // referential integrity for the duration of the clear, then restore it.
+        jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+        jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
@@ -44,6 +49,13 @@ public class TestSupportController {
         for (Map<String, Object> client : clients) {
             jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
                     ((Number) client.get("id")).longValue(), client.get("name"), client.get("email"));
+        }
+        List<Map<String, Object>> projects =
+                (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
+        for (Map<String, Object> project : projects) {
+            jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
+                    ((Number) project.get("id")).longValue(), project.get("name"),
+                    ((Number) project.get("clientId")).longValue());
         }
     }
 }
