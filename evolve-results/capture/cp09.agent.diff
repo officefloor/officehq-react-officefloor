@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 2153af0..a12a13b 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useState } from 'react';
++import { formatMoney } from '../../ui/money';
+ 
+ // Home screen: a cross-feature summary. It shows how many clients and projects the user has, and
+ // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
+@@ -39,7 +40,7 @@ export function DashboardPage() {
+ 
+       <div data-testid="dashboard-outstanding">
+         <span>Outstanding</span>
+-        <strong data-testid="dashboard-outstanding-total">{outstanding.toFixed(2)}</strong>
++        <strong data-testid="dashboard-outstanding-total">{formatMoney(outstanding)}</strong>
+       </div>
+     </section>
+   );
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 4973c5f..b198da1 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useState, type FormEvent } from 'react';
++import { formatMoney } from '../../ui/money';
+ 
+ // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
+ // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
+@@ -69,7 +70,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         <tbody>
+           {invoices.map((invoice) => (
+             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
+-              <td data-testid="invoice-amount">{Number(invoice.amount).toFixed(2)}</td>
++              <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
+               <td data-testid="invoice-status">{invoice.status}</td>
+               <td>
+                 {invoice.status !== 'PAID' && (
+@@ -87,7 +88,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+         </tbody>
+         <tfoot>
+           <tr>
+-            <td data-testid="project-invoices-total">{total.toFixed(2)}</td>
++            <td data-testid="project-invoices-total">{formatMoney(total)}</td>
+           </tr>
+         </tfoot>
+       </table>
+diff --git a/src/main/frontend/ui/money.ts b/src/main/frontend/ui/money.ts
+new file mode 100644
+index 0000000..6ad3489
+--- /dev/null
++++ b/src/main/frontend/ui/money.ts
+@@ -0,0 +1,5 @@
++// Shared money formatting primitive. Money is displayed everywhere with a currency symbol and
++// exactly two decimals, e.g. 100 -> "$100.00". Composed by features; not branched per-feature.
++export function formatMoney(amount: number): string {
++  return `$${Number(amount).toFixed(2)}`;
++}
