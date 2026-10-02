@@ -20,7 +20,7 @@ public class InvoiceService {
 
     // An invoice's amount minus whatever has been paid against it is what is still left to pay.
     private static final String DUE_AWARE_SELECT =
-            "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, i.discount_pct, "
+            "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, "
                     + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
                     + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
 
@@ -31,7 +31,7 @@ public class InvoiceService {
                 deriveStatus(rs.getString("status"), amount, dueAmount),
                 rs.getDate("issued_date").toLocalDate().toString(),
                 rs.getDate("due_date").toLocalDate().toString(), dueAmount,
-                rs.getBigDecimal("discount_pct"));
+                rs.getBigDecimal("discount_pct"), rs.getBigDecimal("tax_pct"));
     };
 
     /**
@@ -145,7 +145,7 @@ public class InvoiceService {
         // A brand-new invoice has had nothing paid against it yet, so the whole amount is due.
         return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
                 saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString(),
-                saved.getAmount(), saved.getDiscountPct());
+                saved.getAmount(), saved.getDiscountPct(), saved.getTaxPct());
     }
 
     @Transactional

@@ -186,9 +186,11 @@ public class TestSupportController {
             Object dueDate = invoice.getOrDefault("dueDate", LocalDate.now().toString());
             // A percentage discount taken off the subtotal; absent means no discount.
             double discountPct = ((Number) invoice.getOrDefault("discountPct", 0)).doubleValue();
+            // A sales tax percentage applied after the discount; absent means no tax.
+            double taxPct = ((Number) invoice.getOrDefault("taxPct", 0)).doubleValue();
             jdbc.update(
-                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date, discount_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    id, projectId, amount, status, issuedDate, dueDate, discountPct);
+                    "INSERT INTO invoices (id, project_id, amount, status, issued_date, due_date, discount_pct, tax_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    id, projectId, amount, status, issuedDate, dueDate, discountPct, taxPct);
             maxInvoiceId = Math.max(maxInvoiceId, id);
             for (Map<String, Object> lineItem : lineItems) {
                 long lineItemId = ((Number) lineItem.get("id")).longValue();

@@ -30,6 +30,10 @@ public class Invoice {
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
+    /** Sales tax percentage applied after the discount (0..100); 0 means no tax. */
+    @Column(name = "tax_pct")
+    private BigDecimal taxPct = BigDecimal.ZERO;
+
     /** The date the invoice was issued (sent out). */
     @Column(name = "issued_date")
     private LocalDate issuedDate;
@@ -76,6 +80,14 @@ public class Invoice {
 
     public void setDiscountPct(BigDecimal discountPct) {
         this.discountPct = discountPct;
+    }
+
+    public BigDecimal getTaxPct() {
+        return taxPct;
+    }
+
+    public void setTaxPct(BigDecimal taxPct) {
+        this.taxPct = taxPct;
     }
 
     public LocalDate getIssuedDate() {

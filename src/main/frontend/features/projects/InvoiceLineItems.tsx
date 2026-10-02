@@ -17,11 +17,13 @@ type LineItem = {
 
 // The invoice's status is worked out from its payments (PAID once covered, PARTIAL once part paid),
 // so we read it back from the server rather than flipping it by hand. It also carries the
-// percentage discount taken off the subtotal (0 when there is none).
+// percentage discount taken off the subtotal (0 when there is none) and the sales tax percentage
+// applied after the discount (0 when there is none).
 type Invoice = {
   id: number;
   status: string;
   discountPct: number;
+  taxPct: number;
 };
 
 export function InvoiceLineItems({
@@ -34,6 +36,7 @@ export function InvoiceLineItems({
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [status, setStatus] = useState('');
   const [discountPct, setDiscountPct] = useState(0);
+  const [taxPct, setTaxPct] = useState(0);
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
@@ -52,6 +55,7 @@ export function InvoiceLineItems({
       const invoice: Invoice = await res.json();
       setStatus(invoice.status);
       setDiscountPct(Number(invoice.discountPct));
+      setTaxPct(Number(invoice.taxPct));
     }
   }
 
@@ -98,10 +102,13 @@ export function InvoiceLineItems({
   }
 
   // The subtotal is the sum of each line's quantity times unit price. The discount takes a
-  // percentage off that subtotal, and the final total is what is left after it.
+  // percentage off that subtotal; sales tax is then added on top of what is left after the
+  // discount, and the final total is the discounted amount plus that tax.
   const subtotal = lineItems.reduce((sum, item) => sum + item.qty * Number(item.unitPrice), 0);
   const discount = (subtotal * discountPct) / 100;
-  const finalTotal = subtotal - discount;
+  const afterDiscount = subtotal - discount;
+  const tax = (afterDiscount * taxPct) / 100;
+  const finalTotal = afterDiscount + tax;
 
   return (
     <section data-testid="invoice-detail">
@@ -180,6 +187,8 @@ export function InvoiceLineItems({
         <dd data-testid="invoice-subtotal">{formatMoney(subtotal)}</dd>
         <dt>Discount</dt>
         <dd data-testid="invoice-discount">{formatMoney(discount)}</dd>
+        <dt>Tax</dt>
+        <dd data-testid="invoice-tax">{formatMoney(tax)}</dd>
         <dt>Total</dt>
         <dd data-testid="invoice-amount">{formatMoney(finalTotal)}</dd>
       </dl>
