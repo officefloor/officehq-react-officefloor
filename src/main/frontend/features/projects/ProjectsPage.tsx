@@ -12,21 +12,30 @@ type Project = {
   clientId: number;
   clientName: string;
   archived: boolean;
+  tagIds: number[];
 };
 type Client = { id: number; name: string; email: string };
+type Tag = { id: number; name: string };
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [filterTagId, setFilterTagId] = useState('');
 
   async function load() {
-    const [pRes, cRes] = await Promise.all([fetch('/api/projects'), fetch('/api/clients')]);
+    const [pRes, cRes, tRes] = await Promise.all([
+      fetch('/api/projects'),
+      fetch('/api/clients'),
+      fetch('/api/tags'),
+    ]);
     setProjects(await pRes.json());
     setClients(await cRes.json());
+    setTags(await tRes.json());
   }
 
   useEffect(() => {
@@ -109,8 +118,24 @@ export function ProjectsPage() {
         {showArchived ? 'Hide archived' : 'Show archived'}
       </button>
 
+      <select
+        data-testid="project-tag-filter"
+        value={filterTagId}
+        onChange={(e) => setFilterTagId(e.target.value)}
+      >
+        <option value="">All tags</option>
+        {tags.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+
       {(() => {
-        const visible = showArchived ? projects : projects.filter((p) => !p.archived);
+        const byArchived = showArchived ? projects : projects.filter((p) => !p.archived);
+        const visible = filterTagId
+          ? byArchived.filter((p) => (p.tagIds ?? []).includes(Number(filterTagId)))
+          : byArchived;
         return visible.length === 0 ? (
           <p data-testid="projects-empty">No projects yet.</p>
         ) : (
