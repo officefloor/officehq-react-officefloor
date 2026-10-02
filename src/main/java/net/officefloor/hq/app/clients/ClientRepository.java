@@ -9,6 +9,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     // Archived clients are tucked away, so the list and search only surface the non-archived ones.
     List<Client> findByArchivedFalseOrderByIdAsc();
 
+    // The clients tucked away — surfaced on the "show archived" view so they can be brought back.
+    List<Client> findByArchivedTrueOrderByIdAsc();
+
     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
 
     // Two clients can never share an email — the guard the create path checks before saving.

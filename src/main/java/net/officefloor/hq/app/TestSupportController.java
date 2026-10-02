@@ -77,9 +77,12 @@ public class TestSupportController {
         long maxClientId = 0;
         for (Map<String, Object> client : clients) {
             long id = ((Number) client.get("id")).longValue();
+            // Archived clients are tucked away: honour the fixture flag so a spec can seed a client
+            // that starts off the main list (and can then be restored back onto it).
+            boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
-            jdbc.update("INSERT INTO clients (id, name, email) VALUES (?, ?, ?)",
-                    id, client.get("name"), client.get("email"));
+            jdbc.update("INSERT INTO clients (id, name, email, archived) VALUES (?, ?, ?, ?)",
+                    id, client.get("name"), client.get("email"), archived);
             maxClientId = Math.max(maxClientId, id);
         }
         if (maxClientId > 0) {

@@ -16,6 +16,8 @@ export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<Sort>('name');
+  // Whether the list is showing the archived (tucked-away) clients instead of the main list.
+  const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -28,18 +30,30 @@ export function ClientsPage() {
   const [editEmailError, setEditEmailError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch(
-      `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`,
-    );
+    // The archived view lists the tucked-away clients so they can be brought back; the default view
+    // lists the clients still in play, filtered and ordered the way the controls ask for.
+    const url = showArchived
+      ? '/api/clients?archived=true'
+      : `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`;
+    const res = await fetch(url);
     if (res.ok) {
       setClients(await res.json());
     }
   }
 
-  // Reload whenever the search term or chosen sort changes — the server filters and orders the list.
+  // Reload whenever the search term, chosen sort, or archived toggle changes — the server filters
+  // and orders the list.
   useEffect(() => {
     void load();
-  }, [search, sort]);
+  }, [search, sort, showArchived]);
+
+  // Bring an archived client back onto the main list, then reload the (now narrower) archived view.
+  async function onRestore(id: number) {
+    const res = await fetch(`/api/clients/${id}/restore`, { method: 'POST' });
+    if (res.ok) {
+      await load();
+    }
+  }
 
   // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
   // detail pane if it was open on the archived client, then reload the (now narrower) list.
@@ -135,6 +149,14 @@ export function ClientsPage() {
         <option value="outstanding">Amount owed</option>
       </select>
 
+      <button
+        data-testid="clients-show-archived"
+        type="button"
+        onClick={() => setShowArchived((on) => !on)}
+      >
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
       <form data-testid="client-form" onSubmit={onSubmit}>
         <input
           data-testid="client-form-name"
@@ -158,6 +180,33 @@ export function ClientsPage() {
 
       {clients.length === 0 ? (
         <p data-testid="clients-empty">No clients yet.</p>
+      ) : showArchived ? (
+        <table data-testid="clients-archived-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map((client) => (
+              <tr key={client.id} data-testid={`client-row-${client.id}`}>
+                <td data-testid="client-name">{client.name}</td>
+                <td data-testid="client-email">{client.email}</td>
+                <td>
+                  <button
+                    data-testid={`client-restore-${client.id}`}
+                    type="button"
+                    onClick={() => void onRestore(client.id)}
+                  >
+                    Restore
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ) : (
         <table data-testid="clients-table">
           <thead>

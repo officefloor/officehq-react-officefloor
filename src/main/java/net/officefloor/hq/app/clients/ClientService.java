@@ -92,6 +92,29 @@ public class ClientService {
         return owed;
     }
 
+    /** The clients tucked away (archived), oldest first — the "show archived" view's contents. */
+    @Transactional(readOnly = true)
+    public List<ClientView> listArchived() {
+        return repository.findByArchivedTrueOrderByIdAsc().stream()
+                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
+                .toList();
+    }
+
+    /**
+     * Bring an archived client back: clear the flag so they return to the main list and search.
+     * Records an audit entry so the action can be checked later, and returns the clients that remain
+     * archived.
+     */
+    @Transactional
+    public List<ClientView> restore(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("A client id is required to restore");
+        }
+        jdbc.update("UPDATE clients SET archived = FALSE WHERE id = ?", id);
+        audit.record("CLIENT_RESTORED id=" + id);
+        return listArchived();
+    }
+
     /**
      * Archive a client: keep the row (and everything hanging off it) but flag it so it drops off the
      * list and search. Records an audit entry so the action can be checked later, and returns the
