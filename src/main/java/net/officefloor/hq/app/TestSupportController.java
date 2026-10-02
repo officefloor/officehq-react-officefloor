@@ -63,10 +63,14 @@ public class TestSupportController {
         for (Map<String, Object> project : projects) {
             Object status = project.getOrDefault("status", "ACTIVE");
             boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
+            Object budgetValue = project.get("budget");
+            java.math.BigDecimal budget = budgetValue == null ? java.math.BigDecimal.ZERO
+                    : new java.math.BigDecimal(budgetValue.toString());
             jdbc.update(
-                    "INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO project (id, name, client_id, status, archived, budget) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)",
                     ((Number) project.get("id")).longValue(), project.get("name"),
-                    ((Number) project.get("clientId")).longValue(), status, archived);
+                    ((Number) project.get("clientId")).longValue(), status, archived, budget);
         }
         List<Map<String, Object>> tasks =
                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());

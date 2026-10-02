@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ProjectBudget } from './ProjectBudget';
 import { ProjectInvoices } from './ProjectInvoices';
 import { ProjectNotes } from './ProjectNotes';
 import { ProjectTags } from './ProjectTags';
@@ -29,6 +30,7 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState('ACTIVE');
+  const [budget, setBudget] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [filterTagId, setFilterTagId] = useState('');
@@ -78,7 +80,12 @@ export function ProjectsPage() {
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, clientId: Number(clientId), status }),
+      body: JSON.stringify({
+        name,
+        clientId: Number(clientId),
+        status,
+        budget: budget === '' ? 0 : Number(budget),
+      }),
     });
     if (!res.ok) {
       return;
@@ -86,6 +93,7 @@ export function ProjectsPage() {
     setName('');
     setClientId('');
     setStatus('ACTIVE');
+    setBudget('');
     await load();
   }
 
@@ -123,6 +131,12 @@ export function ProjectsPage() {
             </option>
           ))}
         </select>
+        <input
+          data-testid="project-form-budget"
+          placeholder="Budget"
+          value={budget}
+          onChange={(e) => setBudget(e.target.value)}
+        />
         <button type="submit" data-testid="project-form-submit">
           Add project
         </button>
@@ -220,6 +234,7 @@ export function ProjectsPage() {
 
       {openProjectId !== null ? (
         <>
+          <ProjectBudget projectId={openProjectId} />
           <ProjectTags projectId={openProjectId} />
           <ProjectNotes projectId={openProjectId} />
           <ProjectTasks projectId={openProjectId} />

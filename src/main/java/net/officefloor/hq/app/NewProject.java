@@ -1,5 +1,7 @@
 package net.officefloor.hq.app;
 
+import java.math.BigDecimal;
+
 /** Request body for creating a project: the name the owner types and the chosen client's id. */
 public class NewProject {
 
@@ -8,6 +10,8 @@ public class NewProject {
     private Long clientId;
 
     private String status;
+
+    private BigDecimal budget;
 
     public String getName() {
         return name;
@@ -31,5 +35,13 @@ public class NewProject {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public BigDecimal getBudget() {
+        return budget;
+    }
+
+    public void setBudget(BigDecimal budget) {
+        this.budget = budget;
     }
 }
