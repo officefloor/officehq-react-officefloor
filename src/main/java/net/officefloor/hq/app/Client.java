@@ -21,6 +21,9 @@ public class Client {
 
     private boolean archived;
 
+    /** The currency the owner is paid in by this client (ISO code, e.g. USD, EUR); defaults to USD (V35). */
+    private String currency = "USD";
+
     public Client() {
     }
 
@@ -59,5 +62,13 @@ public class Client {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

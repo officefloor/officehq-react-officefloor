@@ -24,10 +24,16 @@ type Statement = {
   invoices: StatementInvoice[];
   groups: StatementGroup[];
   outstandingTotal: number;
+  // The currency this client is paid in; the whole statement is shown in it.
+  currency: string;
 };
 
-function formatAmount(amount: number): string {
-  return `$${Number(amount).toLocaleString('en-US', {
+// Each client is paid in their own currency; show the right symbol for the statement's currency.
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€' };
+
+function formatAmount(amount: number, currency = 'USD'): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '$';
+  return `${symbol}${Number(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -79,15 +85,15 @@ export function ClientStatement({ clientId }: { clientId: number }) {
               {group.invoices.map((inv) => (
                 <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
                   <td data-testid="statement-invoice-id">{inv.id}</td>
-                  <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
-                  <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
+                  <td data-testid="statement-invoice-amount">{formatAmount(inv.amount, statement.currency)}</td>
+                  <td data-testid="statement-invoice-due">{formatAmount(inv.due, statement.currency)}</td>
                   <td data-testid="statement-invoice-status">{inv.status}</td>
                 </tr>
               ))}
               <tr>
                 <td>Subtotal</td>
                 <td data-testid="statement-project-subtotal" colSpan={3}>
-                  {formatAmount(group.subtotal)}
+                  {formatAmount(group.subtotal, statement.currency)}
                 </td>
               </tr>
             </tbody>
@@ -96,7 +102,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
             <tr>
               <td>Outstanding</td>
               <td data-testid="client-outstanding-total" colSpan={3}>
-                {formatAmount(statement.outstandingTotal)}
+                {formatAmount(statement.outstandingTotal, statement.currency)}
               </td>
             </tr>
           </tfoot>
@@ -114,7 +120,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
               <ul>
                 {group.invoices.map((inv) => (
                   <li key={inv.id} data-testid={`statement-print-invoice-${inv.id}`}>
-                    Invoice #{inv.id}: {formatAmount(inv.due)} due
+                    Invoice #{inv.id}: {formatAmount(inv.due, statement.currency)} due
                   </li>
                 ))}
               </ul>
@@ -123,7 +129,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
           <p>
             <span>Grand total owed</span>{' '}
             <strong data-testid="statement-grand-total">
-              {formatAmount(statement.outstandingTotal)}
+              {formatAmount(statement.outstandingTotal, statement.currency)}
             </strong>
           </p>
         </section>

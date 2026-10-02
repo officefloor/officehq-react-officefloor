@@ -15,9 +15,11 @@ import net.officefloor.web.ObjectResponse;
 public class ClientStatementLogic {
 
     public void service(@HttpPathParameter("clientId") String clientId, ProjectRepository projects,
-            InvoiceRepository invoices, PaymentRepository payments,
+            InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             ObjectResponse<ClientStatementView> response) {
         Long id = Long.valueOf(clientId);
+        // The whole statement is shown in this client's currency (V35).
+        String currency = clients.findById(id).map(Client::getCurrency).orElse("USD");
         List<InvoiceView> rows = new ArrayList<>();
         List<StatementGroupView> groups = new ArrayList<>();
         BigDecimal outstandingTotal = BigDecimal.ZERO;
@@ -52,6 +54,6 @@ public class ClientStatementLogic {
                         subtotal));
             }
         }
-        response.send(new ClientStatementView(rows, groups, outstandingTotal));
+        response.send(new ClientStatementView(rows, groups, outstandingTotal, currency));
     }
 }

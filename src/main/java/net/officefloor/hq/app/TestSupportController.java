@@ -75,9 +75,12 @@ public class TestSupportController {
                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
         for (Map<String, Object> client : clients) {
             boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
-            jdbc.update("INSERT INTO client (id, name, email, archived) VALUES (?, ?, ?, ?)",
+            // Each client is paid in their own currency (V35); a fixture that omits it means USD.
+            Object currency = client.getOrDefault("currency", "USD");
+            jdbc.update(
+                    "INSERT INTO client (id, name, email, archived, currency) VALUES (?, ?, ?, ?, ?)",
                     ((Number) client.get("id")).longValue(), client.get("name"), client.get("email"),
-                    archived);
+                    archived, currency.toString());
         }
         List<Map<String, Object>> projects =
                 (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());

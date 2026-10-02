@@ -18,6 +18,8 @@ public class InvoiceView {
     private final String dueDate;
     private final int discountPct;
     private final int taxPct;
+    /** The currency this invoice's money is shown in — the owning client's currency (V35); USD by default. */
+    private String currency = "USD";
 
     /** Default {@code due} to the full amount, for callers that have no payment information. */
     public InvoiceView(Long id, Long projectId, BigDecimal amount, String status,
@@ -82,5 +84,13 @@ public class InvoiceView {
 
     public int getTaxPct() {
         return taxPct;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

@@ -31,7 +31,9 @@ public class DashboardTopClientsLogic {
                     owed = owed.add(inv.getDiscountedAmount().subtract(paid));
                 }
             }
-            rows.add(new TopClientView(client.getId(), client.getName(), owed));
+            // A client's figure is shown in that client's own currency; all their projects bill in it,
+            // so this figure never mixes currencies (V35).
+            rows.add(new TopClientView(client.getId(), client.getName(), owed, client.getCurrency()));
         }
         rows.sort(Comparator.comparing(TopClientView::getOwed).reversed()
                 .thenComparing(TopClientView::getId));

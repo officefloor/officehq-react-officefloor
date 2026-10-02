@@ -13,11 +13,14 @@ public class TopClientView {
     private final Long id;
     private final String name;
     private final BigDecimal owed;
+    /** The currency this client's owed figure is shown in — that client's currency (V35). */
+    private final String currency;
 
-    public TopClientView(Long id, String name, BigDecimal owed) {
+    public TopClientView(Long id, String name, BigDecimal owed, String currency) {
         this.id = id;
         this.name = name;
         this.owed = owed;
+        this.currency = currency;
     }
 
     public Long getId() {
@@ -30,5 +33,9 @@ public class TopClientView {
 
     public BigDecimal getOwed() {
         return owed;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 }

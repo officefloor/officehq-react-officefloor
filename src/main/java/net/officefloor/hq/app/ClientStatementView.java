@@ -13,12 +13,15 @@ public class ClientStatementView {
     private final List<InvoiceView> invoices;
     private final List<StatementGroupView> groups;
     private final BigDecimal outstandingTotal;
+    /** The currency the whole statement's money is shown in — this client's currency (V35). */
+    private final String currency;
 
     public ClientStatementView(List<InvoiceView> invoices, List<StatementGroupView> groups,
-            BigDecimal outstandingTotal) {
+            BigDecimal outstandingTotal, String currency) {
         this.invoices = invoices;
         this.groups = groups;
         this.outstandingTotal = outstandingTotal;
+        this.currency = currency;
     }
 
     public List<InvoiceView> getInvoices() {
@@ -31,5 +34,9 @@ public class ClientStatementView {
 
     public BigDecimal getOutstandingTotal() {
         return outstandingTotal;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 }

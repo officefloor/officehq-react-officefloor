@@ -20,10 +20,15 @@ type Invoice = {
   dueDate: string | null;
   discountPct: number;
   taxPct: number;
+  currency: string;
 };
 
-function formatAmount(amount: number): string {
-  return `$${Number(amount).toLocaleString('en-US', {
+// Each client is paid in their own currency; show the right symbol for the invoice's currency.
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€' };
+
+function formatAmount(amount: number, currency = 'USD'): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '$';
+  return `${symbol}${Number(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -119,6 +124,8 @@ export function ProjectInvoices({
   }
 
   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  // All of a project's invoices bill in its client's one currency, so the total is in that currency.
+  const currency = invoices[0]?.currency ?? 'USD';
 
   if (openInvoiceId !== null) {
     return (
@@ -184,8 +191,8 @@ export function ProjectInvoices({
         <tbody>
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
-              <td data-testid="invoice-amount">{formatAmount(inv.amount)}</td>
-              <td data-testid="invoice-due-amount">{formatAmount(inv.due)}</td>
+              <td data-testid="invoice-amount">{formatAmount(inv.amount, inv.currency)}</td>
+              <td data-testid="invoice-due-amount">{formatAmount(inv.due, inv.currency)}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
@@ -221,7 +228,7 @@ export function ProjectInvoices({
         </tbody>
         <tfoot>
           <tr>
-            <td data-testid="project-invoices-total">{formatAmount(total)}</td>
+            <td data-testid="project-invoices-total">{formatAmount(total, currency)}</td>
           </tr>
         </tfoot>
       </table>

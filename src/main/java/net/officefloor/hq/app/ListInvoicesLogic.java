@@ -15,8 +15,14 @@ public class ListInvoicesLogic {
 
     public void service(@HttpPathParameter("projectId") String projectId,
             @HttpQueryParameter("sort") String sort, InvoiceRepository invoices,
-            PaymentRepository payments, ObjectResponse<List<InvoiceView>> response) {
+            PaymentRepository payments, ProjectRepository projects, ClientRepository clients,
+            ObjectResponse<List<InvoiceView>> response) {
         Long id = Long.valueOf(projectId);
+        // The money is shown in the owning client's currency (V35): project -> client -> currency.
+        String currency = projects.findById(id)
+                .flatMap(project -> clients.findById(project.getClientId()))
+                .map(Client::getCurrency)
+                .orElse("USD");
         List<Invoice> ordered = "due".equals(sort)
                 ? invoices.findByProjectIdOrderByDueDateAscIdAsc(id)
                 : invoices.findByProjectIdOrderByIdAsc(id);
@@ -29,10 +35,12 @@ public class ListInvoicesLogic {
                     BigDecimal due = inv.getAmount().subtract(paid);
                     // Status follows the payments: PAID once covered, PARTIAL once some is paid.
                     String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
-                    return new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due,
-                            status,
+                    InvoiceView view = new InvoiceView(inv.getId(), inv.getProjectId(),
+                            inv.getAmount(), due, status,
                             inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
                             inv.getDueDate() == null ? null : inv.getDueDate().toString());
+                    view.setCurrency(currency);
+                    return view;
                 })
                 .collect(Collectors.toList());
         response.send(views);

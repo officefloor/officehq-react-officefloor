@@ -2,6 +2,10 @@ package net.officefloor.hq.app;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.web.ObjectResponse;
 
 /**
@@ -20,13 +24,24 @@ public class DashboardLogic {
             ObjectResponse<DashboardView> response) {
         long clientsCount = clients.count();
         long projectsCount = projects.count();
-        BigDecimal outstandingTotal = invoices.findByStatusOrderByIdAsc("SENT").stream()
-                .map(Invoice::getDiscountedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // The money owed is kept separate per currency — each SENT invoice's discounted total is added
+        // into its owning client's currency bucket (V35). Different currencies are never summed
+        // together. A TreeMap keeps the buckets in a stable (currency-sorted) order across loads.
+        Map<String, BigDecimal> byCurrency = new TreeMap<>();
+        for (Invoice inv : invoices.findByStatusOrderByIdAsc("SENT")) {
+            String currency = projects.findById(inv.getProjectId())
+                    .flatMap(project -> clients.findById(project.getClientId()))
+                    .map(Client::getCurrency)
+                    .orElse("USD");
+            byCurrency.merge(currency, inv.getDiscountedAmount(), BigDecimal::add);
+        }
+        List<CurrencyAmountView> outstanding = new ArrayList<>();
+        byCurrency.forEach((currency, amount) ->
+                outstanding.add(new CurrencyAmountView(currency, amount)));
         LocalDate asOf = config.findById(1L)
                 .map(DashboardConfig::getAsOf)
                 .orElse(LocalDate.now());
         long overdueCount = invoices.countByStatusAndDueDateBefore("SENT", asOf);
-        response.send(new DashboardView(clientsCount, projectsCount, outstandingTotal, overdueCount));
+        response.send(new DashboardView(clientsCount, projectsCount, outstanding, overdueCount));
     }
 }
