@@ -1,14 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { routes } from './router/routes';
 
-// Minimal base shell. The opinionated conventions (file/manifest routing under router/, closed
-// primitives under ui/, no global store, scoped styles) are how checkpoints add features additively
-// (CLAUDE.md). Every observable element/value carries a stable data-testid, never renamed/removed.
+// Minimal base shell. Features register routes under features/<name>/route.tsx (discovered by
+// router/routes.ts); the shell renders the nav and the selected page. Every observable element
+// carries a stable data-testid, never renamed/removed (CLAUDE.md).
 function App() {
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const current = routes.find((r) => r.id === currentId) ?? null;
+
   return (
     <div data-testid="app-root">
-      <nav data-testid="app-nav">OfficeHQ</nav>
-      <main data-testid="app-home" />
+      <nav data-testid="app-nav">
+        OfficeHQ
+        {routes.map((r) => (
+          <button
+            key={r.id}
+            data-testid={`nav-${r.id}`}
+            onClick={() => setCurrentId(r.id)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </nav>
+      <main data-testid="app-home">{current ? <current.Component /> : null}</main>
     </div>
   );
 }
