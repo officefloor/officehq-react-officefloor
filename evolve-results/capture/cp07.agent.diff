@@ -1,0 +1,152 @@
+diff --git a/src/main/frontend/features/clients/ClientProjects.tsx b/src/main/frontend/features/clients/ClientProjects.tsx
+new file mode 100644
+index 0000000..69e9a82
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientProjects.tsx
+@@ -0,0 +1,50 @@
++import React, { useEffect, useState } from 'react';
++
++// A client's projects, rendered inside the clients feature when a client is opened. Lists the
++// projects done for that client (reusing the project-row-<id>/project-name anchors). Owns its own
++// state and data loading (no global store); composed, not branched.
++type Project = { id: number; name: string; clientId: number; clientName: string };
++
++export function ClientProjects({ clientId }: { clientId: number }) {
++  const [projects, setProjects] = useState<Project[]>([]);
++
++  useEffect(() => {
++    let active = true;
++    async function load() {
++      const res = await fetch(`/api/clients/${clientId}/projects`);
++      const data = await res.json();
++      if (active) {
++        setProjects(data);
++      }
++    }
++    void load();
++    return () => {
++      active = false;
++    };
++  }, [clientId]);
++
++  return (
++    <section data-testid="client-detail">
++      <h2>Projects</h2>
++
++      {projects.length === 0 ? (
++        <p data-testid="client-projects-empty">No projects yet.</p>
++      ) : (
++        <table data-testid="client-projects-table">
++          <thead>
++            <tr>
++              <th>Name</th>
++            </tr>
++          </thead>
++          <tbody>
++            {projects.map((p) => (
++              <tr key={p.id} data-testid={`project-row-${p.id}`}>
++                <td data-testid="project-name">{p.name}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index ee8b3c8..1faf40a 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { ClientProjects } from './ClientProjects';
+ 
+ // The clients feature owns its own state, data loading and layout (no global store). It lists every
+ // client and adds a new one by name + email.
+@@ -14,6 +15,7 @@ export function ClientsPage() {
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState('');
+   const [search, setSearch] = useState('');
++  const [openClientId, setOpenClientId] = useState<number | null>(null);
+ 
+   async function load() {
+     const res = await fetch('/api/clients');
+@@ -95,6 +97,7 @@ export function ClientsPage() {
+             <tr>
+               <th>Name</th>
+               <th>Email</th>
++              <th></th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -102,11 +105,22 @@ export function ClientsPage() {
+               <tr key={c.id} data-testid={`client-row-${c.id}`}>
+                 <td data-testid="client-name">{c.name}</td>
+                 <td data-testid="client-email">{c.email}</td>
++                <td>
++                  <button
++                    type="button"
++                    data-testid={`client-open-${c.id}`}
++                    onClick={() => setOpenClientId(c.id)}
++                  >
++                    Open
++                  </button>
++                </td>
+               </tr>
+             ))}
+           </tbody>
+         </table>
+       )}
++
++      {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java b/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java
+new file mode 100644
+index 0000000..744e801
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ListClientProjectsLogic.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import java.util.stream.Collectors;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/{clientId}/projects — the projects done for one client, oldest first. */
++public class ListClientProjectsLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId,
++            ProjectRepository projects, ClientRepository clients,
++            ObjectResponse<List<ProjectView>> response) {
++        Long id = Long.valueOf(clientId);
++        String clientName = clients.findById(id).map(Client::getName).orElse(null);
++        List<ProjectView> views = projects.findByClientIdOrderByIdAsc(id).stream()
++                .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(), clientName))
++                .collect(Collectors.toList());
++        response.send(views);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ProjectRepository.java b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+index 459cd1f..030e6df 100644
+--- a/src/main/java/net/officefloor/hq/app/ProjectRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ProjectRepository.java
+@@ -8,4 +8,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
+ 
+     /** All projects, oldest first, so the list is stable across loads. */
+     List<Project> findAllByOrderByIdAsc();
++
++    /** The projects done for one client, oldest first, so the list is stable across loads. */
++    List<Project> findByClientIdOrderByIdAsc(Long clientId);
+ }
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml
+new file mode 100644
+index 0000000..a556eb5
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/projects.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ListClientProjectsLogic
