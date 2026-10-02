@@ -44,6 +44,36 @@ export function ClientStatement({ clientId }: { clientId: number }) {
 
   return (
     <section data-testid="client-statement">
+      {/* A clean, printable summary of the statement: each job with what is still due on it and the
+          grand total the client owes, laid out plainly so it reads well on paper. */}
+      <section data-testid="statement-print-view" className="statement-print">
+        <h2>Statement summary</h2>
+        <table data-testid="statement-print-table">
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statement.projects.map((project) => (
+              <tr key={project.id} data-testid={`statement-print-project-${project.id}`}>
+                <td data-testid="statement-print-project-name">{project.name}</td>
+                <td data-testid="statement-print-project-subtotal">
+                  {formatMoney(project.subtotal)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="statement-print-total">
+          Grand total owed:{' '}
+          <strong data-testid="statement-grand-total">
+            {formatMoney(statement.outstandingTotal)}
+          </strong>
+        </p>
+      </section>
+
       <h2>Statement</h2>
       <table data-testid="client-statement-table">
         <thead>
