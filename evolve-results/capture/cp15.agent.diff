@@ -1,0 +1,113 @@
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 6515bba..8ad0072 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -6,23 +6,44 @@ import { formatMoney } from '../../ui/money';
+ // and does not import other features.
+ type AllInvoice = { id: number; projectName: string; amount: number; status: string };
+ 
++// Lifecycle stages an invoice can be narrowed to; empty value means "all stages".
++const STAGES = ['DRAFT', 'SENT', 'PAID'];
++
+ export function AllInvoicesPage() {
+   const [invoices, setInvoices] = useState<AllInvoice[]>([]);
++  const [status, setStatus] = useState('');
+ 
+   useEffect(() => {
+     async function load() {
+-      const res = await fetch('/api/invoices');
++      const query = status ? `?status=${encodeURIComponent(status)}` : '';
++      const res = await fetch(`/api/invoices${query}`);
+       if (res.ok) {
+         setInvoices(await res.json());
+       }
+     }
+     void load();
+-  }, []);
++  }, [status]);
+ 
+   return (
+     <section data-testid="all-invoices-page">
+       <h1>Invoices</h1>
+ 
++      <label>
++        Stage
++        <select
++          data-testid="invoice-status-filter"
++          value={status}
++          onChange={(e) => setStatus(e.target.value)}
++        >
++          <option value="">All stages</option>
++          {STAGES.map((stage) => (
++            <option key={stage} value={stage}>
++              {stage}
++            </option>
++          ))}
++        </select>
++      </label>
++
+       {invoices.length === 0 ? (
+         <p data-testid="all-invoices-empty">No invoices yet.</p>
+       ) : (
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
+index 0d465c2..1b9fa26 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/AllInvoicesLogic.java
+@@ -1,12 +1,17 @@
+ package net.officefloor.hq.app.invoices;
+ 
+ import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/invoices — list every invoice across all projects, with its project name and stage. */
++/**
++ * GET /api/invoices — list every invoice across all projects, with its project name and stage.
++ * Optionally narrowed to a single lifecycle stage via the {@code status} query parameter.
++ */
+ public class AllInvoicesLogic {
+ 
+-    public void service(InvoiceService invoices, ObjectResponse<List<AllInvoiceView>> response) {
+-        response.send(invoices.listAll());
++    public void service(@HttpQueryParameter("status") String status, InvoiceService invoices,
++            ObjectResponse<List<AllInvoiceView>> response) {
++        response.send(invoices.listAll(status));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 00c56e3..ebe6038 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -5,6 +5,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.core.RowMapper;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -27,14 +28,17 @@ public class InvoiceService {
+         this.audit = audit;
+     }
+ 
++    /** Every invoice across all projects; narrowed to a single lifecycle stage when {@code status} is given. */
+     @Transactional(readOnly = true)
+-    public List<AllInvoiceView> listAll() {
+-        return jdbc.query(
+-                "SELECT i.id, i.amount, i.status, p.name AS project_name "
+-                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
+-                        + "ORDER BY i.id ASC",
+-                (rs, i) -> new AllInvoiceView(rs.getLong("id"), rs.getString("project_name"),
+-                        rs.getBigDecimal("amount"), rs.getString("status")));
++    public List<AllInvoiceView> listAll(String status) {
++        RowMapper<AllInvoiceView> mapper = (rs, i) -> new AllInvoiceView(rs.getLong("id"),
++                rs.getString("project_name"), rs.getBigDecimal("amount"), rs.getString("status"));
++        String base = "SELECT i.id, i.amount, i.status, p.name AS project_name "
++                + "FROM invoices i JOIN projects p ON i.project_id = p.id ";
++        if (status == null || status.isBlank()) {
++            return jdbc.query(base + "ORDER BY i.id ASC", mapper);
++        }
++        return jdbc.query(base + "WHERE i.status = ? ORDER BY i.id ASC", mapper, status.trim());
+     }
+ 
+     @Transactional(readOnly = true)
