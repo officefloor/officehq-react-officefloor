@@ -1,0 +1,166 @@
+{
+  "checkpoint": 6,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp06_client_search",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "My client list is getting long. Give me a box to search for a client by name.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nMy client list is getting long. Give me a box to search for a client by name.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "5e2b55c6aaa57f24261b0b2e19194e6d860b4291",
+  "reset_sha": "",
+  "preagent_sha": "e305097113ccfcfeb60a80f1bc855a291d24def6",
+  "prev_sha": "e305097113ccfcfeb60a80f1bc855a291d24def6",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.91223,
+    "input_tokens": 52,
+    "output_tokens": 9258,
+    "cache_read_tokens": 730600,
+    "cache_creation_tokens": 31406,
+    "num_turns": 26,
+    "duration_ms": 240631,
+    "duration_api_ms": 153737,
+    "model": "claude-opus-4-8",
+    "session_id": "f57d5f01-6ddb-45dd-bf40-ddfa54da63f5",
+    "stop_reason": "success",
+    "result_text": "The test passes. Let me summarize the full-stack change I implemented for the \"search clients by name\" feature:\n\n**Database** \u2014 `src/main/resources/db/migration/V6__client_name_search_index.sql`\nNew Flyway migration adding an index on `clients(name)` to keep name lookups fast as the list grows.\n\n**Server** (OfficeFloor REST, additive):\n- `ClientRepository` \u2014 added `findByNameContainingIgnoreCaseOrderByIdAsc(String)`.\n- `ClientService` \u2014 added `search(q)`: returns all clients when `q` is blank, otherwise a case-insensitive name match.\n- `ClientsLogic` \u2014 the `GET /api/clients` logic now accepts an optional `@HttpQueryParameter(\"q\")` and delegates to `search(...)`.\n\n**Front-end** \u2014 `src/main/frontend/features/clients/ClientsPage.tsx`\nAdded a `data-testid=\"client-search\"` input above the existing list. Its value drives a reload of `/api/clients?q=<term>`, so the server filters by name; an empty box shows all clients. The existing `client-row-*`, `client-name`, etc. test anchors are untouched.\n\nThe change is additive and local to the clients feature \u2014 no shared router/UI edits, no pinned scaffolding touched. `bin/e2e` builds, starts the app, and the acceptance spec passes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 0.91223,
+        "num_turns": 26,
+        "duration_ms": 240631,
+        "duration_api_ms": 153737,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp06.agent.jsonl",
+  "agent_diff_file": "cp06.agent.diff",
+  "build_log_file": "cp06.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 12,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true,
+      "cp02_client_email_validation.spec.ts::rejects a blank email": true,
+      "cp02_client_email_validation.spec.ts::rejects a malformed email": true,
+      "cp02_client_email_validation.spec.ts::accepts a valid email": true,
+      "cp03_projects.spec.ts::lists projects with their client name": true,
+      "cp03_projects.spec.ts::creates a project for a client": true,
+      "cp04_project_invoices.spec.ts::a project shows its invoices and their total": true,
+      "cp04_project_invoices.spec.ts::adds an invoice to a project": true,
+      "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status": true,
+      "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record": true,
+      "cp06_client_search.spec.ts::filters clients by name": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 634,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 366,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a blank email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 222,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::rejects a malformed email",
+        "category": "error",
+        "passed": true,
+        "duration_ms": 230,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_client_email_validation.spec.ts::accepts a valid email",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 314,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::lists projects with their client name",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 278,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_projects.spec.ts::creates a project for a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 337,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::a project shows its invoices and their total",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_project_invoices.spec.ts::adds an invoice to a project",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 397,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::marking an invoice paid updates its status",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_invoice_pay_audit.spec.ts::paying an invoice writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_client_search.spec.ts::filters clients by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 372,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

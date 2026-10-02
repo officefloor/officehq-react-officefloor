@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 3f8e4d2..fb0c77f 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -9,20 +9,22 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ 
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
++  const [search, setSearch] = useState('');
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState(false);
+ 
+   async function load() {
+-    const res = await fetch('/api/clients');
++    const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
+     if (res.ok) {
+       setClients(await res.json());
+     }
+   }
+ 
++  // Reload whenever the search term changes — the server filters by name (case-insensitive).
+   useEffect(() => {
+     void load();
+-  }, []);
++  }, [search]);
+ 
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
+@@ -47,6 +49,13 @@ export function ClientsPage() {
+     <section data-testid="clients-page">
+       <h1>Clients</h1>
+ 
++      <input
++        data-testid="client-search"
++        placeholder="Search clients by name"
++        value={search}
++        onChange={(e) => setSearch(e.target.value)}
++      />
++
+       <form data-testid="client-form" onSubmit={onSubmit}>
+         <input
+           data-testid="client-form-name"
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+index 8c126bc..3b47a73 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientRepository.java
+@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     List<Client> findAllByOrderByIdAsc();
++
++    List<Client> findByNameContainingIgnoreCaseOrderByIdAsc(String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 700bac6..359c67b 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -23,6 +23,15 @@ public class ClientService {
+         return repository.findAllByOrderByIdAsc();
+     }
+ 
++    /** Clients whose name contains {@code query} (case-insensitive); all clients when blank. */
++    @Transactional(readOnly = true)
++    public List<Client> search(String query) {
++        if (query == null || query.isBlank()) {
++            return list();
++        }
++        return repository.findByNameContainingIgnoreCaseOrderByIdAsc(query.trim());
++    }
++
+     @Transactional
+     public Client create(String name, String email) {
+         if (email == null || !EMAIL.matcher(email).matches()) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+index a2baaad..e0a7103 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+@@ -1,13 +1,15 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import java.util.List;
++import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/clients — list every client. */
++/** GET /api/clients — list clients, optionally filtered by a case-insensitive name search ({@code q}). */
+ public class ClientsLogic {
+ 
+-    public void service(ClientService clients, ObjectResponse<List<ClientView>> response) {
+-        List<ClientView> views = clients.list().stream()
++    public void service(@HttpQueryParameter("q") String q, ClientService clients,
++            ObjectResponse<List<ClientView>> response) {
++        List<ClientView> views = clients.search(q).stream()
+                 .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
+                 .toList();
+         response.send(views);
+diff --git a/src/main/resources/db/migration/V6__client_name_search_index.sql b/src/main/resources/db/migration/V6__client_name_search_index.sql
+new file mode 100644
+index 0000000..2aae932
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__client_name_search_index.sql
+@@ -0,0 +1,3 @@
++-- The client list has grown long enough to warrant searching by name. Back the name lookup with an
++-- index so filtering stays quick as the table grows.
++CREATE INDEX idx_clients_name ON clients (name);
