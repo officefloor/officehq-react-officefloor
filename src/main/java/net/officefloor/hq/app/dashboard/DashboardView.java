@@ -8,11 +8,13 @@ public class DashboardView {
     private final long clients;
     private final long projects;
     private final BigDecimal outstanding;
+    private final long overdue;
 
-    public DashboardView(long clients, long projects, BigDecimal outstanding) {
+    public DashboardView(long clients, long projects, BigDecimal outstanding, long overdue) {
         this.clients = clients;
         this.projects = projects;
         this.outstanding = outstanding;
+        this.overdue = overdue;
     }
 
     public long getClients() {
@@ -25,5 +27,9 @@ public class DashboardView {
 
     public BigDecimal getOutstanding() {
         return outstanding;
+    }
+
+    public long getOverdue() {
+        return overdue;
     }
 }

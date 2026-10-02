@@ -28,6 +28,12 @@ public class DashboardService {
         BigDecimal outstanding = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status = 'SENT'",
                 BigDecimal.class);
-        return new DashboardView(clients, projects, outstanding);
+        // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
+        // reference date (as_of); with no reference seeded it falls back to the current date.
+        long overdue = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM invoices WHERE status = 'SENT' AND due_date < "
+                        + "COALESCE((SELECT as_of FROM dashboard_settings WHERE id = 1), CURRENT_DATE)",
+                Long.class);
+        return new DashboardView(clients, projects, outstanding, overdue);
     }
 }

@@ -46,6 +46,7 @@ public class TestSupportController {
         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+        jdbc.execute("TRUNCATE TABLE dashboard_settings");
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
@@ -53,6 +54,13 @@ public class TestSupportController {
     @PostMapping("/seed")
     @SuppressWarnings("unchecked")
     public void seed(@RequestBody Map<String, Object> fixture) {
+        // The dashboard measures invoice "overdue" against a fixed reference date; store it when the
+        // fixture supplies one so the home-screen count is deterministic.
+        Object asOf = fixture.get("asOf");
+        if (asOf != null) {
+            jdbc.update("INSERT INTO dashboard_settings (id, as_of) VALUES (1, ?)", asOf.toString());
+        }
+
         List<Map<String, Object>> clients =
                 (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
         long maxClientId = 0;
