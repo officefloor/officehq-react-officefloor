@@ -49,6 +49,14 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
     }
   }
 
+  // Sort this project's invoices by due date (earliest due first) via the by-due endpoint.
+  async function onSortByDue() {
+    const res = await fetch(`/api/projects/${projectId}/invoices/by-due`);
+    if (res.ok) {
+      setInvoices(await res.json());
+    }
+  }
+
   async function onPay(invoiceId: number) {
     const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
     if (res.ok) {
@@ -78,6 +86,10 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           Add invoice
         </button>
       </form>
+
+      <button data-testid="invoice-sort-due" type="button" onClick={onSortByDue}>
+        Sort by due date
+      </button>
 
       <table data-testid="project-invoices-table">
         <thead>

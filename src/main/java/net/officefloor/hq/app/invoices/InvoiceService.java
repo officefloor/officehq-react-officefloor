@@ -38,6 +38,17 @@ public class InvoiceService {
                 projectId);
     }
 
+    @Transactional(readOnly = true)
+    public List<InvoiceView> listForProjectByDueDate(Long projectId) {
+        return jdbc.query(
+                "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE project_id = ? ORDER BY due_date ASC, id ASC",
+                (rs, i) -> new InvoiceView(rs.getLong("id"), rs.getLong("project_id"),
+                        rs.getBigDecimal("amount"), rs.getString("status"),
+                        rs.getDate("issued_date").toLocalDate().toString(),
+                        rs.getDate("due_date").toLocalDate().toString()),
+                projectId);
+    }
+
     @Transactional
     public InvoiceView create(Long projectId, BigDecimal amount) {
         if (projectId == null) {
