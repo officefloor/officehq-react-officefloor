@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { InvoiceLineItems } from './InvoiceLineItems';
+import { InvoiceNotes } from './InvoiceNotes';
 import { InvoicePayments } from './InvoicePayments';
 
 // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
@@ -28,7 +29,15 @@ function formatAmount(amount: number): string {
   })}`;
 }
 
-export function ProjectInvoices({ projectId }: { projectId: number }) {
+export function ProjectInvoices({
+  projectId,
+  onOpenChange,
+}: {
+  projectId: number;
+  // Lets the page react to an invoice being opened/closed (e.g. the project's own notes step aside
+  // for the opened invoice's notes). Fired with the opened invoice id, or null when none is open.
+  onOpenChange?: (invoiceId: number | null) => void;
+}) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -64,6 +73,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
     if (openInvoiceId !== null) {
       void loadInvoice(openInvoiceId);
     }
+    onOpenChange?.(openInvoiceId);
   }, [openInvoiceId]);
 
   async function sortByDue() {
@@ -130,6 +140,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
           invoiceId={openInvoiceId}
           onRecorded={() => void loadInvoice(openInvoiceId)}
         />
+        <InvoiceNotes invoiceId={openInvoiceId} />
       </section>
     );
   }

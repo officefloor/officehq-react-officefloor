@@ -35,6 +35,9 @@ export function ProjectsPage() {
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  // While an invoice is opened, its own notes take over the notes surface, so the project's notes
+  // step aside (they share the note-* testids and would otherwise be a second notes surface).
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [filterTagId, setFilterTagId] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -269,9 +272,9 @@ export function ProjectsPage() {
         <>
           <ProjectBudget projectId={openProjectId} />
           <ProjectTags projectId={openProjectId} />
-          <ProjectNotes projectId={openProjectId} />
+          {!invoiceOpen ? <ProjectNotes projectId={openProjectId} /> : null}
           <ProjectTasks projectId={openProjectId} />
-          <ProjectInvoices projectId={openProjectId} />
+          <ProjectInvoices projectId={openProjectId} onOpenChange={(id) => setInvoiceOpen(id !== null)} />
         </>
       ) : null}
     </section>

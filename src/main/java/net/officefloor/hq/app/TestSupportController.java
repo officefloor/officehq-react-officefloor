@@ -49,6 +49,17 @@ public class TestSupportController {
         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
+    /**
+     * Parse a seeded timestamp, tolerating both a full ISO-8601 instant ({@code 2026-02-01T09:00:00Z})
+     * and a bare date ({@code 2026-02-01}, taken at the start of the day in UTC).
+     */
+    private static java.time.Instant parseInstant(String value) {
+        if (value.length() == 10) {
+            return java.time.LocalDate.parse(value).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        }
+        return java.time.Instant.parse(value);
+    }
+
     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
     @PostMapping("/seed")
     @SuppressWarnings("unchecked")
@@ -100,7 +111,7 @@ public class TestSupportController {
                     "INSERT INTO note (id, target_type, target_id, body, at) VALUES (?, ?, ?, ?, ?)",
                     noteId, note.get("targetType"),
                     ((Number) note.get("targetId")).longValue(), note.get("text"),
-                    java.sql.Timestamp.from(java.time.Instant.parse(note.get("at").toString())));
+                    java.sql.Timestamp.from(parseInstant(note.get("at").toString())));
         }
         if (maxNoteId > 0) {
             // Seeding explicit ids does not advance H2's IDENTITY sequence, so a note created later
