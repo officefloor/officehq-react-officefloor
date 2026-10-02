@@ -1,0 +1,210 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 7875cc4..399b60c 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -1,8 +1,12 @@
+ import { useEffect, useState, type FormEvent } from 'react';
+ import { ClientDetail } from './ClientDetail';
++import { formatMoney } from '../../ui/money';
+ 
+ // This arm's convention: the page component owns the feature's state, data loading and layout.
+-type Client = { id: number; name: string; email: string };
++type Client = { id: number; name: string; email: string; outstanding: number };
++
++// How the list is ordered: alphabetically by name, or by how much each client owes (most first).
++type Sort = 'name' | 'outstanding';
+ 
+ // A client must carry a proper email address. Keep it simple and local to the feature: a single
+ // non-whitespace local part, an @, and a dotted domain.
+@@ -11,6 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ export function ClientsPage() {
+   const [clients, setClients] = useState<Client[]>([]);
+   const [search, setSearch] = useState('');
++  const [sort, setSort] = useState<Sort>('name');
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [emailError, setEmailError] = useState<string | null>(null);
+@@ -23,16 +28,18 @@ export function ClientsPage() {
+   const [editEmailError, setEditEmailError] = useState<string | null>(null);
+ 
+   async function load() {
+-    const res = await fetch(`/api/clients?q=${encodeURIComponent(search)}`);
++    const res = await fetch(
++      `/api/clients?q=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`,
++    );
+     if (res.ok) {
+       setClients(await res.json());
+     }
+   }
+ 
+-  // Reload whenever the search term changes — the server filters by name (case-insensitive).
++  // Reload whenever the search term or chosen sort changes — the server filters and orders the list.
+   useEffect(() => {
+     void load();
+-  }, [search]);
++  }, [search, sort]);
+ 
+   // Archiving tucks a client away: the row is kept but drops off the list and search. Close the
+   // detail pane if it was open on the archived client, then reload the (now narrower) list.
+@@ -119,6 +126,15 @@ export function ClientsPage() {
+         onChange={(e) => setSearch(e.target.value)}
+       />
+ 
++      <select
++        data-testid="client-sort"
++        value={sort}
++        onChange={(e) => setSort(e.target.value as Sort)}
++      >
++        <option value="name">Name</option>
++        <option value="outstanding">Amount owed</option>
++      </select>
++
+       <form data-testid="client-form" onSubmit={onSubmit}>
+         <input
+           data-testid="client-form-name"
+@@ -148,6 +164,7 @@ export function ClientsPage() {
+             <tr>
+               <th>Name</th>
+               <th>Email</th>
++              <th>Owed</th>
+               <th></th>
+             </tr>
+           </thead>
+@@ -156,6 +173,7 @@ export function ClientsPage() {
+               <tr key={client.id} data-testid={`client-row-${client.id}`}>
+                 <td data-testid="client-name">{client.name}</td>
+                 <td data-testid="client-email">{client.email}</td>
++                <td data-testid="client-outstanding">{formatMoney(client.outstanding)}</td>
+                 <td>
+                   <button
+                     data-testid={`client-open-${client.id}`}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index f2afdbb..6c9b557 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -1,7 +1,11 @@
+ package net.officefloor.hq.app.clients;
+ 
+ import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -46,6 +50,47 @@ public class ClientService {
+         return repository.findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(query.trim());
+     }
+ 
++    /**
++     * The visible clients (honouring the name search), each with how much they still owe, ordered the
++     * way the list asks for: {@code "name"} alphabetically (case-insensitive), {@code "outstanding"}
++     * by most owed first, anything else by the natural id order. The amount owed is computed the same
++     * way as a client statement — each invoice's discounted total minus its payments, summed.
++     */
++    @Transactional(readOnly = true)
++    public List<ClientView> listSorted(String query, String sort) {
++        Map<Long, BigDecimal> owed = outstandingByClient();
++        List<ClientView> views = new ArrayList<>();
++        for (Client client : search(query)) {
++            views.add(new ClientView(client.getId(), client.getName(), client.getEmail(),
++                    owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
++        }
++        if ("name".equals(sort)) {
++            views.sort(Comparator.comparing(ClientView::getName, String.CASE_INSENSITIVE_ORDER)
++                    .thenComparing(ClientView::getId));
++        } else if ("outstanding".equals(sort)) {
++            views.sort(Comparator.comparing(ClientView::getOutstanding).reversed()
++                    .thenComparing(ClientView::getId));
++        }
++        return views;
++    }
++
++    /** What each client still owes across all their projects' invoices, keyed by client id. */
++    private Map<Long, BigDecimal> outstandingByClient() {
++        Map<Long, BigDecimal> owed = new HashMap<>();
++        jdbc.query(
++                "SELECT p.client_id AS client_id, "
++                        + "SUM(i.amount * (1 - i.discount_pct / 100) "
++                        + "- COALESCE((SELECT SUM(pay.amount) FROM payments pay "
++                        + "WHERE pay.invoice_id = i.id), 0)) AS owed "
++                        + "FROM invoices i JOIN projects p ON i.project_id = p.id "
++                        + "GROUP BY p.client_id",
++                rs -> {
++                    BigDecimal value = rs.getBigDecimal("owed");
++                    owed.put(rs.getLong("client_id"), value == null ? BigDecimal.ZERO : value);
++                });
++        return owed;
++    }
++
+     /**
+      * Archive a client: keep the row (and everything hanging off it) but flag it so it drops off the
+      * list and search. Records an audit entry so the action can be checked later, and returns the
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientView.java b/src/main/java/net/officefloor/hq/app/clients/ClientView.java
+index ce9ca4f..d4dd75e 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientView.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientView.java
+@@ -1,16 +1,26 @@
+ package net.officefloor.hq.app.clients;
+ 
++import java.math.BigDecimal;
++
+ /** JSON response shape for a client (what the UI renders). */
+ public class ClientView {
+ 
+     private final long id;
+     private final String name;
+     private final String email;
++    // How much the client still owes across all their invoices (amount due). The list can be sorted
++    // by this; create/update/archive responses don't carry it, so they default to zero.
++    private final BigDecimal outstanding;
+ 
+     public ClientView(long id, String name, String email) {
++        this(id, name, email, BigDecimal.ZERO);
++    }
++
++    public ClientView(long id, String name, String email, BigDecimal outstanding) {
+         this.id = id;
+         this.name = name;
+         this.email = email;
++        this.outstanding = outstanding == null ? BigDecimal.ZERO : outstanding;
+     }
+ 
+     public long getId() {
+@@ -24,4 +34,8 @@ public class ClientView {
+     public String getEmail() {
+         return email;
+     }
++
++    public BigDecimal getOutstanding() {
++        return outstanding;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+index e0a7103..fb846a8 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientsLogic.java
+@@ -4,14 +4,14 @@ import java.util.List;
+ import net.officefloor.web.HttpQueryParameter;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/clients — list clients, optionally filtered by a case-insensitive name search ({@code q}). */
++/**
++ * GET /api/clients — list clients, optionally filtered by a case-insensitive name search ({@code q})
++ * and ordered by {@code sort}: {@code name} (A–Z) or {@code outstanding} (most owed first).
++ */
+ public class ClientsLogic {
+ 
+-    public void service(@HttpQueryParameter("q") String q, ClientService clients,
+-            ObjectResponse<List<ClientView>> response) {
+-        List<ClientView> views = clients.search(q).stream()
+-                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
+-                .toList();
+-        response.send(views);
++    public void service(@HttpQueryParameter("q") String q, @HttpQueryParameter("sort") String sort,
++            ClientService clients, ObjectResponse<List<ClientView>> response) {
++        response.send(clients.listSorted(q, sort));
+     }
+ }
