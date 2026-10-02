@@ -36,6 +36,17 @@ export function InvoiceLineItems({
     void load();
   }, [invoiceId]);
 
+  async function onRemove(lineItemId: number) {
+    const res = await fetch(
+      `/api/invoices/${invoiceId}/line-items/${lineItemId}/remove`,
+      { method: 'POST' },
+    );
+    if (res.ok) {
+      // The endpoint returns the invoice's remaining line items; the total re-derives from them.
+      setLineItems(await res.json());
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const res = await fetch(`/api/invoices/${invoiceId}/line-items`, {
@@ -81,6 +92,15 @@ export function InvoiceLineItems({
               <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice)}</td>
               <td data-testid="lineitem-amount">
                 {formatMoney(item.qty * Number(item.unitPrice))}
+              </td>
+              <td>
+                <button
+                  data-testid={`lineitem-remove-${item.id}`}
+                  type="button"
+                  onClick={() => onRemove(item.id)}
+                >
+                  Remove
+                </button>
               </td>
             </tr>
           ))}

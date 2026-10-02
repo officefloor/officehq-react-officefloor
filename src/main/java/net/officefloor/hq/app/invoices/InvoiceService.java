@@ -163,6 +163,26 @@ public class InvoiceService {
         return listLineItems(invoiceId);
     }
 
+    /**
+     * Remove one line item from an invoice, then re-derive the invoice's amount as the sum of each
+     * remaining line's quantity times unit price so the stored total stays in step. Returns the
+     * invoice's remaining line items.
+     */
+    @Transactional
+    public List<LineItemView> removeLineItem(Long invoiceId, Long lineItemId) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        if (lineItemId == null) {
+            throw new IllegalArgumentException("A line item id is required");
+        }
+        jdbc.update("DELETE FROM line_items WHERE id = ? AND invoice_id = ?", lineItemId, invoiceId);
+        jdbc.update(
+                "UPDATE invoices SET amount = COALESCE((SELECT SUM(qty * unit_price) FROM line_items WHERE invoice_id = ?), 0) WHERE id = ?",
+                invoiceId, invoiceId);
+        return listLineItems(invoiceId);
+    }
+
     private InvoiceView find(Long invoiceId) {
         return jdbc.queryForObject(
                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
