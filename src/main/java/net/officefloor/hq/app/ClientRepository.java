@@ -14,4 +14,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     /** Active clients whose name contains the query (case-insensitive), oldest first — for search. */
     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+
+    /** Whether any client already holds this email (case-insensitive) — emails must be unique. */
+    boolean existsByEmailIgnoreCase(String email);
 }

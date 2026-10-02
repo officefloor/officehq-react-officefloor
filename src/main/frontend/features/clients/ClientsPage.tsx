@@ -46,7 +46,12 @@ export function ClientsPage() {
       body: JSON.stringify({ name, email: email.trim() }),
     });
     if (!res.ok) {
-      setEmailError('A proper email address is required');
+      // A 409 means the email is already taken by another client; anything else is a bad address.
+      setEmailError(
+        res.status === 409
+          ? 'A client with this email already exists'
+          : 'A proper email address is required',
+      );
       return;
     }
     setName('');
