@@ -8,4 +8,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     /** All projects, oldest first, so the list is stable across loads. */
     List<Project> findAllByOrderByIdAsc();
+
+    /** The projects done for one client, oldest first, so the list is stable across loads. */
+    List<Project> findByClientIdOrderByIdAsc(Long clientId);
 }

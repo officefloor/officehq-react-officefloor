@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ClientProjects } from './ClientProjects';
 
 // The clients feature owns its own state, data loading and layout (no global store). It lists every
 // client and adds a new one by name + email.
@@ -14,6 +15,7 @@ export function ClientsPage() {
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [search, setSearch] = useState('');
+  const [openClientId, setOpenClientId] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -95,6 +97,7 @@ export function ClientsPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -102,11 +105,22 @@ export function ClientsPage() {
               <tr key={c.id} data-testid={`client-row-${c.id}`}>
                 <td data-testid="client-name">{c.name}</td>
                 <td data-testid="client-email">{c.email}</td>
+                <td>
+                  <button
+                    type="button"
+                    data-testid={`client-open-${c.id}`}
+                    onClick={() => setOpenClientId(c.id)}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openClientId !== null ? <ClientProjects clientId={openClientId} /> : null}
     </section>
   );
 }
