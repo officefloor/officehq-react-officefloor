@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index ed41c9a..86627d8 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -93,6 +93,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     await load();
+   }
+ 
++  // Cancel (void) an invoice sent by mistake: it reads VOID and stops counting toward what is owed.
++  async function cancel(invoiceId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}/void`, { method: 'POST' });
++    if (!res.ok) {
++      return;
++    }
++    await load();
++  }
++
+   const total = invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
+ 
+   if (openInvoiceId !== null) {
+@@ -178,6 +187,15 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+                     Send
+                   </button>
+                 ) : null}
++                {inv.status === 'SENT' ? (
++                  <button
++                    type="button"
++                    data-testid={`invoice-cancel-${inv.id}`}
++                    onClick={() => void cancel(inv.id)}
++                  >
++                    Cancel
++                  </button>
++                ) : null}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/VoidInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/VoidInvoiceLogic.java
+new file mode 100644
+index 0000000..d473361
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/VoidInvoiceLogic.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/invoices/{invoiceId}/void — cancel an invoice that was sent by mistake. Flips a SENT
++ * invoice's status to VOID so it no longer counts towards what the owner is owed, then appends one
++ * audit record (INVOICE_VOIDED id=&lt;id&gt; amount=&lt;amount&gt;) so the cancellation is noted. An
++ * unknown invoice, or one that has not been SENT, is rejected with 400 and nothing is written.
++ */
++public class VoidInvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            InvoiceRepository invoices, Audit audit, ObjectResponse<InvoiceView> response) {
++        Long id = Long.valueOf(invoiceId);
++        Invoice invoice = invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        if (!"SENT".equals(invoice.getStatus())) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "Only a sent invoice can be cancelled");
++        }
++        invoice.setStatus("VOID");
++        Invoice saved = invoices.save(invoice);
++        BigDecimal amount = saved.getAmount().setScale(2, RoundingMode.HALF_UP);
++        audit.record("INVOICE_VOIDED id=" + saved.getId() + " amount=" + amount.toPlainString());
++        response.send(new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(), saved.getStatus(),
++                saved.getIssuedDate() == null ? null : saved.getIssuedDate().toString(),
++                saved.getDueDate() == null ? null : saved.getDueDate().toString()));
++    }
++}
+diff --git a/src/main/resources/db/migration/V25__invoice_void_status.sql b/src/main/resources/db/migration/V25__invoice_void_status.sql
+new file mode 100644
+index 0000000..5c67884
+--- /dev/null
++++ b/src/main/resources/db/migration/V25__invoice_void_status.sql
+@@ -0,0 +1,5 @@
++-- Invoices gain a terminal VOID state: an invoice sent by mistake can be cancelled, after which it
++-- reads VOID and no longer counts toward what the owner is owed (only SENT invoices do). The status
++-- column (V5/V9) already stores free-form lifecycle values; document VOID as a recognised state.
++-- Additive metadata change on the existing invoice table; existing rows are unaffected.
++COMMENT ON COLUMN invoice.status IS 'Lifecycle: DRAFT -> SENT -> PAID; or VOID when cancelled';
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/void.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/void.POST.yml
+new file mode 100644
+index 0000000..f280304
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/void.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.VoidInvoiceLogic
