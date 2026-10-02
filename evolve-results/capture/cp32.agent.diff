@@ -1,0 +1,243 @@
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index e2f22ed..62ae54e 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -14,6 +14,13 @@ type LineItem = {
+   unitPrice: number;
+ };
+ 
++// The invoice's status is worked out from its payments (PAID once covered, PARTIAL once part paid),
++// so we read it back from the server rather than flipping it by hand.
++type Invoice = {
++  id: number;
++  status: string;
++};
++
+ export function InvoiceLineItems({
+   invoiceId,
+   onBack,
+@@ -22,6 +29,7 @@ export function InvoiceLineItems({
+   onBack: () => void;
+ }) {
+   const [lineItems, setLineItems] = useState<LineItem[]>([]);
++  const [status, setStatus] = useState('');
+   const [description, setDescription] = useState('');
+   const [qty, setQty] = useState('');
+   const [unitPrice, setUnitPrice] = useState('');
+@@ -33,8 +41,17 @@ export function InvoiceLineItems({
+     }
+   }
+ 
++  async function loadInvoice() {
++    const res = await fetch(`/api/invoices/${invoiceId}`);
++    if (res.ok) {
++      const invoice: Invoice = await res.json();
++      setStatus(invoice.status);
++    }
++  }
++
+   useEffect(() => {
+     void load();
++    void loadInvoice();
+   }, [invoiceId]);
+ 
+   async function onRemove(lineItemId: number) {
+@@ -45,6 +62,8 @@ export function InvoiceLineItems({
+     if (res.ok) {
+       // The endpoint returns the invoice's remaining line items; the total re-derives from them.
+       setLineItems(await res.json());
++      // The amount changed, so the status worked out from the payments may have too.
++      void loadInvoice();
+     }
+   }
+ 
+@@ -62,6 +81,8 @@ export function InvoiceLineItems({
+     if (res.ok) {
+       // The endpoint returns the invoice's line items, totals included on re-derive.
+       setLineItems(await res.json());
++      // The amount changed, so the status worked out from the payments may have too.
++      void loadInvoice();
+       setDescription('');
+       setQty('');
+       setUnitPrice('');
+@@ -76,6 +97,8 @@ export function InvoiceLineItems({
+         Back to invoices
+       </button>
+ 
++      <p data-testid="invoice-status">{status}</p>
++
+       <table data-testid="invoice-lineitems-table">
+         <thead>
+           <tr>
+@@ -134,7 +157,7 @@ export function InvoiceLineItems({
+ 
+       <p data-testid="invoice-amount">{formatMoney(total)}</p>
+ 
+-      <InvoicePayments invoiceId={invoiceId} />
++      <InvoicePayments invoiceId={invoiceId} onPaymentRecorded={loadInvoice} />
+     </section>
+   );
+ }
+diff --git a/src/main/frontend/features/projects/InvoicePayments.tsx b/src/main/frontend/features/projects/InvoicePayments.tsx
+index d94cb5d..8d95958 100644
+--- a/src/main/frontend/features/projects/InvoicePayments.tsx
++++ b/src/main/frontend/features/projects/InvoicePayments.tsx
+@@ -11,7 +11,14 @@ type Payment = {
+   date: string;
+ };
+ 
+-export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
++export function InvoicePayments({
++  invoiceId,
++  onPaymentRecorded,
++}: {
++  invoiceId: number;
++  // Recording a payment can change the invoice's worked-out status, so let the parent re-read it.
++  onPaymentRecorded?: () => void;
++}) {
+   const [payments, setPayments] = useState<Payment[]>([]);
+   const [amount, setAmount] = useState('');
+   const [date, setDate] = useState('');
+@@ -39,6 +46,7 @@ export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
+       setPayments(await res.json());
+       setAmount('');
+       setDate('');
++      onPaymentRecorded?.();
+     }
+   }
+ 
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index ca5785e..5329bff 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -100,13 +100,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+     }
+   }
+ 
+-  async function onPay(invoiceId: number) {
+-    const res = await fetch(`/api/invoices/${invoiceId}/pay`, { method: 'POST' });
+-    if (res.ok) {
+-      await load();
+-    }
+-  }
+-
+   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+ 
+   return (
+@@ -217,7 +210,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+                 >
+                   Open
+                 </button>
+-                {/* Lifecycle: a DRAFT can be sent; only a SENT invoice can be paid. */}
++                {/* Lifecycle: a DRAFT can be sent. Once sent, the status is worked out from the
++                    payments recorded against the invoice — PARTIAL then PAID — not flipped by hand. */}
+                 {invoice.status === 'DRAFT' && (
+                   <button
+                     data-testid={`invoice-send-${invoice.id}`}
+@@ -227,15 +221,6 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+                     Send
+                   </button>
+                 )}
+-                {invoice.status === 'SENT' && (
+-                  <button
+-                    data-testid={`invoice-pay-${invoice.id}`}
+-                    type="button"
+-                    onClick={() => onPay(invoice.id)}
+-                  >
+-                    Mark paid
+-                  </button>
+-                )}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLogic.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLogic.java
+new file mode 100644
+index 0000000..59a61fb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLogic.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.invoices;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/invoices/{invoiceId} — one invoice, with its status worked out from the payments recorded
++ * against it (PAID once covered, PARTIAL once part paid, otherwise its stored lifecycle status).
++ */
++public class InvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId, InvoiceService invoices,
++            ObjectResponse<InvoiceView> response) {
++        response.send(invoices.get(Long.valueOf(invoiceId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 807bc76..56b8d5b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -24,10 +24,27 @@ public class InvoiceService {
+                     + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
+                     + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
+ 
+-    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> new InvoiceView(
+-            rs.getLong("id"), rs.getLong("project_id"), rs.getBigDecimal("amount"),
+-            rs.getString("status"), rs.getDate("issued_date").toLocalDate().toString(),
+-            rs.getDate("due_date").toLocalDate().toString(), rs.getBigDecimal("due_amount"));
++    private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> {
++        BigDecimal amount = rs.getBigDecimal("amount");
++        BigDecimal dueAmount = rs.getBigDecimal("due_amount");
++        return new InvoiceView(rs.getLong("id"), rs.getLong("project_id"), amount,
++                deriveStatus(rs.getString("status"), amount, dueAmount),
++                rs.getDate("issued_date").toLocalDate().toString(),
++                rs.getDate("due_date").toLocalDate().toString(), dueAmount);
++    };
++
++    /**
++     * The status we show is worked out from the payments, not flipped by hand: an invoice reads PAID
++     * once its payments cover the amount, PARTIAL once some (but not all) has been paid, and otherwise
++     * keeps its stored lifecycle status (DRAFT/SENT).
++     */
++    private static String deriveStatus(String stored, BigDecimal amount, BigDecimal dueAmount) {
++        BigDecimal paid = amount.subtract(dueAmount);
++        if (paid.signum() <= 0) {
++            return stored;
++        }
++        return dueAmount.signum() <= 0 ? "PAID" : "PARTIAL";
++    }
+ 
+     private final InvoiceRepository repository;
+     private final LineItemRepository lineItemRepository;
+@@ -216,12 +233,21 @@ public class InvoiceService {
+         payment.setInvoiceId(invoiceId);
+         payment.setAmount(body.getAmount());
+         payment.setPaidDate(LocalDate.parse(body.getDate()));
+-        paymentRepository.save(payment);
+-        audit.record("PAYMENT_RECORDED invoice=" + invoiceId + " amount="
+-                + body.getAmount().setScale(2) + " date=" + body.getDate());
++        Payment saved = paymentRepository.save(payment);
++        audit.record("PAYMENT_RECORDED id=" + saved.getId() + " amount="
++                + body.getAmount().setScale(2));
+         return listPayments(invoiceId);
+     }
+ 
++    /** One invoice, with its status worked out from the payments recorded against it. */
++    @Transactional(readOnly = true)
++    public InvoiceView get(Long invoiceId) {
++        if (invoiceId == null) {
++            throw new IllegalArgumentException("An invoice id is required");
++        }
++        return find(invoiceId);
++    }
++
+     private InvoiceView find(Long invoiceId) {
+         return jdbc.queryForObject(DUE_AWARE_SELECT + "WHERE i.id = ?", INVOICE_MAPPER, invoiceId);
+     }
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml
+new file mode 100644
+index 0000000..791acc1
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoices.InvoiceLogic
