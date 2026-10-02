@@ -11,6 +11,7 @@ type Invoice = {
   id: number;
   projectId: number;
   amount: number;
+  due: number;
   status: string;
   issuedDate: string | null;
   dueDate: string | null;
@@ -124,6 +125,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
         <thead>
           <tr>
             <th>Amount</th>
+            <th>Due</th>
             <th>Status</th>
             <th>Issued</th>
             <th>Due</th>
@@ -134,6 +136,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
           {invoices.map((inv) => (
             <tr key={inv.id} data-testid={`invoice-row-${inv.id}`}>
               <td data-testid="invoice-amount">{formatAmount(inv.amount)}</td>
+              <td data-testid="invoice-due-amount">{formatAmount(inv.due)}</td>
               <td data-testid="invoice-status">{inv.status}</td>
               <td data-testid="invoice-issued">{inv.issuedDate ?? ''}</td>
               <td data-testid="invoice-due">{inv.dueDate ?? ''}</td>
