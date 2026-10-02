@@ -35,6 +35,7 @@ public class TestSupportController {
         // project references client via FK; H2 refuses TRUNCATE on a referenced table, so drop
         // referential integrity for the duration of the clear, then restore it.
         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
         jdbc.execute("TRUNCATE TABLE contact RESTART IDENTITY");
@@ -58,6 +59,15 @@ public class TestSupportController {
             jdbc.update("INSERT INTO project (id, name, client_id) VALUES (?, ?, ?)",
                     ((Number) project.get("id")).longValue(), project.get("name"),
                     ((Number) project.get("clientId")).longValue());
+        }
+        List<Map<String, Object>> tasks =
+                (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
+        for (Map<String, Object> task : tasks) {
+            Object done = task.getOrDefault("done", Boolean.FALSE);
+            jdbc.update("INSERT INTO task (id, project_id, title, done) VALUES (?, ?, ?, ?)",
+                    ((Number) task.get("id")).longValue(),
+                    ((Number) task.get("projectId")).longValue(), task.get("title"),
+                    Boolean.TRUE.equals(done));
         }
         List<Map<String, Object>> contacts =
                 (List<Map<String, Object>>) fixture.getOrDefault("contacts", List.of());

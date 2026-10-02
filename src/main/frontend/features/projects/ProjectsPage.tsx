@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ProjectInvoices } from './ProjectInvoices';
+import { ProjectTasks } from './ProjectTasks';
 
 // The projects feature owns its own state, data loading and layout (no global store). It lists every
 // project with its client's NAME (a cross-entity join surfaced in the UI) and adds a new project by
@@ -97,7 +98,12 @@ export function ProjectsPage() {
         </table>
       )}
 
-      {openProjectId !== null ? <ProjectInvoices projectId={openProjectId} /> : null}
+      {openProjectId !== null ? (
+        <>
+          <ProjectTasks projectId={openProjectId} />
+          <ProjectInvoices projectId={openProjectId} />
+        </>
+      ) : null}
     </section>
   );
 }
