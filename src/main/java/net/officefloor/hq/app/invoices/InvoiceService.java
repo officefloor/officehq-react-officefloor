@@ -163,6 +163,27 @@ public class InvoiceService {
         return invoice;
     }
 
+    /**
+     * Cancel (void) an invoice that was sent by mistake. A voided invoice reads VOID and stops
+     * counting toward what is owed (the outstanding total only sums SENT invoices). Only a sent
+     * invoice can be voided; records an audit entry so the action can be checked later.
+     */
+    @Transactional
+    public InvoiceView cancel(Long invoiceId) {
+        if (invoiceId == null) {
+            throw new IllegalArgumentException("An invoice id is required");
+        }
+        InvoiceView current = find(invoiceId);
+        if (!"SENT".equals(current.getStatus())) {
+            throw new IllegalStateException("Only a sent invoice can be cancelled");
+        }
+        jdbc.update("UPDATE invoices SET status = 'VOID' WHERE id = ?", invoiceId);
+        InvoiceView invoice = find(invoiceId);
+        audit.record("INVOICE_VOIDED id=" + invoice.getId() + " amount="
+                + invoice.getAmount().setScale(2));
+        return invoice;
+    }
+
     @Transactional
     public InvoiceView pay(Long invoiceId) {
         if (invoiceId == null) {
