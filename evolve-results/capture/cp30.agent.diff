@@ -1,0 +1,443 @@
+diff --git a/src/main/frontend/features/projects/InvoicePayments.tsx b/src/main/frontend/features/projects/InvoicePayments.tsx
+new file mode 100644
+index 0000000..a0760e9
+--- /dev/null
++++ b/src/main/frontend/features/projects/InvoicePayments.tsx
+@@ -0,0 +1,99 @@
++import React, { useEffect, useState } from 'react';
++
++// An opened invoice's payments, rendered inside the projects feature alongside its line items. The
++// owner records what a client has actually paid against the invoice — an amount and the date it was
++// paid — and the payments are listed back. Owns its own state and data loading (no global store);
++// composed, not branched.
++type Payment = {
++  id: number;
++  invoiceId: number;
++  amount: number;
++  date: string;
++};
++
++function formatAmount(amount: number): string {
++  return `$${Number(amount).toFixed(2)}`;
++}
++
++export function InvoicePayments({ invoiceId }: { invoiceId: number }) {
++  const [payments, setPayments] = useState<Payment[]>([]);
++  const [amount, setAmount] = useState('');
++  const [date, setDate] = useState('');
++  const [error, setError] = useState('');
++
++  async function load() {
++    const res = await fetch(`/api/invoices/${invoiceId}/payments`);
++    setPayments(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, [invoiceId]);
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    const value = Number(amount);
++    if (!(value > 0) || !date.trim()) {
++      setError('An amount greater than zero and a date are required');
++      return;
++    }
++    setError('');
++    const res = await fetch(`/api/invoices/${invoiceId}/payments`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ amount: value, date }),
++    });
++    if (!res.ok) {
++      return;
++    }
++    setAmount('');
++    setDate('');
++    await load();
++  }
++
++  return (
++    <section data-testid="invoice-payments">
++      <h2>Payments</h2>
++
++      <form data-testid="payment-form" onSubmit={onSubmit}>
++        <input
++          data-testid="payment-form-amount"
++          placeholder="Amount"
++          value={amount}
++          onChange={(e) => setAmount(e.target.value)}
++        />
++        <input
++          data-testid="payment-form-date"
++          placeholder="Date"
++          value={date}
++          onChange={(e) => setDate(e.target.value)}
++        />
++        <button type="submit" data-testid="payment-form-submit">
++          Record payment
++        </button>
++        {error ? (
++          <p data-testid="payment-form-error" role="alert">
++            {error}
++          </p>
++        ) : null}
++      </form>
++
++      <table data-testid="invoice-payments-table">
++        <thead>
++          <tr>
++            <th>Amount</th>
++            <th>Date</th>
++          </tr>
++        </thead>
++        <tbody>
++          {payments.map((p) => (
++            <tr key={p.id} data-testid={`payment-row-${p.id}`}>
++              <td data-testid="payment-amount">{formatAmount(p.amount)}</td>
++              <td data-testid="payment-date">{p.date}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index 1c5648a..40cc11d 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -1,5 +1,6 @@
+ import React, { useEffect, useState } from 'react';
+ import { InvoiceLineItems } from './InvoiceLineItems';
++import { InvoicePayments } from './InvoicePayments';
+ 
+ // A project's invoices, rendered inside the projects feature when a project is opened. Lists the
+ // project's invoices, shows their derived total (amounts to 2 decimals), and adds a new invoice by
+@@ -89,6 +90,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+             void load();
+           }}
+         />
++        <InvoicePayments invoiceId={openInvoiceId} />
+       </section>
+     );
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/ListPaymentsLogic.java b/src/main/java/net/officefloor/hq/app/ListPaymentsLogic.java
+new file mode 100644
+index 0000000..d34f1e9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ListPaymentsLogic.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import java.util.stream.Collectors;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * GET /api/invoices/{invoiceId}/payments — the payments a client has made against an invoice, oldest
++ * first. Each carries the amount paid and the date it was paid.
++ */
++public class ListPaymentsLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            PaymentRepository payments, ObjectResponse<List<PaymentView>> response) {
++        Long id = Long.valueOf(invoiceId);
++        List<PaymentView> views = payments.findByInvoiceIdOrderByIdAsc(id).stream()
++                .map(p -> new PaymentView(p.getId(), p.getInvoiceId(), p.getAmount(),
++                        p.getPaidDate().toString()))
++                .collect(Collectors.toList());
++        response.send(views);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/NewPayment.java b/src/main/java/net/officefloor/hq/app/NewPayment.java
+new file mode 100644
+index 0000000..128fb03
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/NewPayment.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * Request body for recording a payment against an invoice: how much the client paid (amount) and the
++ * date they paid it (date, ISO {@code yyyy-MM-dd}).
++ */
++public class NewPayment {
++
++    private BigDecimal amount;
++
++    private String date;
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++
++    public void setDate(String date) {
++        this.date = date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/Payment.java b/src/main/java/net/officefloor/hq/app/Payment.java
+new file mode 100644
+index 0000000..1402a19
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/Payment.java
+@@ -0,0 +1,72 @@
++package net.officefloor.hq.app;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * A payment a client has made against an invoice: the owning invoice's id, how much was paid and the
++ * date it was paid. Maps to {@code payment} (V19).
++ */
++@Entity
++@Table(name = "payment")
++public class Payment {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "invoice_id")
++    private Long invoiceId;
++
++    private BigDecimal amount;
++
++    @Column(name = "paid_date")
++    private LocalDate paidDate;
++
++    public Payment() {
++    }
++
++    public Payment(Long invoiceId, BigDecimal amount, LocalDate paidDate) {
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++        this.paidDate = paidDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public void setInvoiceId(Long invoiceId) {
++        this.invoiceId = invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public LocalDate getPaidDate() {
++        return paidDate;
++    }
++
++    public void setPaidDate(LocalDate paidDate) {
++        this.paidDate = paidDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/PaymentRepository.java b/src/main/java/net/officefloor/hq/app/PaymentRepository.java
+new file mode 100644
+index 0000000..5efb444
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/PaymentRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Payment}. A Spring bean, injected into the OfficeFloor logic classes. */
++public interface PaymentRepository extends JpaRepository<Payment, Long> {
++
++    /** An invoice's payments, oldest first, so the list is stable across loads. */
++    List<Payment> findByInvoiceIdOrderByIdAsc(Long invoiceId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/PaymentView.java b/src/main/java/net/officefloor/hq/app/PaymentView.java
+new file mode 100644
+index 0000000..fc17f83
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/PaymentView.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++
++/**
++ * A payment as the UI shows it: its id, the owning invoice's id, the amount paid and the date it was
++ * paid (ISO {@code yyyy-MM-dd}).
++ */
++public class PaymentView {
++
++    private final Long id;
++    private final Long invoiceId;
++    private final BigDecimal amount;
++    private final String date;
++
++    public PaymentView(Long id, Long invoiceId, BigDecimal amount, String date) {
++        this.id = id;
++        this.invoiceId = invoiceId;
++        this.amount = amount;
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java b/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java
+new file mode 100644
+index 0000000..130c9f7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/RecordPaymentLogic.java
+@@ -0,0 +1,43 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * POST /api/invoices/{invoiceId}/payments — record a payment (amount and date) a client has made
++ * against an existing invoice, and echo back the saved payment. A non-positive amount, a
++ * missing/unparseable date, or an unknown invoice, is rejected with 400 and nothing is written.
++ */
++public class RecordPaymentLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            @RequestBody NewPayment newPayment, InvoiceRepository invoices,
++            PaymentRepository payments, ObjectResponse<PaymentView> response) {
++        Long id = Long.valueOf(invoiceId);
++        invoices.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing invoice is required"));
++        BigDecimal amount = newPayment.getAmount();
++        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "An amount greater than zero is required");
++        }
++        String date = newPayment.getDate();
++        if (date == null || date.isBlank()) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A payment date is required");
++        }
++        LocalDate paidDate;
++        try {
++            paidDate = LocalDate.parse(date.trim());
++        } catch (DateTimeParseException e) {
++            throw new HttpException(HttpStatus.BAD_REQUEST, "A valid payment date is required");
++        }
++        Payment saved = payments.save(new Payment(id, amount, paidDate));
++        response.send(new PaymentView(saved.getId(), saved.getInvoiceId(), saved.getAmount(),
++                saved.getPaidDate().toString()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 69a42be..ff934d9 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -39,6 +39,7 @@ public class TestSupportController {
+         jdbc.execute("TRUNCATE TABLE project_tag RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tag RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE task RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE payment RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE line_item RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE invoice RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE project RESTART IDENTITY");
+@@ -155,5 +156,22 @@ public class TestSupportController {
+                         new java.math.BigDecimal(lineItem.get("unitPrice").toString()));
+             }
+         }
++        List<Map<String, Object>> payments =
++                (List<Map<String, Object>>) fixture.getOrDefault("payments", List.of());
++        long maxPaymentId = 0;
++        for (Map<String, Object> payment : payments) {
++            long paymentId = ((Number) payment.get("id")).longValue();
++            maxPaymentId = Math.max(maxPaymentId, paymentId);
++            jdbc.update(
++                    "INSERT INTO payment (id, invoice_id, amount, paid_date) VALUES (?, ?, ?, ?)",
++                    paymentId, ((Number) payment.get("invoiceId")).longValue(),
++                    new java.math.BigDecimal(payment.get("amount").toString()),
++                    java.sql.Date.valueOf(payment.get("date").toString()));
++        }
++        if (maxPaymentId > 0) {
++            // Seeding explicit ids does not advance H2's IDENTITY sequence, so a payment created later
++            // through the API would collide on id=1. Nudge the sequence past the seeded ids.
++            jdbc.execute("ALTER TABLE payment ALTER COLUMN id RESTART WITH " + (maxPaymentId + 1));
++        }
+     }
+ }
+diff --git a/src/main/resources/db/migration/V19__payments.sql b/src/main/resources/db/migration/V19__payments.sql
+new file mode 100644
+index 0000000..0d847d3
+--- /dev/null
++++ b/src/main/resources/db/migration/V19__payments.sql
+@@ -0,0 +1,9 @@
++-- Payments: what a client has actually paid against an invoice. Each payment belongs to one invoice
++-- (invoice_id references invoice.id) and records how much was paid (amount) and when (paid_date).
++-- An invoice's detail screen lists its payments alongside its line items.
++CREATE TABLE payment (
++    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id BIGINT NOT NULL REFERENCES invoice(id),
++    amount     DECIMAL(12, 2) NOT NULL,
++    paid_date  DATE NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.GET.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.GET.yml
+new file mode 100644
+index 0000000..352eb97
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ListPaymentsLogic
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.POST.yml
+new file mode 100644
+index 0000000..e36699b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/payments.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.RecordPaymentLogic
