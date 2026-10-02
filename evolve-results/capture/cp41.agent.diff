@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index 211c689..63d0689 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -113,6 +113,14 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+     }
+   }
+ 
++  // Cancel (void) an invoice sent by mistake: it reads VOID and stops counting toward what is owed.
++  async function onCancel(invoiceId: number) {
++    const res = await fetch(`/api/invoices/${invoiceId}/cancel`, { method: 'POST' });
++    if (res.ok) {
++      await load();
++    }
++  }
++
+   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+ 
+   return (
+@@ -245,6 +253,16 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+                     Send
+                   </button>
+                 )}
++                {/* A sent invoice can be cancelled (voided) if it went out by mistake. */}
++                {invoice.status === 'SENT' && (
++                  <button
++                    data-testid={`invoice-cancel-${invoice.id}`}
++                    type="button"
++                    onClick={() => onCancel(invoice.id)}
++                  >
++                    Cancel
++                  </button>
++                )}
+               </td>
+             </tr>
+           ))}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/CancelInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/invoices/CancelInvoiceLogic.java
+new file mode 100644
+index 0000000..46a9501
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/CancelInvoiceLogic.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.invoices;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/invoices/{invoiceId}/cancel — void a sent invoice and return the updated row. */
++public class CancelInvoiceLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId, InvoiceService invoices,
++            ObjectResponse<InvoiceView> response) {
++        response.send(invoices.cancel(Long.valueOf(invoiceId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 7f2e6f1..6e14ca8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -163,6 +163,27 @@ public class InvoiceService {
+         return invoice;
+     }
+ 
++    /**
++     * Cancel (void) an invoice that was sent by mistake. A voided invoice reads VOID and stops
++     * counting toward what is owed (the outstanding total only sums SENT invoices). Only a sent
++     * invoice can be voided; records an audit entry so the action can be checked later.
++     */
++    @Transactional
++    public InvoiceView cancel(Long invoiceId) {
++        if (invoiceId == null) {
++            throw new IllegalArgumentException("An invoice id is required");
++        }
++        InvoiceView current = find(invoiceId);
++        if (!"SENT".equals(current.getStatus())) {
++            throw new IllegalStateException("Only a sent invoice can be cancelled");
++        }
++        jdbc.update("UPDATE invoices SET status = 'VOID' WHERE id = ?", invoiceId);
++        InvoiceView invoice = find(invoiceId);
++        audit.record("INVOICE_VOIDED id=" + invoice.getId() + " amount="
++                + invoice.getAmount().setScale(2));
++        return invoice;
++    }
++
+     @Transactional
+     public InvoiceView pay(Long invoiceId) {
+         if (invoiceId == null) {
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/cancel.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/cancel.POST.yml
+new file mode 100644
+index 0000000..3d588a3
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/cancel.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoices.CancelInvoiceLogic
