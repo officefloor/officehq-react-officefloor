@@ -4,10 +4,15 @@ import React, { useEffect, useState } from 'react';
 // client and adds a new one by name + email.
 type Client = { id: number; name: string; email: string };
 
+// A proper email: something, '@', something, '.', something — no whitespace. Matches the server
+// (CreateClientLogic) and schema (V2) checks so the three layers agree on what is acceptable.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   async function load() {
     const res = await fetch('/api/clients');
@@ -20,11 +25,24 @@ export function ClientsPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch('/api/clients', {
+
+    // Every client needs a proper email — block the save and surface the error if it is missing or
+    // malformed, so no row is created.
+    if (!EMAIL.test(email.trim())) {
+      setEmailError('A proper email address is required');
+      return;
+    }
+    setEmailError('');
+
+    const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email: email.trim() }),
     });
+    if (!res.ok) {
+      setEmailError('A proper email address is required');
+      return;
+    }
     setName('');
     setEmail('');
     await load();
@@ -47,6 +65,11 @@ export function ClientsPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {emailError && (
+          <p data-testid="client-form-email-error" role="alert">
+            {emailError}
+          </p>
+        )}
         <button type="submit" data-testid="client-form-submit">
           Add client
         </button>
