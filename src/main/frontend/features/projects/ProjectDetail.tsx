@@ -9,6 +9,7 @@ type Invoice = { id: number; projectId: number; amount: number; status: string }
 export function ProjectDetail({ projectId }: { projectId: number }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/projects/${projectId}/invoices`);
@@ -23,6 +24,13 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    // An invoice must be for a real amount: a positive number, never zero or negative.
+    const value = Number(amount);
+    if (!(value > 0)) {
+      setAmountError(true);
+      return;
+    }
+    setAmountError(false);
     const res = await fetch(`/api/projects/${projectId}/invoices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +62,11 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
+        {amountError && (
+          <p data-testid="invoice-form-amount-error">
+            Enter an amount greater than zero.
+          </p>
+        )}
         <button data-testid="invoice-form-submit" type="submit">
           Add invoice
         </button>

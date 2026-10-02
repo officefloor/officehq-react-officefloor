@@ -43,6 +43,9 @@ public class InvoiceService {
         if (amount == null) {
             throw new IllegalArgumentException("An invoice requires an amount");
         }
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("An invoice amount must be greater than zero");
+        }
         Invoice invoice = new Invoice();
         invoice.setProjectId(projectId);
         invoice.setAmount(amount);
