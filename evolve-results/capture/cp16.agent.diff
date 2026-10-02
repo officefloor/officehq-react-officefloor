@@ -1,0 +1,439 @@
+diff --git a/src/main/frontend/features/clients/ClientDetail.tsx b/src/main/frontend/features/clients/ClientDetail.tsx
+index aa78ed5..cbaf2ad 100644
+--- a/src/main/frontend/features/clients/ClientDetail.tsx
++++ b/src/main/frontend/features/clients/ClientDetail.tsx
+@@ -1,12 +1,25 @@
+-import { useEffect, useState } from 'react';
++import { useEffect, useState, type FormEvent } from 'react';
+ 
+ // Opened from the clients list: a client's detail view lists the projects done for them, scoped to
+ // the client via /api/clients/<id>/projects. Reuses the project-row-<id>/project-name anchors so the
+-// listing reads the same way wherever projects appear.
++// listing reads the same way wherever projects appear. It also keeps the client's contacts (name,
++// email, role), scoped the same way via /api/clients/<id>/contacts, with a form to add one.
+ type Project = { id: number; name: string };
++type Contact = { id: number; name: string; email: string; role: string };
+ 
+ export function ClientDetail({ clientId }: { clientId: number }) {
+   const [projects, setProjects] = useState<Project[]>([]);
++  const [contacts, setContacts] = useState<Contact[]>([]);
++  const [name, setName] = useState('');
++  const [email, setEmail] = useState('');
++  const [role, setRole] = useState('');
++
++  async function loadContacts() {
++    const res = await fetch(`/api/clients/${clientId}/contacts`);
++    if (res.ok) {
++      setContacts(await res.json());
++    }
++  }
+ 
+   useEffect(() => {
+     async function load() {
+@@ -16,8 +29,24 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+       }
+     }
+     void load();
++    void loadContacts();
+   }, [clientId]);
+ 
++  async function onAddContact(event: FormEvent) {
++    event.preventDefault();
++    const res = await fetch(`/api/clients/${clientId}/contacts`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name, email, role }),
++    });
++    if (res.ok) {
++      setName('');
++      setEmail('');
++      setRole('');
++      await loadContacts();
++    }
++  }
++
+   return (
+     <section data-testid="client-detail">
+       <h2>Projects</h2>
+@@ -35,6 +64,50 @@ export function ClientDetail({ clientId }: { clientId: number }) {
+           ))}
+         </tbody>
+       </table>
++
++      <h2>Contacts</h2>
++      <table data-testid="client-contacts-table">
++        <thead>
++          <tr>
++            <th>Name</th>
++            <th>Email</th>
++            <th>Role</th>
++          </tr>
++        </thead>
++        <tbody>
++          {contacts.map((contact) => (
++            <tr key={contact.id} data-testid={`contact-row-${contact.id}`}>
++              <td data-testid="contact-name">{contact.name}</td>
++              <td data-testid="contact-email">{contact.email}</td>
++              <td data-testid="contact-role">{contact.role}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++
++      <form data-testid="contact-form" onSubmit={onAddContact}>
++        <input
++          data-testid="contact-form-name"
++          placeholder="Name"
++          value={name}
++          onChange={(e) => setName(e.target.value)}
++        />
++        <input
++          data-testid="contact-form-email"
++          placeholder="Email"
++          value={email}
++          onChange={(e) => setEmail(e.target.value)}
++        />
++        <input
++          data-testid="contact-form-role"
++          placeholder="Role"
++          value={role}
++          onChange={(e) => setRole(e.target.value)}
++        />
++        <button data-testid="contact-form-submit" type="submit">
++          Add contact
++        </button>
++      </form>
+     </section>
+   );
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 4e460f5..06ad308 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,6 +36,7 @@ public class TestSupportController {
+         // Disable FK checks so a referenced parent (clients) can be truncated alongside its child.
+         jdbc.execute("SET REFERENTIAL_INTEGRITY FALSE");
+         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE clients RESTART IDENTITY");
+         jdbc.execute("SET REFERENTIAL_INTEGRITY TRUE");
+@@ -74,6 +75,20 @@ public class TestSupportController {
+             jdbc.execute("ALTER TABLE projects ALTER COLUMN id RESTART WITH " + (maxProjectId + 1));
+         }
+ 
++        List<Map<String, Object>> contacts =
++                (List<Map<String, Object>>) fixture.getOrDefault("contacts", List.of());
++        long maxContactId = 0;
++        for (Map<String, Object> contact : contacts) {
++            long id = ((Number) contact.get("id")).longValue();
++            long clientId = ((Number) contact.get("clientId")).longValue();
++            jdbc.update("INSERT INTO contacts (id, client_id, name, email, role) VALUES (?, ?, ?, ?, ?)",
++                    id, clientId, contact.get("name"), contact.get("email"), contact.get("role"));
++            maxContactId = Math.max(maxContactId, id);
++        }
++        if (maxContactId > 0) {
++            jdbc.execute("ALTER TABLE contacts ALTER COLUMN id RESTART WITH " + (maxContactId + 1));
++        }
++
+         List<Map<String, Object>> invoices =
+                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+         long maxInvoiceId = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientContactView.java b/src/main/java/net/officefloor/hq/app/clients/ClientContactView.java
+new file mode 100644
+index 0000000..2c2d610
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientContactView.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.clients;
++
++/** JSON response shape for a client's contact (what the client detail view renders). */
++public class ClientContactView {
++
++    private final long id;
++    private final long clientId;
++    private final String name;
++    private final String email;
++    private final String role;
++
++    public ClientContactView(long id, long clientId, String name, String email, String role) {
++        this.id = id;
++        this.clientId = clientId;
++        this.name = name;
++        this.email = email;
++        this.role = role;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public long getClientId() {
++        return clientId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public String getRole() {
++        return role;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientContactsLogic.java b/src/main/java/net/officefloor/hq/app/clients/ClientContactsLogic.java
+new file mode 100644
+index 0000000..c92244e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientContactsLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients/{clientId}/contacts — list the contacts kept for a client. */
++public class ClientContactsLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
++            ObjectResponse<List<ClientContactView>> response) {
++        response.send(clients.contactsFor(Long.valueOf(clientId)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index 43826b4..b9eada1 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -14,10 +14,12 @@ public class ClientService {
+     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
+     private final ClientRepository repository;
++    private final ContactRepository contacts;
+     private final JdbcTemplate jdbc;
+ 
+-    public ClientService(ClientRepository repository, JdbcTemplate jdbc) {
++    public ClientService(ClientRepository repository, ContactRepository contacts, JdbcTemplate jdbc) {
+         this.repository = repository;
++        this.contacts = contacts;
+         this.jdbc = jdbc;
+     }
+ 
+@@ -47,6 +49,33 @@ public class ClientService {
+                 clientId);
+     }
+ 
++    /** The contacts kept for a client, oldest first. */
++    @Transactional(readOnly = true)
++    public List<ClientContactView> contactsFor(Long clientId) {
++        return contacts.findByClientIdOrderByIdAsc(clientId).stream()
++                .map(c -> new ClientContactView(c.getId(), c.getClientId(), c.getName(),
++                        c.getEmail(), c.getRole()))
++                .toList();
++    }
++
++    @Transactional
++    public ClientContactView createContact(Long clientId, String name, String email, String role) {
++        if (clientId == null) {
++            throw new IllegalArgumentException("A contact requires a client");
++        }
++        if (name == null || name.isBlank()) {
++            throw new IllegalArgumentException("A contact requires a name");
++        }
++        Contact contact = new Contact();
++        contact.setClientId(clientId);
++        contact.setName(name);
++        contact.setEmail(email);
++        contact.setRole(role);
++        Contact saved = contacts.save(contact);
++        return new ClientContactView(saved.getId(), saved.getClientId(), saved.getName(),
++                saved.getEmail(), saved.getRole());
++    }
++
+     @Transactional
+     public Client create(String name, String email) {
+         if (email == null || !EMAIL.matcher(email).matches()) {
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Contact.java b/src/main/java/net/officefloor/hq/app/clients/Contact.java
+new file mode 100644
+index 0000000..16a3e64
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/Contact.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app.clients;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A contact kept for a client. Mapped to the {@code contacts} table (Flyway V13). */
++@Entity
++@Table(name = "contacts")
++public class Contact {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "client_id")
++    private Long clientId;
++
++    private String name;
++
++    private String email;
++
++    private String role;
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public Long getClientId() {
++        return clientId;
++    }
++
++    public void setClientId(Long clientId) {
++        this.clientId = clientId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++
++    public String getRole() {
++        return role;
++    }
++
++    public void setRole(String role) {
++        this.role = role;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ContactRepository.java b/src/main/java/net/officefloor/hq/app/clients/ContactRepository.java
+new file mode 100644
+index 0000000..3904b27
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/ContactRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.clients;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Contact}. */
++public interface ContactRepository extends JpaRepository<Contact, Long> {
++
++    List<Contact> findByClientIdOrderByIdAsc(Long clientId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/CreateClientContactLogic.java b/src/main/java/net/officefloor/hq/app/clients/CreateClientContactLogic.java
+new file mode 100644
+index 0000000..6104295
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/CreateClientContactLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/clients/{clientId}/contacts — add a contact for the client and return the row. */
++public class CreateClientContactLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, NewContact body,
++            ClientService clients, ObjectResponse<ClientContactView> response) {
++        response.send(clients.createContact(Long.valueOf(clientId), body.getName(),
++                body.getEmail(), body.getRole()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clients/NewContact.java b/src/main/java/net/officefloor/hq/app/clients/NewContact.java
+new file mode 100644
+index 0000000..e593f4d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/clients/NewContact.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.clients;
++
++import net.officefloor.web.HttpObject;
++
++/** JSON request body for creating a contact. {@link HttpObject} loads it from the request entity. */
++@HttpObject
++public class NewContact {
++
++    private String name;
++    private String email;
++    private String role;
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++
++    public String getRole() {
++        return role;
++    }
++
++    public void setRole(String role) {
++        this.role = role;
++    }
++}
+diff --git a/src/main/resources/db/migration/V13__contacts.sql b/src/main/resources/db/migration/V13__contacts.sql
+new file mode 100644
+index 0000000..17461c8
+--- /dev/null
++++ b/src/main/resources/db/migration/V13__contacts.sql
+@@ -0,0 +1,8 @@
++-- Contacts a user keeps for a client (name, email, role). Each contact belongs to one client.
++CREATE TABLE contacts (
++    id        BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    client_id BIGINT       NOT NULL REFERENCES clients(id),
++    name      VARCHAR(255) NOT NULL,
++    email     VARCHAR(255) NOT NULL,
++    role      VARCHAR(255) NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.GET.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.GET.yml
+new file mode 100644
+index 0000000..6d3cfa8
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.ClientContactsLogic
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.POST.yml
+new file mode 100644
+index 0000000..9a42c5b
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/contacts.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.clients.CreateClientContactLogic
