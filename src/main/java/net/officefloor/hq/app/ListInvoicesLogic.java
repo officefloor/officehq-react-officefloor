@@ -12,7 +12,9 @@ public class ListInvoicesLogic {
             InvoiceRepository invoices, ObjectResponse<List<InvoiceView>> response) {
         Long id = Long.valueOf(projectId);
         List<InvoiceView> views = invoices.findByProjectIdOrderByIdAsc(id).stream()
-                .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), inv.getStatus()))
+                .map(inv -> new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), inv.getStatus(),
+                        inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+                        inv.getDueDate() == null ? null : inv.getDueDate().toString()))
                 .collect(Collectors.toList());
         response.send(views);
     }

@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /** An invoice billed against a project: the owning project's id and a monetary amount. Maps to {@code invoice} (V4). */
 @Entity
@@ -23,6 +24,12 @@ public class Invoice {
     private BigDecimal amount;
 
     private String status;
+
+    @Column(name = "issued_date")
+    private LocalDate issuedDate;
+
+    @Column(name = "due_date")
+    private LocalDate dueDate;
 
     public Invoice() {
     }
@@ -63,5 +70,21 @@ public class Invoice {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public LocalDate getIssuedDate() {
+        return issuedDate;
+    }
+
+    public void setIssuedDate(LocalDate issuedDate) {
+        this.issuedDate = issuedDate;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
+    }
+
+    public void setDueDate(LocalDate dueDate) {
+        this.dueDate = dueDate;
     }
 }
