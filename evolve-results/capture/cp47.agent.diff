@@ -1,0 +1,199 @@
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index 273e717..8fc0c41 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -23,9 +23,11 @@ function formatAmount(amount: number): string {
+ 
+ export function InvoiceLineItems({
+   invoiceId,
++  discountPct = 0,
+   onClose,
+ }: {
+   invoiceId: number;
++  discountPct?: number;
+   onClose: () => void;
+ }) {
+   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+@@ -121,7 +123,14 @@ export function InvoiceLineItems({
+     await load();
+   }
+ 
+-  const total = lineItems.reduce((sum, li) => sum + Number(li.quantity) * Number(li.unitPrice), 0);
++  // The subtotal is the sum of the line items; the owner can take a percentage off it as a discount,
++  // and the invoice's final total is what is left after that discount.
++  const subtotal = lineItems.reduce(
++    (sum, li) => sum + Number(li.quantity) * Number(li.unitPrice),
++    0,
++  );
++  const discount = subtotal * (Number(discountPct) / 100);
++  const total = subtotal - discount;
+ 
+   return (
+     <section data-testid="invoice-lineitems">
+@@ -272,6 +281,16 @@ export function InvoiceLineItems({
+           )}
+         </tbody>
+         <tfoot>
++          <tr>
++            <td colSpan={4}>Subtotal</td>
++            <td data-testid="invoice-subtotal">{formatAmount(subtotal)}</td>
++            <td></td>
++          </tr>
++          <tr>
++            <td colSpan={4}>Discount ({Number(discountPct)}%)</td>
++            <td data-testid="invoice-discount">{formatAmount(discount)}</td>
++            <td></td>
++          </tr>
+           <tr>
+             <td colSpan={4}>Total</td>
+             <td data-testid="invoice-amount">{formatAmount(total)}</td>
+diff --git a/src/main/frontend/features/projects/ProjectInvoices.tsx b/src/main/frontend/features/projects/ProjectInvoices.tsx
+index 86627d8..653f2b1 100644
+--- a/src/main/frontend/features/projects/ProjectInvoices.tsx
++++ b/src/main/frontend/features/projects/ProjectInvoices.tsx
+@@ -17,6 +17,7 @@ type Invoice = {
+   status: string;
+   issuedDate: string | null;
+   dueDate: string | null;
++  discountPct: number;
+ };
+ 
+ function formatAmount(amount: number): string {
+@@ -33,6 +34,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+   const [sort, setSort] = useState<'id' | 'due'>('id');
+   const [openInvoiceId, setOpenInvoiceId] = useState<number | null>(null);
+   const [openStatus, setOpenStatus] = useState('');
++  const [openDiscountPct, setOpenDiscountPct] = useState(0);
+ 
+   async function load(order: 'id' | 'due' = sort) {
+     const res = await fetch(`/api/projects/${projectId}/invoices?sort=${order}`);
+@@ -48,6 +50,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+     }
+     const inv: Invoice = await res.json();
+     setOpenStatus(inv.status);
++    setOpenDiscountPct(Number(inv.discountPct ?? 0));
+   }
+ 
+   useEffect(() => {
+@@ -113,6 +116,7 @@ export function ProjectInvoices({ projectId }: { projectId: number }) {
+         </p>
+         <InvoiceLineItems
+           invoiceId={openInvoiceId}
++          discountPct={openDiscountPct}
+           onClose={() => {
+             setOpenInvoiceId(null);
+             void load();
+diff --git a/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java b/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java
+index 43d7ba6..05dc958 100644
+--- a/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java
++++ b/src/main/java/net/officefloor/hq/app/GetInvoiceLogic.java
+@@ -26,6 +26,6 @@ public class GetInvoiceLogic {
+         String status = InvoiceStatus.derive(inv.getStatus(), inv.getAmount(), paid);
+         response.send(new InvoiceView(inv.getId(), inv.getProjectId(), inv.getAmount(), due, status,
+                 inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+-                inv.getDueDate() == null ? null : inv.getDueDate().toString()));
++                inv.getDueDate() == null ? null : inv.getDueDate().toString(), inv.getDiscountPct()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/Invoice.java b/src/main/java/net/officefloor/hq/app/Invoice.java
+index 8385c4d..30ce000 100644
+--- a/src/main/java/net/officefloor/hq/app/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/Invoice.java
+@@ -31,6 +31,9 @@ public class Invoice {
+     @Column(name = "due_date")
+     private LocalDate dueDate;
+ 
++    @Column(name = "discount_pct")
++    private int discountPct;
++
+     public Invoice() {
+     }
+ 
+@@ -87,4 +90,12 @@ public class Invoice {
+     public void setDueDate(LocalDate dueDate) {
+         this.dueDate = dueDate;
+     }
++
++    public int getDiscountPct() {
++        return discountPct;
++    }
++
++    public void setDiscountPct(int discountPct) {
++        this.discountPct = discountPct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/InvoiceView.java b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+index e2bcdb8..fc34e77 100644
+--- a/src/main/java/net/officefloor/hq/app/InvoiceView.java
++++ b/src/main/java/net/officefloor/hq/app/InvoiceView.java
+@@ -16,6 +16,7 @@ public class InvoiceView {
+     private final String status;
+     private final String issuedDate;
+     private final String dueDate;
++    private final int discountPct;
+ 
+     /** Default {@code due} to the full amount, for callers that have no payment information. */
+     public InvoiceView(Long id, Long projectId, BigDecimal amount, String status,
+@@ -25,6 +26,11 @@ public class InvoiceView {
+ 
+     public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal due, String status,
+             String issuedDate, String dueDate) {
++        this(id, projectId, amount, due, status, issuedDate, dueDate, 0);
++    }
++
++    public InvoiceView(Long id, Long projectId, BigDecimal amount, BigDecimal due, String status,
++            String issuedDate, String dueDate, int discountPct) {
+         this.id = id;
+         this.projectId = projectId;
+         this.amount = amount;
+@@ -32,6 +38,7 @@ public class InvoiceView {
+         this.status = status;
+         this.issuedDate = issuedDate;
+         this.dueDate = dueDate;
++        this.discountPct = discountPct;
+     }
+ 
+     public Long getId() {
+@@ -61,4 +68,8 @@ public class InvoiceView {
+     public String getDueDate() {
+         return dueDate;
+     }
++
++    public int getDiscountPct() {
++        return discountPct;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 482ad0b..3213c5f 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -156,12 +156,15 @@ public class TestSupportController {
+                 amount = explicit == null ? java.math.BigDecimal.ZERO
+                         : new java.math.BigDecimal(explicit.toString());
+             }
++            Object discountPct = invoice.getOrDefault("discountPct", 0);
+             jdbc.update(
+-                    "INSERT INTO invoice (id, project_id, amount, status, issued_date, due_date) "
+-                            + "VALUES (?, ?, ?, ?, ?, ?)",
++                    "INSERT INTO invoice "
++                            + "(id, project_id, amount, status, issued_date, due_date, discount_pct) "
++                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                     invoiceId, ((Number) invoice.get("projectId")).longValue(), amount, status,
+                     issuedDate == null ? null : java.sql.Date.valueOf(issuedDate.toString()),
+-                    dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()));
++                    dueDate == null ? null : java.sql.Date.valueOf(dueDate.toString()),
++                    ((Number) discountPct).intValue());
+             for (Map<String, Object> lineItem : lineItems) {
+                 Object unit = lineItem.getOrDefault("unit", "");
+                 jdbc.update(
+diff --git a/src/main/resources/db/migration/V30__invoice_discount.sql b/src/main/resources/db/migration/V30__invoice_discount.sql
+new file mode 100644
+index 0000000..a85eda1
+--- /dev/null
++++ b/src/main/resources/db/migration/V30__invoice_discount.sql
+@@ -0,0 +1,5 @@
++-- An invoice may carry a percentage discount the owner takes off the subtotal (the sum of its line
++-- items). The invoice detail shows the subtotal, the discount amount (subtotal times the percentage)
++-- and the final total (subtotal minus the discount). Existing invoices have no discount, so default
++-- to 0; the stored invoice.amount column keeps meaning the undiscounted subtotal of its line items.
++ALTER TABLE invoice ADD COLUMN discount_pct INT NOT NULL DEFAULT 0;
