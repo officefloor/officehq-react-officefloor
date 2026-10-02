@@ -1,0 +1,320 @@
+diff --git a/src/main/frontend/features/projects/ProjectDetail.tsx b/src/main/frontend/features/projects/ProjectDetail.tsx
+index ad2307c..ec0a590 100644
+--- a/src/main/frontend/features/projects/ProjectDetail.tsx
++++ b/src/main/frontend/features/projects/ProjectDetail.tsx
+@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
+ import { formatMoney } from '../../ui/money';
+ import { InvoiceLineItems } from './InvoiceLineItems';
+ import { ProjectTags } from './ProjectTags';
++import { ProjectNotes } from './ProjectNotes';
+ 
+ // Opened from the projects list: a project's detail view lists ITS invoices, shows the derived
+ // total, and lets you add a new invoice for an amount. Invoices are scoped to the project via
+@@ -110,6 +111,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
+     <section data-testid="project-detail">
+       <ProjectTags projectId={projectId} />
+ 
++      <ProjectNotes projectId={projectId} />
++
+       <h2>Tasks</h2>
+ 
+       <label>
+diff --git a/src/main/frontend/features/projects/ProjectNotes.tsx b/src/main/frontend/features/projects/ProjectNotes.tsx
+new file mode 100644
+index 0000000..4c431c0
+--- /dev/null
++++ b/src/main/frontend/features/projects/ProjectNotes.tsx
+@@ -0,0 +1,64 @@
++import { useEffect, useState, type FormEvent } from 'react';
++
++// A user writes free-text notes about a project. This panel shows the project's notes newest first
++// and has a form to add one on top. Notes are scoped to the project via /api/projects/<id>/notes;
++// a newly written note is stamped on the server and comes back at the head of the list.
++type Note = { id: number; text: string; at: string };
++
++export function ProjectNotes({ projectId }: { projectId: number }) {
++  const [notes, setNotes] = useState<Note[]>([]);
++  const [text, setText] = useState('');
++
++  async function loadNotes() {
++    const res = await fetch(`/api/projects/${projectId}/notes`);
++    if (res.ok) {
++      setNotes(await res.json());
++    }
++  }
++
++  useEffect(() => {
++    void loadNotes();
++  }, [projectId]);
++
++  async function onAdd(event: FormEvent) {
++    event.preventDefault();
++    if (!text.trim()) {
++      return;
++    }
++    const res = await fetch(`/api/projects/${projectId}/notes`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ text }),
++    });
++    if (res.ok) {
++      setText('');
++      setNotes(await res.json());
++    }
++  }
++
++  return (
++    <section data-testid="project-notes">
++      <h2>Notes</h2>
++
++      <form data-testid="note-form" onSubmit={onAdd}>
++        <input
++          data-testid="note-form-text"
++          placeholder="Write a note"
++          value={text}
++          onChange={(e) => setText(e.target.value)}
++        />
++        <button data-testid="note-form-submit" type="submit">
++          Add note
++        </button>
++      </form>
++
++      <ul data-testid="project-notes-list">
++        {notes.map((note) => (
++          <li key={note.id} data-testid={`note-row-${note.id}`}>
++            <span data-testid="note-text">{note.text}</span>
++          </li>
++        ))}
++      </ul>
++    </section>
++  );
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d5d1a57..b9671cf 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app;
+ 
+ import java.time.LocalDate;
++import java.time.OffsetDateTime;
+ import java.util.List;
+ import java.util.Map;
+ import org.springframework.context.annotation.Profile;
+@@ -39,6 +40,7 @@ public class TestSupportController {
+         jdbc.execute("TRUNCATE TABLE invoices RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE contacts RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tasks RESTART IDENTITY");
++        jdbc.execute("TRUNCATE TABLE notes RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE project_tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE tags RESTART IDENTITY");
+         jdbc.execute("TRUNCATE TABLE projects RESTART IDENTITY");
+@@ -129,6 +131,22 @@ public class TestSupportController {
+                     projectId, tagId);
+         }
+ 
++        List<Map<String, Object>> notes =
++                (List<Map<String, Object>>) fixture.getOrDefault("notes", List.of());
++        long maxNoteId = 0;
++        for (Map<String, Object> note : notes) {
++            long id = ((Number) note.get("id")).longValue();
++            long targetId = ((Number) note.get("targetId")).longValue();
++            jdbc.update(
++                    "INSERT INTO notes (id, target_type, target_id, text, at) VALUES (?, ?, ?, ?, ?)",
++                    id, note.get("targetType"), targetId, note.get("text"),
++                    OffsetDateTime.parse((String) note.get("at")));
++            maxNoteId = Math.max(maxNoteId, id);
++        }
++        if (maxNoteId > 0) {
++            jdbc.execute("ALTER TABLE notes ALTER COLUMN id RESTART WITH " + (maxNoteId + 1));
++        }
++
+         List<Map<String, Object>> invoices =
+                 (List<Map<String, Object>>) fixture.getOrDefault("invoices", List.of());
+         long maxInvoiceId = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/notes/AddProjectNoteLogic.java b/src/main/java/net/officefloor/hq/app/notes/AddProjectNoteLogic.java
+new file mode 100644
+index 0000000..69a36c2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/notes/AddProjectNoteLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.notes;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** POST /api/projects/{projectId}/notes — write the note from the JSON body on the project. */
++public class AddProjectNoteLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId, NewNote body,
++            NoteService notes, ObjectResponse<List<NoteView>> response) {
++        response.send(notes.addToProject(Long.valueOf(projectId), body.getText()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/notes/NewNote.java b/src/main/java/net/officefloor/hq/app/notes/NewNote.java
+new file mode 100644
+index 0000000..71a40b9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/notes/NewNote.java
+@@ -0,0 +1,18 @@
++package net.officefloor.hq.app.notes;
++
++import net.officefloor.web.HttpObject;
++
++/** JSON request body for writing a note. {@link HttpObject} loads it from the entity. */
++@HttpObject
++public class NewNote {
++
++    private String text;
++
++    public String getText() {
++        return text;
++    }
++
++    public void setText(String text) {
++        this.text = text;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/notes/NoteService.java b/src/main/java/net/officefloor/hq/app/notes/NoteService.java
+new file mode 100644
+index 0000000..e76bf23
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/notes/NoteService.java
+@@ -0,0 +1,49 @@
++package net.officefloor.hq.app.notes;
++
++import java.time.OffsetDateTime;
++import java.util.List;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.core.RowMapper;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Business logic for the free-text notes a user writes about a target (e.g. a project). Notes are
++ * generic — a target is a (type, id) pair — and the feature stays self-contained, reaching the rows
++ * through SQL rather than importing another feature's Java types. Notes come back newest first.
++ */
++@Service
++public class NoteService {
++
++    private static final RowMapper<NoteView> MAPPER = (rs, i) -> new NoteView(
++            rs.getLong("id"), rs.getString("text"),
++            rs.getObject("at", OffsetDateTime.class).toInstant().toString());
++
++    private final JdbcTemplate jdbc;
++
++    public NoteService(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    /** The notes on a project, newest written first (ties broken by newest id). */
++    @Transactional(readOnly = true)
++    public List<NoteView> listForProject(Long projectId) {
++        return jdbc.query(
++                "SELECT id, text, at FROM notes "
++                        + "WHERE target_type = 'project' AND target_id = ? "
++                        + "ORDER BY at DESC, id DESC",
++                MAPPER, projectId);
++    }
++
++    /** Write a note on a project (stamped now) and return the project's notes, newest first. */
++    @Transactional
++    public List<NoteView> addToProject(Long projectId, String text) {
++        if (projectId == null || text == null || text.isBlank()) {
++            throw new IllegalArgumentException("A project id and note text are required");
++        }
++        jdbc.update(
++                "INSERT INTO notes (target_type, target_id, text, at) VALUES ('project', ?, ?, ?)",
++                projectId, text, OffsetDateTime.now());
++        return listForProject(projectId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/notes/NoteView.java b/src/main/java/net/officefloor/hq/app/notes/NoteView.java
+new file mode 100644
+index 0000000..8c4cbc0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/notes/NoteView.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.notes;
++
++/** JSON response shape for a note: its id, the written text, and when it was written. */
++public class NoteView {
++
++    private final long id;
++    private final String text;
++    private final String at;
++
++    public NoteView(long id, String text, String at) {
++        this.id = id;
++        this.text = text;
++        this.at = at;
++    }
++
++    public long getId() {
++        return id;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public String getAt() {
++        return at;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/notes/ProjectNotesLogic.java b/src/main/java/net/officefloor/hq/app/notes/ProjectNotesLogic.java
+new file mode 100644
+index 0000000..338eebc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/notes/ProjectNotesLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.notes;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/projects/{projectId}/notes — list a project's notes, newest first. */
++public class ProjectNotesLogic {
++
++    public void service(@HttpPathParameter("projectId") String projectId, NoteService notes,
++            ObjectResponse<List<NoteView>> response) {
++        response.send(notes.listForProject(Long.valueOf(projectId)));
++    }
++}
+diff --git a/src/main/resources/db/migration/V21__notes.sql b/src/main/resources/db/migration/V21__notes.sql
+new file mode 100644
+index 0000000..5423dfd
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__notes.sql
+@@ -0,0 +1,12 @@
++-- Free-text notes a user writes about something in the app. A note is generic: it points at a
++-- target by type + id (e.g. a 'project') so the same table can carry notes for other kinds later.
++-- Each note records WHEN it was written so the UI can show the newest first.
++CREATE TABLE notes (
++    id          BIGINT                   GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    target_type VARCHAR(32)              NOT NULL,
++    target_id   BIGINT                   NOT NULL,
++    text        VARCHAR(4000)            NOT NULL,
++    at          TIMESTAMP WITH TIME ZONE NOT NULL
++);
++
++CREATE INDEX idx_notes_target ON notes (target_type, target_id);
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.GET.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.GET.yml
+new file mode 100644
+index 0000000..2b45f52
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.notes.ProjectNotesLogic
+diff --git a/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.POST.yml b/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.POST.yml
+new file mode 100644
+index 0000000..4f0a571
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/projects/{projectId}/notes.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.notes.AddProjectNoteLogic
