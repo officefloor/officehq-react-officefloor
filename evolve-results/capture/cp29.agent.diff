@@ -1,0 +1,136 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+index 1521918..d458989 100644
+--- a/src/main/frontend/features/clients/ClientsPage.tsx
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -53,6 +53,12 @@ export function ClientsPage() {
+     await load();
+   }
+ 
++  // Tuck a client away: archive it so it drops off this list and the search while being retained.
++  async function onArchive(id: number) {
++    await fetch(`/api/clients/${id}/archive`, { method: 'POST' });
++    await load();
++  }
++
+   // Case-insensitive filter on the client name; an empty box shows every client.
+   const q = search.trim().toLowerCase();
+   const shown = q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
+@@ -115,6 +121,13 @@ export function ClientsPage() {
+                   >
+                     Open
+                   </button>
++                  <button
++                    type="button"
++                    data-testid={`client-archive-${c.id}`}
++                    onClick={() => void onArchive(c.id)}
++                  >
++                    Archive
++                  </button>
+                 </td>
+               </tr>
+             ))}
+diff --git a/src/main/java/net/officefloor/hq/app/ArchiveClientLogic.java b/src/main/java/net/officefloor/hq/app/ArchiveClientLogic.java
+new file mode 100644
+index 0000000..38d0d96
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ArchiveClientLogic.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.server.http.HttpException;
++import net.officefloor.server.http.HttpStatus;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/clients/{clientId}/archive — tuck a client away rather than deleting it. Sets the
++ * client's archived flag so it drops off the clients list and search while being retained, appends
++ * one audit record (CLIENT_ARCHIVED id=&lt;id&gt;) so there is a record it happened, and echoes back
++ * the saved client. An unknown client is rejected with 400 and nothing is written.
++ */
++public class ArchiveClientLogic {
++
++    public void service(@HttpPathParameter("clientId") String clientId, ClientRepository clients,
++            Audit audit, ObjectResponse<Client> response) {
++        Long id = Long.valueOf(clientId);
++        Client client = clients.findById(id).orElseThrow(
++                () -> new HttpException(HttpStatus.BAD_REQUEST, "An existing client is required"));
++        client.setArchived(true);
++        Client saved = clients.save(client);
++        audit.record("CLIENT_ARCHIVED id=" + id);
++        response.send(saved);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/Client.java b/src/main/java/net/officefloor/hq/app/Client.java
+index b793b02..7c38a50 100644
+--- a/src/main/java/net/officefloor/hq/app/Client.java
++++ b/src/main/java/net/officefloor/hq/app/Client.java
+@@ -19,6 +19,8 @@ public class Client {
+ 
+     private String email;
+ 
++    private boolean archived;
++
+     public Client() {
+     }
+ 
+@@ -50,4 +52,12 @@ public class Client {
+     public void setEmail(String email) {
+         this.email = email;
+     }
++
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void setArchived(boolean archived) {
++        this.archived = archived;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+index 2cab1a7..fe1a667 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientRepository.java
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -8,4 +8,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
+ 
+     /** All clients, oldest first, so the list is stable across loads. */
+     List<Client> findAllByOrderByIdAsc();
++
++    /** The active (not archived) clients, oldest first — archived ones drop off the list. */
++    List<Client> findByArchivedFalseOrderByIdAsc();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ListClientsLogic.java b/src/main/java/net/officefloor/hq/app/ListClientsLogic.java
+index 5faf1fa..8a93400 100644
+--- a/src/main/java/net/officefloor/hq/app/ListClientsLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ListClientsLogic.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app;
+ import java.util.List;
+ import net.officefloor.web.ObjectResponse;
+ 
+-/** GET /api/clients — all clients, oldest first. */
++/** GET /api/clients — the active (not archived) clients, oldest first. */
+ public class ListClientsLogic {
+ 
+     public void service(ClientRepository clients, ObjectResponse<List<Client>> response) {
+-        response.send(clients.findAllByOrderByIdAsc());
++        response.send(clients.findByArchivedFalseOrderByIdAsc());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V18__client_archived.sql b/src/main/resources/db/migration/V18__client_archived.sql
+new file mode 100644
+index 0000000..527b719
+--- /dev/null
++++ b/src/main/resources/db/migration/V18__client_archived.sql
+@@ -0,0 +1,4 @@
++-- Archiving a client: rather than deleting it, the owner can tuck a client away so it drops off
++-- their list and search while being retained. Additive metadata flag on the existing client table
++-- (V1); existing rows default to not archived.
++ALTER TABLE client ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml b/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml
+new file mode 100644
+index 0000000..4f68e1c
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients/{clientId}/archive.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ArchiveClientLogic
