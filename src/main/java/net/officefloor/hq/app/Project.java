@@ -23,13 +23,20 @@ public class Project {
 
     private boolean archived;
 
+    private String status;
+
     public Project() {
     }
 
     public Project(String name, Long clientId) {
+        this(name, clientId, "ACTIVE");
+    }
+
+    public Project(String name, Long clientId, String status) {
         this.name = name;
         this.clientId = clientId;
         this.archived = false;
+        this.status = status;
     }
 
     public Long getId() {
@@ -62,5 +69,13 @@ public class Project {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

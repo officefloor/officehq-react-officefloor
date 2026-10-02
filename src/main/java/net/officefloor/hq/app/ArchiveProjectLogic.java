@@ -25,6 +25,6 @@ public class ArchiveProjectLogic {
         String clientName = clients.findById(saved.getClientId()).map(Client::getName).orElse(null);
         audit.record("PROJECT_ARCHIVED id=" + id);
         response.send(new ProjectView(saved.getId(), saved.getName(), saved.getClientId(),
-                clientName, saved.isArchived()));
+                clientName, saved.isArchived(), saved.getStatus(), java.util.List.of()));
     }
 }

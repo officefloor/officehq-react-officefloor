@@ -15,7 +15,7 @@ public class ListClientProjectsLogic {
         String clientName = clients.findById(id).map(Client::getName).orElse(null);
         List<ProjectView> views = projects.findByClientIdAndArchivedFalseOrderByIdAsc(id).stream()
                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(), clientName,
-                        p.isArchived()))
+                        p.isArchived(), p.getStatus(), List.of()))
                 .collect(Collectors.toList());
         response.send(views);
     }

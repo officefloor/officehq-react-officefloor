@@ -20,8 +20,9 @@ public class CreateProjectLogic {
         }
         Client client = clients.findById(clientId).orElseThrow(
                 () -> new HttpException(HttpStatus.BAD_REQUEST, "A client is required"));
-        Project saved = projects.save(new Project(newProject.getName(), clientId));
+        String status = newProject.getStatus() == null ? "ACTIVE" : newProject.getStatus();
+        Project saved = projects.save(new Project(newProject.getName(), clientId, status));
         response.send(new ProjectView(saved.getId(), saved.getName(), client.getId(),
-                client.getName()));
+                client.getName(), saved.getStatus()));
     }
 }

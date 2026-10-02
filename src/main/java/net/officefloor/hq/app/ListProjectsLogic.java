@@ -18,7 +18,7 @@ public class ListProjectsLogic {
                         Collectors.mapping(ProjectTag::getTagId, Collectors.toList())));
         List<ProjectView> views = projects.findAllByOrderByIdAsc().stream()
                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getClientId(),
-                        clientNames.get(p.getClientId()), p.isArchived(),
+                        clientNames.get(p.getClientId()), p.isArchived(), p.getStatus(),
                         tagIdsByProject.getOrDefault(p.getId(), List.of())))
                 .collect(Collectors.toList());
         response.send(views);
