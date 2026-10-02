@@ -49,6 +49,16 @@ public class ProjectService {
      */
     @Transactional(readOnly = true)
     public List<ProjectView> list(boolean includeArchived, Long tagId) {
+        return list(includeArchived, tagId, null);
+    }
+
+    /**
+     * List projects with their client's name, optionally narrowed to a single lifecycle status (the
+     * UI's "filter by status" picker: ACTIVE, ON_HOLD or FINISHED). A null {@code status} means no
+     * status filter — list every project the archived and tag filters allow.
+     */
+    @Transactional(readOnly = true)
+    public List<ProjectView> list(boolean includeArchived, Long tagId, String status) {
         StringBuilder sql = new StringBuilder(
                 "SELECT p.id, p.name, p.client_id, p.status, c.name AS client_name "
                         + "FROM projects p JOIN clients c ON p.client_id = c.id ");
@@ -57,8 +67,16 @@ public class ProjectService {
             sql.append("JOIN project_tags pt ON pt.project_id = p.id AND pt.tag_id = ? ");
             args.add(tagId);
         }
+        List<String> conditions = new java.util.ArrayList<>();
         if (!includeArchived) {
-            sql.append("WHERE p.archived = FALSE ");
+            conditions.add("p.archived = FALSE");
+        }
+        if (status != null) {
+            conditions.add("p.status = ?");
+            args.add(status);
+        }
+        if (!conditions.isEmpty()) {
+            sql.append("WHERE ").append(String.join(" AND ", conditions)).append(' ');
         }
         sql.append("ORDER BY p.id ASC");
         return jdbc.query(sql.toString(),

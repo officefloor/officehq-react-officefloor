@@ -12,8 +12,10 @@ public class ProjectsLogic {
 
     public void service(@HttpQueryParameter("includeArchived") String includeArchived,
             @HttpQueryParameter("tagId") String tagId,
+            @HttpQueryParameter("status") String status,
             ProjectService projects, ObjectResponse<List<ProjectView>> response) {
         Long tag = (tagId == null || tagId.isBlank()) ? null : Long.valueOf(tagId.trim());
-        response.send(projects.list(Boolean.parseBoolean(includeArchived), tag));
+        String statusFilter = (status == null || status.isBlank()) ? null : status.trim();
+        response.send(projects.list(Boolean.parseBoolean(includeArchived), tag, statusFilter));
     }
 }

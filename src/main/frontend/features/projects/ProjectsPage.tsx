@@ -26,6 +26,7 @@ export function ProjectsPage() {
   const [clientId, setClientId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [tagFilter, setTagFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -36,6 +37,9 @@ export function ProjectsPage() {
     }
     if (tagFilter) {
       params.set('tagId', tagFilter);
+    }
+    if (statusFilter) {
+      params.set('status', statusFilter);
     }
     const query = params.toString();
     const res = await fetch(query ? `/api/projects?${query}` : '/api/projects');
@@ -69,7 +73,7 @@ export function ProjectsPage() {
   // overwriting the narrowed list.
   useEffect(() => {
     void loadProjects();
-  }, [showArchived, tagFilter]);
+  }, [showArchived, tagFilter, statusFilter]);
 
   async function onArchive(id: number) {
     const res = await fetch(`/api/projects/${id}/archive`, { method: 'POST' });
@@ -152,6 +156,19 @@ export function ProjectsPage() {
       >
         {showArchived ? 'Hide archived' : 'Show archived'}
       </button>
+
+      <select
+        data-testid="project-status-filter"
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+      >
+        <option value="">All statuses</option>
+        {PROJECT_STATUSES.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ))}
+      </select>
 
       <select
         data-testid="project-tag-filter"
