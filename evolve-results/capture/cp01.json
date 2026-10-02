@@ -1,0 +1,86 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-react-officefloor",
+    "origin": "git@github.com:officefloor/officehq-react-officefloor.git",
+    "name": "officehq-react-officefloor",
+    "base_ref": "base-empty",
+    "base_commit": "702597cfd2b7a4742022a1c2e4383db66b5cddbb"
+  },
+  "checkpoint_id": "cp01_clients",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "I want to keep track of my clients. Let me add a client with their name and email.\nShow me all my clients in one list.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read CLAUDE.md \u2014 it states the working rules, the project layout, and the data-testid\nconventions. Follow it.\n\nTHE CHANGE REQUEST:\nI want to keep track of my clients. Let me add a client with their name and email.\nShow me all my clients in one list.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, and any audit records it\nexpects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as you work;\niterate until it passes. Implement the full-stack change (database migration + OfficeFloor\nserver + front-end). Do NOT edit the pinned scaffolding (bin/build, bin/start, bin/stop,\nbin/e2e, CLAUDE.md, AGENTS.md) or the test spec.\n"
+  },
+  "commit_sha": "0d7d1410b8ccc00700d208d01e971ae7e8a5508c",
+  "reset_sha": "",
+  "preagent_sha": "b3e0a621902db686e5be4b469541c27a5c078840",
+  "prev_sha": "b3e0a621902db686e5be4b469541c27a5c078840",
+  "base_sha": "702597cfd2b7a4742022a1c2e4383db66b5cddbb",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1454325,
+    "input_tokens": 38,
+    "output_tokens": 16395,
+    "cache_read_tokens": 673073,
+    "cache_creation_tokens": 39766,
+    "num_turns": 38,
+    "duration_ms": 223567,
+    "duration_api_ms": 205734,
+    "model": "claude-opus-4-8",
+    "session_id": "d7783c90-6e6c-4d88-ac4f-5aab34a2e7ee",
+    "stop_reason": "success",
+    "result_text": "The change is complete and verified \u2014 both acceptance tests pass, and the app boots cleanly (Flyway applies the `V1__clients` migration, both OfficeFloor routes wire up, and the create/list flow works end-to-end).\n\n## What I built (full-stack, additive)\n\n**Database** \u2014 `src/main/resources/db/migration/V1__clients.sql`: a new `client` table (`id` identity, `name`, `email`).\n\n**Server (OfficeFloor REST on Spring Boot)**\n- `Client` JPA entity + `ClientRepository` (`findAllByOrderByIdAsc`) for stable ordering.\n- `rest/api/clients.GET.yml` \u2192 `ListClientsLogic` \u2014 `GET /api/clients` returns all clients.\n- `rest/api/clients.POST.yml` \u2192 `CreateClientLogic` \u2014 `POST /api/clients` saves a `NewClient` body (`@RequestBody` per the app convention) and echoes the saved row.\n- Extended `TestSupportController` seed/reset: `reset` does `TRUNCATE TABLE client RESTART IDENTITY` + clears audit; `seed` inserts clients via `JdbcTemplate` using the fixture's explicit ids (so the spec's `client-row-<id>` anchors match).\n\n**Front-end (React)**\n- Built the shared routing *mechanism* once: `router/routes.ts` auto-discovers every `features/*/route.tsx` via `import.meta.glob`, and `main.tsx` renders a `nav-<id>` link per route plus the active page. Adding a page is now a new feature file, never an edit to the router.\n- `features/clients/route.tsx` \u2014 the pure route declaration (`id: 'clients'` \u2192 `nav-clients`).\n- `features/clients/ClientsPage.tsx` \u2014 owns its own state: an add-client form (`client-form-name`, `client-form-email`, `client-form-submit`), the `clients-table` with `client-row-<id>`/`client-name`/`client-email`, and a `clients-empty` state.\n\nNo audit records were required by the spec, so none were added. I didn't touch any pinned scaffolding or the test spec.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.1454325,
+        "num_turns": 38,
+        "duration_ms": 223567,
+        "duration_api_ms": 205734,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": "cp01.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 2,
+    "results": {
+      "cp01_clients.spec.ts::lists seeded clients": true,
+      "cp01_clients.spec.ts::creates a client": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_clients.spec.ts::lists seeded clients",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 596,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_clients.spec.ts::creates a client",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 330,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

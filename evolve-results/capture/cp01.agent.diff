@@ -1,0 +1,389 @@
+diff --git a/src/main/frontend/features/clients/ClientsPage.tsx b/src/main/frontend/features/clients/ClientsPage.tsx
+new file mode 100644
+index 0000000..f9b8e50
+--- /dev/null
++++ b/src/main/frontend/features/clients/ClientsPage.tsx
+@@ -0,0 +1,77 @@
++import React, { useEffect, useState } from 'react';
++
++// The clients feature owns its own state, data loading and layout (no global store). It lists every
++// client and adds a new one by name + email.
++type Client = { id: number; name: string; email: string };
++
++export function ClientsPage() {
++  const [clients, setClients] = useState<Client[]>([]);
++  const [name, setName] = useState('');
++  const [email, setEmail] = useState('');
++
++  async function load() {
++    const res = await fetch('/api/clients');
++    setClients(await res.json());
++  }
++
++  useEffect(() => {
++    void load();
++  }, []);
++
++  async function onSubmit(e: React.FormEvent) {
++    e.preventDefault();
++    await fetch('/api/clients', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name, email }),
++    });
++    setName('');
++    setEmail('');
++    await load();
++  }
++
++  return (
++    <section data-testid="clients-section">
++      <h1>Clients</h1>
++
++      <form data-testid="client-form" onSubmit={onSubmit}>
++        <input
++          data-testid="client-form-name"
++          placeholder="Name"
++          value={name}
++          onChange={(e) => setName(e.target.value)}
++        />
++        <input
++          data-testid="client-form-email"
++          placeholder="Email"
++          value={email}
++          onChange={(e) => setEmail(e.target.value)}
++        />
++        <button type="submit" data-testid="client-form-submit">
++          Add client
++        </button>
++      </form>
++
++      {clients.length === 0 ? (
++        <p data-testid="clients-empty">No clients yet.</p>
++      ) : (
++        <table data-testid="clients-table">
++          <thead>
++            <tr>
++              <th>Name</th>
++              <th>Email</th>
++            </tr>
++          </thead>
++          <tbody>
++            {clients.map((c) => (
++              <tr key={c.id} data-testid={`client-row-${c.id}`}>
++                <td data-testid="client-name">{c.name}</td>
++                <td data-testid="client-email">{c.email}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </section>
++  );
++}
+diff --git a/src/main/frontend/features/clients/route.tsx b/src/main/frontend/features/clients/route.tsx
+new file mode 100644
+index 0000000..3a6f960
+--- /dev/null
++++ b/src/main/frontend/features/clients/route.tsx
+@@ -0,0 +1,9 @@
++import type { AppRoute } from '../../router/routes';
++import { ClientsPage } from './ClientsPage';
++
++// Feature route declaration — pure data, auto-discovered by router/routes.ts.
++export const route: AppRoute = {
++  id: 'clients',
++  label: 'Clients',
++  component: ClientsPage,
++};
+diff --git a/src/main/frontend/main.tsx b/src/main/frontend/main.tsx
+index 81a5347..df885ac 100644
+--- a/src/main/frontend/main.tsx
++++ b/src/main/frontend/main.tsx
+@@ -1,14 +1,31 @@
+-import React from 'react';
++import React, { useState } from 'react';
+ import { createRoot } from 'react-dom/client';
++import { routes } from './router/routes';
+ 
+-// Minimal base shell. The opinionated conventions (file/manifest routing under router/, closed
++// Minimal base shell. The opinionated conventions (file-based routing under router/, closed
+ // primitives under ui/, no global store, scoped styles) are how checkpoints add features additively
+ // (CLAUDE.md). Every observable element/value carries a stable data-testid, never renamed/removed.
++// The nav is rendered from the feature-registered routes; clicking a nav link shows that page.
+ function App() {
++  const [active, setActive] = useState(() => routes[0]?.id ?? '');
++  const current = routes.find((r) => r.id === active);
++  const Current = current?.component;
++
+   return (
+     <div data-testid="app-root">
+-      <nav data-testid="app-nav">OfficeHQ</nav>
+-      <main data-testid="app-home" />
++      <nav data-testid="app-nav">
++        {routes.map((r) => (
++          <button
++            key={r.id}
++            type="button"
++            data-testid={`nav-${r.id}`}
++            onClick={() => setActive(r.id)}
++          >
++            {r.label}
++          </button>
++        ))}
++      </nav>
++      <main data-testid="app-home">{Current ? <Current /> : null}</main>
+     </div>
+   );
+ }
+diff --git a/src/main/frontend/router/routes.ts b/src/main/frontend/router/routes.ts
+index 0fb05d2..f2e0fbc 100644
+--- a/src/main/frontend/router/routes.ts
++++ b/src/main/frontend/router/routes.ts
+@@ -1,5 +1,21 @@
+-// SKELETON router (shared surface: config.yaml -> app.shared_surfaces.frontend).
+-// Prefer file/manifest-based routing so adding a page is a NEW file, not an edit here — a
+-// checkpoint forced to edit this file scores a boundary violation (DESIGN.md §8).
+-// TODO: base routes (just an empty home) + the mechanism for feature routes to register additively.
+-export const routes = [] as const;
++// Shared routing surface (config.yaml -> app.shared_surfaces.frontend).
++// A page is registered by its feature, not listed here: every features/<name>/route.tsx exports a
++// `route` data declaration, and this module auto-discovers them. Adding a page = a NEW feature route
++// module, never an edit to this file (DESIGN.md §8).
++import type { ComponentType } from 'react';
++
++export type AppRoute = {
++  /** Section id. Drives the nav link testid (`nav-<id>`) and selects the active page. */
++  id: string;
++  /** Human label shown in the nav. */
++  label: string;
++  /** The screen component for this section. */
++  component: ComponentType;
++};
++
++// Eager glob so each feature's route declaration is collected at module load.
++const modules = import.meta.glob<{ route: AppRoute }>('../features/*/route.tsx', { eager: true });
++
++export const routes: AppRoute[] = Object.values(modules)
++  .map((m) => m.route)
++  .filter((r): r is AppRoute => Boolean(r));
+diff --git a/src/main/java/net/officefloor/hq/app/Client.java b/src/main/java/net/officefloor/hq/app/Client.java
+new file mode 100644
+index 0000000..b793b02
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/Client.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A client in the owner's book: a name and an email. Maps to the {@code client} table (V1). */
++@Entity
++@Table(name = "client")
++public class Client {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    private String email;
++
++    public Client() {
++    }
++
++    public Client(String name, String email) {
++        this.name = name;
++        this.email = email;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public void setId(Long id) {
++        this.id = id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ClientRepository.java b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+new file mode 100644
+index 0000000..2cab1a7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ClientRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++/** Data access for {@link Client}. A Spring bean, injected into the OfficeFloor logic classes. */
++public interface ClientRepository extends JpaRepository<Client, Long> {
++
++    /** All clients, oldest first, so the list is stable across loads. */
++    List<Client> findAllByOrderByIdAsc();
++}
+diff --git a/src/main/java/net/officefloor/hq/app/CreateClientLogic.java b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+new file mode 100644
+index 0000000..5fef02a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/CreateClientLogic.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app;
++
++import net.officefloor.web.ObjectResponse;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/** POST /api/clients — add a client from the submitted name + email, echo back the saved row. */
++public class CreateClientLogic {
++
++    public void service(@RequestBody NewClient newClient, ClientRepository clients,
++            ObjectResponse<Client> response) {
++        Client saved = clients.save(new Client(newClient.getName(), newClient.getEmail()));
++        response.send(saved);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/ListClientsLogic.java b/src/main/java/net/officefloor/hq/app/ListClientsLogic.java
+new file mode 100644
+index 0000000..5faf1fa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/ListClientsLogic.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app;
++
++import java.util.List;
++import net.officefloor.web.ObjectResponse;
++
++/** GET /api/clients — all clients, oldest first. */
++public class ListClientsLogic {
++
++    public void service(ClientRepository clients, ObjectResponse<List<Client>> response) {
++        response.send(clients.findAllByOrderByIdAsc());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/NewClient.java b/src/main/java/net/officefloor/hq/app/NewClient.java
+new file mode 100644
+index 0000000..5c4976c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/NewClient.java
+@@ -0,0 +1,25 @@
++package net.officefloor.hq.app;
++
++/** Request body for creating a client: just the fields the owner types. */
++public class NewClient {
++
++    private String name;
++
++    private String email;
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1d09de2..763e114 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.List;
+ import java.util.Map;
+ import org.springframework.context.annotation.Profile;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -19,21 +21,29 @@ import org.springframework.web.bind.annotation.RestController;
+ public class TestSupportController {
+ 
+     private final Audit audit;
++    private final JdbcTemplate jdbc;
+ 
+-    public TestSupportController(Audit audit) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+         this.audit = audit;
++        this.jdbc = jdbc;
+     }
+ 
+     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
+     @PostMapping("/reset")
+     public void reset() {
+         audit.clear();
+-        // TODO: TRUNCATE the domain tables that exist at this checkpoint (inject a JdbcTemplate/repo).
++        jdbc.execute("TRUNCATE TABLE client RESTART IDENTITY");
+     }
+ 
+     /** Insert the fixture a spec needs; the payload shape evolves with the schema. */
+     @PostMapping("/seed")
++    @SuppressWarnings("unchecked")
+     public void seed(@RequestBody Map<String, Object> fixture) {
+-        // TODO: insert rows for the fixture.
++        List<Map<String, Object>> clients =
++                (List<Map<String, Object>>) fixture.getOrDefault("clients", List.of());
++        for (Map<String, Object> client : clients) {
++            jdbc.update("INSERT INTO client (id, name, email) VALUES (?, ?, ?)",
++                    ((Number) client.get("id")).longValue(), client.get("name"), client.get("email"));
++        }
+     }
+ }
+diff --git a/src/main/resources/db/migration/V1__clients.sql b/src/main/resources/db/migration/V1__clients.sql
+new file mode 100644
+index 0000000..4203749
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__clients.sql
+@@ -0,0 +1,6 @@
++-- Clients: the owner's book of clients (name + email). First domain table.
++CREATE TABLE client (
++    id    BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name  VARCHAR(255) NOT NULL,
++    email VARCHAR(255) NOT NULL
++);
+diff --git a/src/main/resources/officefloor/rest/api/clients.GET.yml b/src/main/resources/officefloor/rest/api/clients.GET.yml
+new file mode 100644
+index 0000000..57608bb
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients.GET.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.ListClientsLogic
+diff --git a/src/main/resources/officefloor/rest/api/clients.POST.yml b/src/main/resources/officefloor/rest/api/clients.POST.yml
+new file mode 100644
+index 0000000..4de205a
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/clients.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.CreateClientLogic
