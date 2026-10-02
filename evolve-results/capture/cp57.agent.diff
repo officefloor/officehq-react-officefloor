@@ -1,0 +1,186 @@
+diff --git a/src/main/frontend/features/clients/ClientStatement.tsx b/src/main/frontend/features/clients/ClientStatement.tsx
+index af9df81..af0ceb1 100644
+--- a/src/main/frontend/features/clients/ClientStatement.tsx
++++ b/src/main/frontend/features/clients/ClientStatement.tsx
+@@ -13,7 +13,18 @@ type StatementInvoice = {
+   status: string;
+ };
+ 
+-type Statement = { invoices: StatementInvoice[]; outstandingTotal: number };
++type StatementGroup = {
++  projectId: number;
++  projectName: string;
++  invoices: StatementInvoice[];
++  subtotal: number;
++};
++
++type Statement = {
++  invoices: StatementInvoice[];
++  groups: StatementGroup[];
++  outstandingTotal: number;
++};
+ 
+ function formatAmount(amount: number): string {
+   return `$${Number(amount).toLocaleString('en-US', {
+@@ -54,16 +65,32 @@ export function ClientStatement({ clientId }: { clientId: number }) {
+               <th>Status</th>
+             </tr>
+           </thead>
+-          <tbody>
+-            {statement.invoices.map((inv) => (
+-              <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
+-                <td data-testid="statement-invoice-id">{inv.id}</td>
+-                <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
+-                <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
+-                <td data-testid="statement-invoice-status">{inv.status}</td>
++          {statement.groups.map((group) => (
++            <tbody
++              key={group.projectId}
++              data-testid={`statement-project-${group.projectId}`}
++            >
++              <tr>
++                <th colSpan={4} data-testid="statement-project-name">
++                  {group.projectName}
++                </th>
++              </tr>
++              {group.invoices.map((inv) => (
++                <tr key={inv.id} data-testid={`statement-invoice-row-${inv.id}`}>
++                  <td data-testid="statement-invoice-id">{inv.id}</td>
++                  <td data-testid="statement-invoice-amount">{formatAmount(inv.amount)}</td>
++                  <td data-testid="statement-invoice-due">{formatAmount(inv.due)}</td>
++                  <td data-testid="statement-invoice-status">{inv.status}</td>
++                </tr>
++              ))}
++              <tr>
++                <td>Subtotal</td>
++                <td data-testid="statement-project-subtotal" colSpan={3}>
++                  {formatAmount(group.subtotal)}
++                </td>
+               </tr>
+-            ))}
+-          </tbody>
++            </tbody>
++          ))}
+           <tfoot>
+             <tr>
+               <td>Outstanding</td>
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+index 598ef2c..95a35c2 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementLogic.java
+@@ -19,8 +19,13 @@ public class ClientStatementLogic {
+             ObjectResponse<ClientStatementView> response) {
+         Long id = Long.valueOf(clientId);
+         List<InvoiceView> rows = new ArrayList<>();
++        List<StatementGroupView> groups = new ArrayList<>();
+         BigDecimal outstandingTotal = BigDecimal.ZERO;
+         for (Project project : projects.findByClientIdOrderByIdAsc(id)) {
++            // Group this job's invoices together and carry the subtotal still due across them, so the
++            // statement reads per job; the per-job subtotals sum to the overall outstanding total.
++            List<InvoiceView> groupRows = new ArrayList<>();
++            BigDecimal subtotal = BigDecimal.ZERO;
+             for (Invoice inv : invoices.findByProjectIdOrderByIdAsc(project.getId())) {
+                 // What is still left to pay: the billed amount minus everything paid so far.
+                 BigDecimal paid = payments.findByInvoiceIdOrderByIdAsc(inv.getId()).stream()
+@@ -32,14 +37,21 @@ public class ClientStatementLogic {
+                 BigDecimal billed = inv.getDiscountedAmount();
+                 BigDecimal due = billed.subtract(paid);
+                 String status = InvoiceStatus.derive(inv.getStatus(), billed, paid);
+-                rows.add(new InvoiceView(inv.getId(), inv.getProjectId(), billed, due,
++                InvoiceView view = new InvoiceView(inv.getId(), inv.getProjectId(), billed, due,
+                         status,
+                         inv.getIssuedDate() == null ? null : inv.getIssuedDate().toString(),
+                         inv.getDueDate() == null ? null : inv.getDueDate().toString(),
+-                        inv.getDiscountPct()));
++                        inv.getDiscountPct());
++                rows.add(view);
++                groupRows.add(view);
++                subtotal = subtotal.add(due);
+                 outstandingTotal = outstandingTotal.add(due);
+             }
++            if (!groupRows.isEmpty()) {
++                groups.add(new StatementGroupView(project.getId(), project.getName(), groupRows,
++                        subtotal));
++            }
+         }
+-        response.send(new ClientStatementView(rows, outstandingTotal));
++        response.send(new ClientStatementView(rows, groups, outstandingTotal));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/ClientStatementView.java b/src/main/java/net/officefloor/hq/app/ClientStatementView.java
+index 7d89441..d61b2ab 100644
+--- a/src/main/java/net/officefloor/hq/app/ClientStatementView.java
++++ b/src/main/java/net/officefloor/hq/app/ClientStatementView.java
+@@ -11,10 +11,13 @@ import java.util.List;
+ public class ClientStatementView {
+ 
+     private final List<InvoiceView> invoices;
++    private final List<StatementGroupView> groups;
+     private final BigDecimal outstandingTotal;
+ 
+-    public ClientStatementView(List<InvoiceView> invoices, BigDecimal outstandingTotal) {
++    public ClientStatementView(List<InvoiceView> invoices, List<StatementGroupView> groups,
++            BigDecimal outstandingTotal) {
+         this.invoices = invoices;
++        this.groups = groups;
+         this.outstandingTotal = outstandingTotal;
+     }
+ 
+@@ -22,6 +25,10 @@ public class ClientStatementView {
+         return invoices;
+     }
+ 
++    public List<StatementGroupView> getGroups() {
++        return groups;
++    }
++
+     public BigDecimal getOutstandingTotal() {
+         return outstandingTotal;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/StatementGroupView.java b/src/main/java/net/officefloor/hq/app/StatementGroupView.java
+new file mode 100644
+index 0000000..3cb251b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/StatementGroupView.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app;
++
++import java.math.BigDecimal;
++import java.util.List;
++
++/**
++ * One job's slice of a client's statement: the project (job) the invoices belong to, those invoices,
++ * and the subtotal still due across them. Grouping the statement by job lets the client read what is
++ * owed per job; the per-job subtotals sum to the statement's overall outstanding total.
++ */
++public class StatementGroupView {
++
++    private final Long projectId;
++    private final String projectName;
++    private final List<InvoiceView> invoices;
++    private final BigDecimal subtotal;
++
++    public StatementGroupView(Long projectId, String projectName, List<InvoiceView> invoices,
++            BigDecimal subtotal) {
++        this.projectId = projectId;
++        this.projectName = projectName;
++        this.invoices = invoices;
++        this.subtotal = subtotal;
++    }
++
++    public Long getProjectId() {
++        return projectId;
++    }
++
++    public String getProjectName() {
++        return projectName;
++    }
++
++    public List<InvoiceView> getInvoices() {
++        return invoices;
++    }
++
++    public BigDecimal getSubtotal() {
++        return subtotal;
++    }
++}
