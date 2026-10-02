@@ -13,7 +13,7 @@ export function ClientsPage() {
   const [search, setSearch] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [openClientId, setOpenClientId] = useState<number | null>(null);
 
   async function load() {
@@ -43,18 +43,25 @@ export function ClientsPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!EMAIL_RE.test(email)) {
-      setEmailError(true);
+      setEmailError('Enter a valid email address.');
       return;
     }
-    setEmailError(false);
+    setEmailError(null);
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
     });
     if (res.ok) {
+      // Two clients can't share an email: the server rejects the duplicate and adds no row.
+      const result = (await res.json()) as { emailInUse?: boolean };
+      if (result.emailInUse) {
+        setEmailError('That email is already in use.');
+        return;
+      }
       setName('');
       setEmail('');
+      setEmailError(null);
       await load();
     }
   }
@@ -84,9 +91,7 @@ export function ClientsPage() {
           onChange={(e) => setEmail(e.target.value)}
         />
         {emailError && (
-          <p data-testid="client-form-email-error">
-            Enter a valid email address.
-          </p>
+          <p data-testid="client-form-email-error">{emailError}</p>
         )}
         <button data-testid="client-form-submit" type="submit">
           Add client

@@ -10,4 +10,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     List<Client> findByArchivedFalseOrderByIdAsc();
 
     List<Client> findByArchivedFalseAndNameContainingIgnoreCaseOrderByIdAsc(String name);
+
+    // Two clients can never share an email — the guard the create path checks before saving.
+    boolean existsByEmail(String email);
 }

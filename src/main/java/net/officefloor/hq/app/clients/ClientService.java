@@ -164,6 +164,11 @@ public class ClientService {
         if (email == null || !EMAIL.matcher(email).matches()) {
             throw new IllegalArgumentException("A client requires a valid email address");
         }
+        // Two clients can never share an email (also enforced by the clients_email_unique
+        // constraint); reject the duplicate before saving so the UI can flag it.
+        if (repository.existsByEmail(email)) {
+            throw new DuplicateClientEmailException(email);
+        }
         Client client = new Client();
         client.setName(name);
         client.setEmail(email);
