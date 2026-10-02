@@ -62,9 +62,11 @@ public class TestSupportController {
                 (List<Map<String, Object>>) fixture.getOrDefault("projects", List.of());
         for (Map<String, Object> project : projects) {
             Object status = project.getOrDefault("status", "ACTIVE");
-            jdbc.update("INSERT INTO project (id, name, client_id, status) VALUES (?, ?, ?, ?)",
+            boolean archived = Boolean.TRUE.equals(project.getOrDefault("archived", Boolean.FALSE));
+            jdbc.update(
+                    "INSERT INTO project (id, name, client_id, status, archived) VALUES (?, ?, ?, ?, ?)",
                     ((Number) project.get("id")).longValue(), project.get("name"),
-                    ((Number) project.get("clientId")).longValue(), status);
+                    ((Number) project.get("clientId")).longValue(), status, archived);
         }
         List<Map<String, Object>> tasks =
                 (List<Map<String, Object>>) fixture.getOrDefault("tasks", List.of());
