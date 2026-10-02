@@ -1,0 +1,102 @@
+diff --git a/src/main/frontend/features/projects/InvoiceLineItems.tsx b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+index f043835..6afc146 100644
+--- a/src/main/frontend/features/projects/InvoiceLineItems.tsx
++++ b/src/main/frontend/features/projects/InvoiceLineItems.tsx
+@@ -36,6 +36,17 @@ export function InvoiceLineItems({
+     void load();
+   }, [invoiceId]);
+ 
++  async function onRemove(lineItemId: number) {
++    const res = await fetch(
++      `/api/invoices/${invoiceId}/line-items/${lineItemId}/remove`,
++      { method: 'POST' },
++    );
++    if (res.ok) {
++      // The endpoint returns the invoice's remaining line items; the total re-derives from them.
++      setLineItems(await res.json());
++    }
++  }
++
+   async function onSubmit(event: FormEvent) {
+     event.preventDefault();
+     const res = await fetch(`/api/invoices/${invoiceId}/line-items`, {
+@@ -82,6 +93,15 @@ export function InvoiceLineItems({
+               <td data-testid="lineitem-amount">
+                 {formatMoney(item.qty * Number(item.unitPrice))}
+               </td>
++              <td>
++                <button
++                  data-testid={`lineitem-remove-${item.id}`}
++                  type="button"
++                  onClick={() => onRemove(item.id)}
++                >
++                  Remove
++                </button>
++              </td>
+             </tr>
+           ))}
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c6b1a81..63b196d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -163,6 +163,26 @@ public class InvoiceService {
+         return listLineItems(invoiceId);
+     }
+ 
++    /**
++     * Remove one line item from an invoice, then re-derive the invoice's amount as the sum of each
++     * remaining line's quantity times unit price so the stored total stays in step. Returns the
++     * invoice's remaining line items.
++     */
++    @Transactional
++    public List<LineItemView> removeLineItem(Long invoiceId, Long lineItemId) {
++        if (invoiceId == null) {
++            throw new IllegalArgumentException("An invoice id is required");
++        }
++        if (lineItemId == null) {
++            throw new IllegalArgumentException("A line item id is required");
++        }
++        jdbc.update("DELETE FROM line_items WHERE id = ? AND invoice_id = ?", lineItemId, invoiceId);
++        jdbc.update(
++                "UPDATE invoices SET amount = COALESCE((SELECT SUM(qty * unit_price) FROM line_items WHERE invoice_id = ?), 0) WHERE id = ?",
++                invoiceId, invoiceId);
++        return listLineItems(invoiceId);
++    }
++
+     private InvoiceView find(Long invoiceId) {
+         return jdbc.queryForObject(
+                 "SELECT id, project_id, amount, status, issued_date, due_date FROM invoices WHERE id = ?",
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/RemoveLineItemLogic.java b/src/main/java/net/officefloor/hq/app/invoices/RemoveLineItemLogic.java
+new file mode 100644
+index 0000000..68e2799
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/RemoveLineItemLogic.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.invoices;
++
++import java.util.List;
++import net.officefloor.web.HttpPathParameter;
++import net.officefloor.web.ObjectResponse;
++
++/**
++ * POST /api/invoices/{invoiceId}/line-items/{lineItemId}/remove — remove one thing being charged for
++ * from an invoice and return the invoice's remaining line items (the invoice's derived total is
++ * updated as a side effect).
++ */
++public class RemoveLineItemLogic {
++
++    public void service(@HttpPathParameter("invoiceId") String invoiceId,
++            @HttpPathParameter("lineItemId") String lineItemId, InvoiceService invoices,
++            ObjectResponse<List<LineItemView>> response) {
++        response.send(invoices.removeLineItem(Long.valueOf(invoiceId), Long.valueOf(lineItemId)));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/line-items/{lineItemId}/remove.POST.yml b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/line-items/{lineItemId}/remove.POST.yml
+new file mode 100644
+index 0000000..4ab4827
+--- /dev/null
++++ b/src/main/resources/officefloor/rest/api/invoices/{invoiceId}/line-items/{lineItemId}/remove.POST.yml
+@@ -0,0 +1,2 @@
++service:
++  class: net.officefloor.hq.app.invoices.RemoveLineItemLogic
