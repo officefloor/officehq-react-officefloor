@@ -24,10 +24,12 @@ function formatAmount(amount: number): string {
 export function InvoiceLineItems({
   invoiceId,
   discountPct = 0,
+  taxPct = 0,
   onClose,
 }: {
   invoiceId: number;
   discountPct?: number;
+  taxPct?: number;
   onClose: () => void;
 }) {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -123,14 +125,17 @@ export function InvoiceLineItems({
     await load();
   }
 
-  // The subtotal is the sum of the line items; the owner can take a percentage off it as a discount,
-  // and the invoice's final total is what is left after that discount.
+  // The subtotal is the sum of the line items; the owner can take a percentage off it as a discount.
+  // Sales tax is then added on top of the discounted amount, and the invoice's final total is the
+  // discounted amount plus that tax.
   const subtotal = lineItems.reduce(
     (sum, li) => sum + Number(li.quantity) * Number(li.unitPrice),
     0,
   );
   const discount = subtotal * (Number(discountPct) / 100);
-  const total = subtotal - discount;
+  const discounted = subtotal - discount;
+  const tax = discounted * (Number(taxPct) / 100);
+  const total = discounted + tax;
 
   return (
     <section data-testid="invoice-lineitems">
@@ -289,6 +294,11 @@ export function InvoiceLineItems({
           <tr>
             <td colSpan={4}>Discount ({Number(discountPct)}%)</td>
             <td data-testid="invoice-discount">{formatAmount(discount)}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td colSpan={4}>Tax ({Number(taxPct)}%)</td>
+            <td data-testid="invoice-tax">{formatAmount(tax)}</td>
             <td></td>
           </tr>
           <tr>

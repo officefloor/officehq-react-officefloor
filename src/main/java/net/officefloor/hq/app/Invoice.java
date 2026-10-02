@@ -34,6 +34,9 @@ public class Invoice {
     @Column(name = "discount_pct")
     private int discountPct;
 
+    @Column(name = "tax_pct")
+    private int taxPct;
+
     public Invoice() {
     }
 
@@ -97,6 +100,14 @@ public class Invoice {
 
     public void setDiscountPct(int discountPct) {
         this.discountPct = discountPct;
+    }
+
+    public int getTaxPct() {
+        return taxPct;
+    }
+
+    public void setTaxPct(int taxPct) {
+        this.taxPct = taxPct;
     }
 
     /**
