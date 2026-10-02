@@ -1,6 +1,5 @@
 package net.officefloor.hq.app.dashboard;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -11,12 +10,13 @@ public class DashboardView {
 
     private final long clients;
     private final long projects;
-    private final BigDecimal outstanding;
+    // Outstanding money kept separate per currency — the totals are never added across currencies.
+    private final List<CurrencyTotalView> outstanding;
     private final long overdue;
     private final List<TopClientView> topClients;
 
-    public DashboardView(long clients, long projects, BigDecimal outstanding, long overdue,
-            List<TopClientView> topClients) {
+    public DashboardView(long clients, long projects, List<CurrencyTotalView> outstanding,
+            long overdue, List<TopClientView> topClients) {
         this.clients = clients;
         this.projects = projects;
         this.outstanding = outstanding;
@@ -32,7 +32,7 @@ public class DashboardView {
         return projects;
     }
 
-    public BigDecimal getOutstanding() {
+    public List<CurrencyTotalView> getOutstanding() {
         return outstanding;
     }
 

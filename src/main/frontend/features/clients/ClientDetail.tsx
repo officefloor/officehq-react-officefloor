@@ -35,6 +35,19 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   // By default a client's page shows only their ACTIVE projects — the work still in play. Flipping
   // this reveals the finished and hidden (archived) ones too, by asking the server for them all.
   const [showAll, setShowAll] = useState(false);
+  // The currency this client is paid in (their money is shown in it everywhere), and the draft the
+  // currency picker is set to before it is saved.
+  const [currency, setCurrency] = useState('USD');
+  const [currencyDraft, setCurrencyDraft] = useState('USD');
+
+  async function loadClient() {
+    const res = await fetch(`/api/clients/${clientId}`);
+    if (res.ok) {
+      const client = (await res.json()) as { currency: string };
+      setCurrency(client.currency);
+      setCurrencyDraft(client.currency);
+    }
+  }
 
   async function loadContacts() {
     const res = await fetch(`/api/clients/${clientId}/contacts`);
@@ -66,7 +79,22 @@ export function ClientDetail({ clientId }: { clientId: number }) {
   useEffect(() => {
     void loadContacts();
     void loadCounts();
+    void loadClient();
   }, [clientId]);
+
+  // Set the currency this client is paid in; their money then shows in it everywhere.
+  async function onSaveCurrency() {
+    const res = await fetch(`/api/clients/${clientId}/currency`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currency: currencyDraft }),
+    });
+    if (res.ok) {
+      const client = (await res.json()) as { currency: string };
+      setCurrency(client.currency);
+      setCurrencyDraft(client.currency);
+    }
+  }
 
   // A client has one main contact. Pick it by flagging the chosen contact primary on the server,
   // then reload so the "who is primary" line and the row buttons reflect the new choice.
@@ -142,6 +170,26 @@ export function ClientDetail({ clientId }: { clientId: number }) {
         <dd data-testid="client-contacts-count">{counts.contacts}</dd>
       </dl>
 
+      <div data-testid="client-currency-field">
+        <span>Currency</span>
+        <span data-testid="client-currency">{currency}</span>
+        <select
+          data-testid="client-currency-select"
+          value={currencyDraft}
+          onChange={(e) => setCurrencyDraft(e.target.value)}
+        >
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
+        <button
+          data-testid="client-currency-save"
+          type="button"
+          onClick={() => void onSaveCurrency()}
+        >
+          Save currency
+        </button>
+      </div>
+
       <button
         data-testid="client-statement-open"
         type="button"
@@ -186,7 +234,7 @@ export function ClientDetail({ clientId }: { clientId: number }) {
                 <tr key={invoice.id} data-testid={`payment-alloc-row-${invoice.id}`}>
                   <td>{invoice.id}</td>
                   <td>{invoice.projectName}</td>
-                  <td>{formatMoney(invoice.due)}</td>
+                  <td>{formatMoney(invoice.due, currency)}</td>
                   <td>
                     <input
                       data-testid={`payment-alloc-${invoice.id}`}

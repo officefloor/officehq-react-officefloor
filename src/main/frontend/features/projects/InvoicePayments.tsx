@@ -13,9 +13,12 @@ type Payment = {
 
 export function InvoicePayments({
   invoiceId,
+  currency = 'USD',
   onPaymentRecorded,
 }: {
   invoiceId: number;
+  // The currency the client is billed in — payments are shown in it.
+  currency?: string;
   // Recording a payment can change the invoice's worked-out status, so let the parent re-read it.
   onPaymentRecorded?: () => void;
 }) {
@@ -64,7 +67,7 @@ export function InvoicePayments({
         <tbody>
           {payments.map((payment) => (
             <tr key={payment.id} data-testid={`payment-row-${payment.id}`}>
-              <td data-testid="payment-amount">{formatMoney(payment.amount)}</td>
+              <td data-testid="payment-amount">{formatMoney(payment.amount, currency)}</td>
               <td data-testid="payment-date">{payment.date}</td>
             </tr>
           ))}

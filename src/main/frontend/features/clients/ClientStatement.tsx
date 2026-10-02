@@ -23,6 +23,8 @@ type Statement = {
   invoices: StatementInvoice[];
   projects: StatementProject[];
   outstandingTotal: number;
+  // The currency the whole statement is shown in — the client's own currency.
+  currency: string;
 };
 
 export function ClientStatement({ clientId }: { clientId: number }) {
@@ -30,6 +32,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
     invoices: [],
     projects: [],
     outstandingTotal: 0,
+    currency: 'USD',
   });
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
               <tr key={project.id} data-testid={`statement-print-project-${project.id}`}>
                 <td data-testid="statement-print-project-name">{project.name}</td>
                 <td data-testid="statement-print-project-subtotal">
-                  {formatMoney(project.subtotal)}
+                  {formatMoney(project.subtotal, statement.currency)}
                 </td>
               </tr>
             ))}
@@ -69,7 +72,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
         <p className="statement-print-total">
           Grand total owed:{' '}
           <strong data-testid="statement-grand-total">
-            {formatMoney(statement.outstandingTotal)}
+            {formatMoney(statement.outstandingTotal, statement.currency)}
           </strong>
         </p>
       </section>
@@ -91,15 +94,15 @@ export function ClientStatement({ clientId }: { clientId: number }) {
               <th colSpan={4} data-testid="statement-project-name">
                 {project.name}
               </th>
-              <td data-testid="statement-project-subtotal">{formatMoney(project.subtotal)}</td>
+              <td data-testid="statement-project-subtotal">{formatMoney(project.subtotal, statement.currency)}</td>
             </tr>
             {project.invoices.map((invoice) => (
               <tr key={invoice.id} data-testid={`statement-invoice-row-${invoice.id}`}>
                 <td data-testid="statement-invoice-id">{invoice.id}</td>
                 <td data-testid="statement-invoice-project">{invoice.projectName}</td>
-                <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount)}</td>
+                <td data-testid="statement-invoice-amount">{formatMoney(invoice.amount, statement.currency)}</td>
                 <td data-testid="statement-invoice-status">{invoice.status}</td>
-                <td data-testid="statement-invoice-due">{formatMoney(invoice.due)}</td>
+                <td data-testid="statement-invoice-due">{formatMoney(invoice.due, statement.currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -109,7 +112,7 @@ export function ClientStatement({ clientId }: { clientId: number }) {
       <p>
         Total owed:{' '}
         <strong data-testid="client-outstanding-total">
-          {formatMoney(statement.outstandingTotal)}
+          {formatMoney(statement.outstandingTotal, statement.currency)}
         </strong>
       </p>
     </section>

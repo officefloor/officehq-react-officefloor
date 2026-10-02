@@ -16,6 +16,8 @@ type Invoice = {
   dueDate: string;
   // How much is still left to pay: the invoice amount minus any payments recorded against it.
   dueAmount: number;
+  // The currency the client is billed in — the invoice's money is shown in it.
+  currency: string;
 };
 
 type Task = {
@@ -122,6 +124,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
   }
 
   const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+  // All of a project's invoices bill the one client, so they share a single currency.
+  const currency = invoices[0]?.currency ?? 'USD';
 
   // Opening an invoice drills into its own detail view (line items, payments, notes); it takes
   // over the project view so the project's own panels don't double up with the invoice's.
@@ -235,8 +239,8 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         <tbody>
           {invoices.map((invoice) => (
             <tr key={invoice.id} data-testid={`invoice-row-${invoice.id}`}>
-              <td data-testid="invoice-amount">{formatMoney(invoice.amount)}</td>
-              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount)}</td>
+              <td data-testid="invoice-amount">{formatMoney(invoice.amount, invoice.currency)}</td>
+              <td data-testid="invoice-due-amount">{formatMoney(invoice.dueAmount, invoice.currency)}</td>
               <td data-testid="invoice-issued">{invoice.issuedDate}</td>
               <td data-testid="invoice-due">{invoice.dueDate}</td>
               <td data-testid="invoice-status">{invoice.status}</td>
@@ -275,7 +279,7 @@ export function ProjectDetail({ projectId }: { projectId: number }) {
         </tbody>
         <tfoot>
           <tr>
-            <td data-testid="project-invoices-total">{formatMoney(total)}</td>
+            <td data-testid="project-invoices-total">{formatMoney(total, currency)}</td>
           </tr>
         </tfoot>
       </table>

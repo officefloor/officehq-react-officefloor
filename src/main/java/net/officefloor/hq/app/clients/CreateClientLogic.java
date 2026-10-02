@@ -10,7 +10,8 @@ public class CreateClientLogic {
         try {
             Client saved = clients.create(body.getName(), body.getEmail());
             response.send(CreateClientResult
-                    .created(new ClientView(saved.getId(), saved.getName(), saved.getEmail())));
+                    .created(new ClientView(saved.getId(), saved.getName(), saved.getEmail(),
+                            saved.getCurrency())));
         } catch (DuplicateClientEmailException e) {
             // Email already in use: no row added; the UI surfaces the email error.
             response.send(CreateClientResult.emailInUse());

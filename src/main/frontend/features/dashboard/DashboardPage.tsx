@@ -5,11 +5,13 @@ import { formatMoney } from '../../ui/money';
 // how much money is still owed (the sum of UNPAID invoice amounts across all projects). The page
 // owns its own state and reads the single /api/dashboard aggregate; it does not import other
 // features.
-type TopClient = { id: number; name: string; owed: number };
+type TopClient = { id: number; name: string; owed: number; currency: string };
+// Outstanding money is kept separate per currency and never added together across currencies.
+type CurrencyTotal = { currency: string; amount: number };
 type Summary = {
   clients: number;
   projects: number;
-  outstanding: number;
+  outstanding: CurrencyTotal[];
   overdue: number;
   topClients: TopClient[];
 };
@@ -29,7 +31,7 @@ export function DashboardPage() {
 
   const clients = summary?.clients ?? 0;
   const projects = summary?.projects ?? 0;
-  const outstanding = summary?.outstanding ?? 0;
+  const outstanding = summary?.outstanding ?? [];
   const overdue = summary?.overdue ?? 0;
   const topClients = summary?.topClients ?? [];
 
@@ -49,7 +51,15 @@ export function DashboardPage() {
 
       <div data-testid="dashboard-outstanding">
         <span>Outstanding</span>
-        <strong data-testid="dashboard-outstanding-total">{formatMoney(outstanding)}</strong>
+        {/* Kept separate per currency — never added together across currencies. */}
+        {outstanding.map((total) => (
+          <strong
+            key={total.currency}
+            data-testid={`dashboard-outstanding-${total.currency}`}
+          >
+            {formatMoney(total.amount, total.currency)}
+          </strong>
+        ))}
       </div>
 
       <div data-testid="dashboard-overdue">
@@ -62,7 +72,7 @@ export function DashboardPage() {
         {topClients.map((client) => (
           <div key={client.id} data-testid={`top-client-row-${client.id}`}>
             <span data-testid="top-client-name">{client.name}</span>
-            <span data-testid="top-client-amount">{formatMoney(client.owed)}</span>
+            <span data-testid="top-client-amount">{formatMoney(client.owed, client.currency)}</span>
           </div>
         ))}
       </div>

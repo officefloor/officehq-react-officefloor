@@ -14,12 +14,20 @@ public class ClientStatementView {
     private final List<ClientStatementInvoiceView> invoices;
     private final List<ClientStatementProjectView> projects;
     private final BigDecimal outstandingTotal;
+    // The currency the whole statement is shown in — the client's own currency.
+    private final String currency;
 
     public ClientStatementView(List<ClientStatementInvoiceView> invoices,
-            List<ClientStatementProjectView> projects, BigDecimal outstandingTotal) {
+            List<ClientStatementProjectView> projects, BigDecimal outstandingTotal,
+            String currency) {
         this.invoices = invoices;
         this.projects = projects;
         this.outstandingTotal = outstandingTotal;
+        this.currency = currency;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public List<ClientStatementInvoiceView> getInvoices() {

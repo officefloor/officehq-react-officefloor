@@ -3,7 +3,7 @@ import { ClientDetail } from './ClientDetail';
 import { formatMoney } from '../../ui/money';
 
 // This arm's convention: the page component owns the feature's state, data loading and layout.
-type Client = { id: number; name: string; email: string; outstanding: number };
+type Client = { id: number; name: string; email: string; outstanding: number; currency: string };
 
 // How the list is ordered: alphabetically by name, or by how much each client owes (most first).
 type Sort = 'name' | 'outstanding';
@@ -222,7 +222,7 @@ export function ClientsPage() {
               <tr key={client.id} data-testid={`client-row-${client.id}`}>
                 <td data-testid="client-name">{client.name}</td>
                 <td data-testid="client-email">{client.email}</td>
-                <td data-testid="client-outstanding">{formatMoney(client.outstanding)}</td>
+                <td data-testid="client-outstanding">{formatMoney(client.outstanding, client.currency)}</td>
                 <td>
                   <button
                     data-testid={`client-open-${client.id}`}

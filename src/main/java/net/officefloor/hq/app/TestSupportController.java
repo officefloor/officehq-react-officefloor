@@ -80,9 +80,12 @@ public class TestSupportController {
             // Archived clients are tucked away: honour the fixture flag so a spec can seed a client
             // that starts off the main list (and can then be restored back onto it).
             boolean archived = Boolean.TRUE.equals(client.getOrDefault("archived", Boolean.FALSE));
+            // Each client is paid in their own currency; default to USD when the fixture omits one.
+            String currency = (String) client.getOrDefault("currency", "USD");
             // Seed with the fixture's explicit id (JdbcTemplate, not JPA) so specs can assert by id.
-            jdbc.update("INSERT INTO clients (id, name, email, archived) VALUES (?, ?, ?, ?)",
-                    id, client.get("name"), client.get("email"), archived);
+            jdbc.update(
+                    "INSERT INTO clients (id, name, email, archived, currency) VALUES (?, ?, ?, ?, ?)",
+                    id, client.get("name"), client.get("email"), archived, currency);
             maxClientId = Math.max(maxClientId, id);
         }
         if (maxClientId > 0) {

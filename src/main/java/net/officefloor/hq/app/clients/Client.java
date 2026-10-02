@@ -22,6 +22,9 @@ public class Client {
     // Archived clients are tucked away: the row is kept but drops off the list and search.
     private boolean archived;
 
+    // The currency the client is paid in (e.g. USD, EUR). Their money is shown in it everywhere.
+    private String currency;
+
     public Long getId() {
         return id;
     }
@@ -52,5 +55,13 @@ public class Client {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

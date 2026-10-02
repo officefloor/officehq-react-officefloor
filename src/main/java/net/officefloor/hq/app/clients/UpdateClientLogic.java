@@ -11,7 +11,8 @@ public class UpdateClientLogic {
         try {
             Client saved = clients.update(Long.valueOf(clientId), body.getName(), body.getEmail());
             response.send(UpdateClientResult
-                    .updated(new ClientView(saved.getId(), saved.getName(), saved.getEmail())));
+                    .updated(new ClientView(saved.getId(), saved.getName(), saved.getEmail(),
+                            saved.getCurrency())));
         } catch (DuplicateClientEmailException e) {
             // Email already in use by another client: the row is unchanged; the UI surfaces the error.
             response.send(UpdateClientResult.emailInUse());

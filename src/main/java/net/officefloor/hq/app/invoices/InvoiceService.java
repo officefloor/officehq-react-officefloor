@@ -18,11 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class InvoiceService {
 
-    // An invoice's amount minus whatever has been paid against it is what is still left to pay.
+    // An invoice's amount minus whatever has been paid against it is what is still left to pay. The
+    // invoice's money is shown in the owning project's client's currency (joined in here).
     private static final String DUE_AWARE_SELECT =
             "SELECT i.id, i.project_id, i.amount, i.status, i.issued_date, i.due_date, i.discount_pct, i.tax_pct, "
+                    + "c.currency AS currency, "
                     + "i.amount - COALESCE((SELECT SUM(p.amount) FROM payments p "
-                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i ";
+                    + "WHERE p.invoice_id = i.id), 0) AS due_amount FROM invoices i "
+                    + "JOIN projects pr ON i.project_id = pr.id "
+                    + "JOIN clients c ON pr.client_id = c.id ";
 
     private static final RowMapper<InvoiceView> INVOICE_MAPPER = (rs, i) -> {
         BigDecimal amount = rs.getBigDecimal("amount");
@@ -31,7 +35,8 @@ public class InvoiceService {
                 deriveStatus(rs.getString("status"), amount, dueAmount),
                 rs.getDate("issued_date").toLocalDate().toString(),
                 rs.getDate("due_date").toLocalDate().toString(), dueAmount,
-                rs.getBigDecimal("discount_pct"), rs.getBigDecimal("tax_pct"));
+                rs.getBigDecimal("discount_pct"), rs.getBigDecimal("tax_pct"),
+                rs.getString("currency"));
     };
 
     /**
@@ -143,9 +148,8 @@ public class InvoiceService {
         invoice.setDueDate(issued.plusDays(30));
         Invoice saved = repository.save(invoice);
         // A brand-new invoice has had nothing paid against it yet, so the whole amount is due.
-        return new InvoiceView(saved.getId(), saved.getProjectId(), saved.getAmount(),
-                saved.getStatus(), saved.getIssuedDate().toString(), saved.getDueDate().toString(),
-                saved.getAmount(), saved.getDiscountPct(), saved.getTaxPct());
+        // Re-read it so the view carries the client's currency (joined in by find).
+        return find(saved.getId());
     }
 
     @Transactional

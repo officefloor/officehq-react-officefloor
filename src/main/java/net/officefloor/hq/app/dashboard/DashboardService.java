@@ -1,6 +1,5 @@
 package net.officefloor.hq.app.dashboard;
 
-import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -29,9 +28,19 @@ public class DashboardService {
         // What is owed is the discounted total: an invoice's percentage discount comes off its
         // subtotal before it counts toward the outstanding figure, so the home screen shows the same
         // money the client is actually asked to pay (matching the invoice and statement views).
-        BigDecimal outstanding = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount * (1 - discount_pct / 100)), 0) FROM invoices WHERE status = 'SENT'",
-                BigDecimal.class);
+        // Different clients are paid in different currencies, so the outstanding money is kept
+        // separate per currency and never added across currencies.
+        List<CurrencyTotalView> outstanding = jdbc.query(
+                "SELECT c.currency AS currency, "
+                        + "COALESCE(SUM(i.amount * (1 - i.discount_pct / 100)), 0) AS amount "
+                        + "FROM invoices i "
+                        + "JOIN projects p ON i.project_id = p.id "
+                        + "JOIN clients c ON p.client_id = c.id "
+                        + "WHERE i.status = 'SENT' "
+                        + "GROUP BY c.currency "
+                        + "ORDER BY c.currency ASC",
+                (rs, rowNum) -> new CurrencyTotalView(
+                        rs.getString("currency"), rs.getBigDecimal("amount")));
         // A SENT invoice is overdue once its due date has passed relative to the dashboard's fixed
         // reference date (as_of); with no reference seeded it falls back to the current date.
         long overdue = jdbc.queryForObject(
@@ -42,17 +51,17 @@ public class DashboardService {
         // across all their projects' invoices, highest first. Only clients that owe something appear
         // (ties broken by id for a stable order).
         List<TopClientView> topClients = jdbc.query(
-                "SELECT c.id, c.name, "
+                "SELECT c.id, c.name, c.currency, "
                         + "COALESCE(SUM(i.amount * (1 - i.discount_pct / 100)), 0) AS owed "
                         + "FROM clients c "
                         + "JOIN projects p ON p.client_id = c.id "
                         + "JOIN invoices i ON i.project_id = p.id AND i.status = 'SENT' "
-                        + "GROUP BY c.id, c.name "
+                        + "GROUP BY c.id, c.name, c.currency "
                         + "HAVING SUM(i.amount * (1 - i.discount_pct / 100)) > 0 "
                         + "ORDER BY owed DESC, c.id ASC "
                         + "LIMIT 5",
-                (rs, rowNum) -> new TopClientView(
-                        rs.getLong("id"), rs.getString("name"), rs.getBigDecimal("owed")));
+                (rs, rowNum) -> new TopClientView(rs.getLong("id"), rs.getString("name"),
+                        rs.getBigDecimal("owed"), rs.getString("currency")));
         return new DashboardView(clients, projects, outstanding, overdue, topClients);
     }
 }

@@ -63,7 +63,7 @@ public class ClientService {
         List<ClientView> views = new ArrayList<>();
         for (Client client : search(query)) {
             views.add(new ClientView(client.getId(), client.getName(), client.getEmail(),
-                    owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
+                    client.getCurrency(), owed.getOrDefault(client.getId(), BigDecimal.ZERO)));
         }
         if ("name".equals(sort)) {
             views.sort(Comparator.comparing(ClientView::getName, String.CASE_INSENSITIVE_ORDER)
@@ -96,8 +96,39 @@ public class ClientService {
     @Transactional(readOnly = true)
     public List<ClientView> listArchived() {
         return repository.findByArchivedTrueOrderByIdAsc().stream()
-                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
+                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail(), c.getCurrency()))
                 .toList();
+    }
+
+    /** One client with the currency they are paid in — what the client detail view reads. */
+    @Transactional(readOnly = true)
+    public ClientView get(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("A client id is required");
+        }
+        Client client = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such client: " + id));
+        return new ClientView(client.getId(), client.getName(), client.getEmail(),
+                client.getCurrency());
+    }
+
+    /**
+     * Set the currency a client is paid in (e.g. USD, EUR). Their money is shown in it everywhere.
+     * Returns the updated client.
+     */
+    @Transactional
+    public ClientView setCurrency(Long id, String currency) {
+        if (id == null) {
+            throw new IllegalArgumentException("A client id is required to set its currency");
+        }
+        if (currency == null || currency.isBlank()) {
+            throw new IllegalArgumentException("A currency is required");
+        }
+        Client client = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such client: " + id));
+        client.setCurrency(currency.trim());
+        Client saved = repository.save(client);
+        return new ClientView(saved.getId(), saved.getName(), saved.getEmail(), saved.getCurrency());
     }
 
     /**
@@ -201,7 +232,11 @@ public class ClientService {
         }
         BigDecimal outstanding = invoices.stream().map(ClientStatementInvoiceView::getDue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ClientStatementView(invoices, projects, outstanding);
+        // The whole statement is shown in the client's own currency.
+        String currency = jdbc.queryForObject(
+                "SELECT currency FROM clients WHERE id = ?", String.class, clientId);
+        return new ClientStatementView(invoices, projects, outstanding,
+                currency == null ? "USD" : currency);
     }
 
     /** The contacts kept for a client, oldest first. */

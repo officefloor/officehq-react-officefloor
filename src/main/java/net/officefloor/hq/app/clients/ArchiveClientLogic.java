@@ -14,7 +14,7 @@ public class ArchiveClientLogic {
     public void service(@HttpPathParameter("clientId") String clientId, ClientService clients,
             ObjectResponse<List<ClientView>> response) {
         List<ClientView> views = clients.archive(Long.valueOf(clientId)).stream()
-                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail()))
+                .map(c -> new ClientView(c.getId(), c.getName(), c.getEmail(), c.getCurrency()))
                 .toList();
         response.send(views);
     }

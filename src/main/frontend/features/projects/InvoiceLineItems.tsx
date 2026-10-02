@@ -25,6 +25,8 @@ type Invoice = {
   status: string;
   discountPct: number;
   taxPct: number;
+  // The currency the client is billed in — the invoice's money is shown in it.
+  currency: string;
 };
 
 export function InvoiceLineItems({
@@ -38,6 +40,7 @@ export function InvoiceLineItems({
   const [status, setStatus] = useState('');
   const [discountPct, setDiscountPct] = useState(0);
   const [taxPct, setTaxPct] = useState(0);
+  const [currency, setCurrency] = useState('USD');
   const [description, setDescription] = useState('');
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
@@ -57,6 +60,7 @@ export function InvoiceLineItems({
       setStatus(invoice.status);
       setDiscountPct(Number(invoice.discountPct));
       setTaxPct(Number(invoice.taxPct));
+      setCurrency(invoice.currency);
     }
   }
 
@@ -135,9 +139,9 @@ export function InvoiceLineItems({
               <td data-testid="lineitem-description">{item.description}</td>
               <td data-testid="lineitem-qty">{item.qty}</td>
               <td data-testid="lineitem-unit">{item.unit}</td>
-              <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice)}</td>
+              <td data-testid="lineitem-unitprice">{formatMoney(item.unitPrice, currency)}</td>
               <td data-testid="lineitem-amount">
-                {formatMoney(item.qty * Number(item.unitPrice))}
+                {formatMoney(item.qty * Number(item.unitPrice), currency)}
               </td>
               <td>
                 <button
@@ -185,16 +189,16 @@ export function InvoiceLineItems({
 
       <dl data-testid="invoice-totals">
         <dt>Subtotal</dt>
-        <dd data-testid="invoice-subtotal">{formatMoney(subtotal)}</dd>
+        <dd data-testid="invoice-subtotal">{formatMoney(subtotal, currency)}</dd>
         <dt>Discount</dt>
-        <dd data-testid="invoice-discount">{formatMoney(discount)}</dd>
+        <dd data-testid="invoice-discount">{formatMoney(discount, currency)}</dd>
         <dt>Tax</dt>
-        <dd data-testid="invoice-tax">{formatMoney(tax)}</dd>
+        <dd data-testid="invoice-tax">{formatMoney(tax, currency)}</dd>
         <dt>Total</dt>
-        <dd data-testid="invoice-amount">{formatMoney(finalTotal)}</dd>
+        <dd data-testid="invoice-amount">{formatMoney(finalTotal, currency)}</dd>
       </dl>
 
-      <InvoicePayments invoiceId={invoiceId} onPaymentRecorded={loadInvoice} />
+      <InvoicePayments invoiceId={invoiceId} currency={currency} onPaymentRecorded={loadInvoice} />
 
       <InvoiceNotes invoiceId={invoiceId} />
     </section>

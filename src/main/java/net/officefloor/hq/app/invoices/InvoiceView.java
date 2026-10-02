@@ -20,10 +20,12 @@ public class InvoiceView {
     private final BigDecimal dueAmount;
     private final BigDecimal discountPct;
     private final BigDecimal taxPct;
+    // The currency the invoice's money is shown in — the owning project's client's currency.
+    private final String currency;
 
     public InvoiceView(long id, long projectId, BigDecimal amount, String status,
             String issuedDate, String dueDate, BigDecimal dueAmount, BigDecimal discountPct,
-            BigDecimal taxPct) {
+            BigDecimal taxPct, String currency) {
         this.id = id;
         this.projectId = projectId;
         this.amount = amount;
@@ -33,6 +35,11 @@ public class InvoiceView {
         this.dueAmount = dueAmount;
         this.discountPct = discountPct;
         this.taxPct = taxPct;
+        this.currency = currency == null ? "USD" : currency;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public long getId() {
