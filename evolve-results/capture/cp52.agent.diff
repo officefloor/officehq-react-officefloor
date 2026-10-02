@@ -1,0 +1,110 @@
+diff --git a/src/main/frontend/features/clients/ClientProjects.tsx b/src/main/frontend/features/clients/ClientProjects.tsx
+index 3b61e9a..9e8e265 100644
+--- a/src/main/frontend/features/clients/ClientProjects.tsx
++++ b/src/main/frontend/features/clients/ClientProjects.tsx
+@@ -41,7 +41,7 @@ export function ClientProjects({ clientId }: { clientId: number }) {
+ 
+   return (
+     <section data-testid="client-detail">
+-      <h2>Projects</h2>
++      <h2>Jobs</h2>
+ 
+       <button
+         type="button"
+diff --git a/src/main/frontend/features/dashboard/DashboardPage.tsx b/src/main/frontend/features/dashboard/DashboardPage.tsx
+index 268edf0..c878356 100644
+--- a/src/main/frontend/features/dashboard/DashboardPage.tsx
++++ b/src/main/frontend/features/dashboard/DashboardPage.tsx
+@@ -38,7 +38,7 @@ export function DashboardPage() {
+         <dt>Clients</dt>
+         <dd data-testid="dashboard-clients-count">{summary ? summary.clientsCount : ''}</dd>
+ 
+-        <dt>Projects</dt>
++        <dt>Jobs</dt>
+         <dd data-testid="dashboard-projects-count">{summary ? summary.projectsCount : ''}</dd>
+ 
+         <dt>Outstanding</dt>
+diff --git a/src/main/frontend/features/invoices/AllInvoicesPage.tsx b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+index 9c78141..51eb5b1 100644
+--- a/src/main/frontend/features/invoices/AllInvoicesPage.tsx
++++ b/src/main/frontend/features/invoices/AllInvoicesPage.tsx
+@@ -75,7 +75,7 @@ export function AllInvoicesPage() {
+         <table data-testid="all-invoices-table">
+           <thead>
+             <tr>
+-              <th>Project</th>
++              <th>Job</th>
+               <th>Amount</th>
+               <th>Stage</th>
+             </tr>
+diff --git a/src/main/frontend/features/projects/ProjectsPage.tsx b/src/main/frontend/features/projects/ProjectsPage.tsx
+index b99cf24..8db5bb4 100644
+--- a/src/main/frontend/features/projects/ProjectsPage.tsx
++++ b/src/main/frontend/features/projects/ProjectsPage.tsx
+@@ -99,12 +99,12 @@ export function ProjectsPage() {
+ 
+   return (
+     <section data-testid="projects-section">
+-      <h1>Projects</h1>
++      <h1>Jobs</h1>
+ 
+       <form data-testid="project-form" onSubmit={onSubmit}>
+         <input
+           data-testid="project-form-name"
+-          placeholder="Project name"
++          placeholder="Job name"
+           value={name}
+           onChange={(e) => setName(e.target.value)}
+         />
+@@ -138,7 +138,7 @@ export function ProjectsPage() {
+           onChange={(e) => setBudget(e.target.value)}
+         />
+         <button type="submit" data-testid="project-form-submit">
+-          Add project
++          Add job
+         </button>
+       </form>
+ 
+@@ -186,7 +186,7 @@ export function ProjectsPage() {
+           ? byTag.filter((p) => p.status === filterStatus)
+           : byTag;
+         return visible.length === 0 ? (
+-          <p data-testid="projects-empty">No projects yet.</p>
++          <p data-testid="projects-empty">No jobs yet.</p>
+         ) : (
+         <table data-testid="projects-table">
+           <thead>
+diff --git a/src/main/frontend/features/projects/route.tsx b/src/main/frontend/features/projects/route.tsx
+index 9bdca8c..dbf6430 100644
+--- a/src/main/frontend/features/projects/route.tsx
++++ b/src/main/frontend/features/projects/route.tsx
+@@ -4,6 +4,6 @@ import { ProjectsPage } from './ProjectsPage';
+ // Feature route declaration — pure data, auto-discovered by router/routes.ts.
+ export const route: AppRoute = {
+   id: 'projects',
+-  label: 'Projects',
++  label: 'Jobs',
+   component: ProjectsPage,
+ };
+diff --git a/src/main/frontend/features/search/GlobalSearch.tsx b/src/main/frontend/features/search/GlobalSearch.tsx
+index 3d49d60..40c7cd7 100644
+--- a/src/main/frontend/features/search/GlobalSearch.tsx
++++ b/src/main/frontend/features/search/GlobalSearch.tsx
+@@ -34,7 +34,7 @@ export function GlobalSearch() {
+     <section data-testid="global-search-section">
+       <input
+         data-testid="global-search"
+-        placeholder="Search clients and projects"
++        placeholder="Search clients and jobs"
+         value={query}
+         onChange={(e) => setQuery(e.target.value)}
+       />
+@@ -50,7 +50,7 @@ export function GlobalSearch() {
+       </div>
+ 
+       <div data-testid="search-projects">
+-        <h2>Projects</h2>
++        <h2>Jobs</h2>
+         {results.projects.map((p) => (
+           <div key={p.id} data-testid={`project-row-${p.id}`}>
+             <span data-testid="project-name">{p.name}</span>
