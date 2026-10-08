@@ -1,9 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
-// Minimal base shell. The opinionated conventions (file/manifest routing under router/, closed
-// primitives under ui/, no global store, scoped styles) are how checkpoints add features additively
-// (CLAUDE.md). Every observable element/value carries a stable data-testid, never renamed/removed.
+// Minimal base shell. Every observable element and value carries a stable data-testid.
 function App() {
   return (
     <div data-testid="app-root">
