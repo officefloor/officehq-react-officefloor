@@ -1,17 +1,7 @@
-# Working in this app
+# Design of this implementation
 
-Implement the change request you have been given. A single change may span the
-database schema, the server, and the front end.
-
-- **`data-testid` is an immutable public API.** Expose a stable `data-testid` on every
-  element and value a feature surfaces, and **never rename or remove a `data-testid`
-  that already exists** — it is how the app is tested. Match exactly the `data-testid`
-  values your task's test expects.
-- **Run `bin/e2e`** to build the app, start it, run your test, and stop — use it to
-  check your work. The `bin/` scripts and these two instruction files are fixed; do
-  not edit them.
-
----
+Stack-specific guidance for this implementation of the app: its stack, layout and conventions.
+Read it with `AGENTS.md`, which has the working rules and how the app is tested.
 
 *React's official documentation is the reference for the front end:
 <https://react.dev/learn> (API reference at <https://react.dev/reference/react>).*
