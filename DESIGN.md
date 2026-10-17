@@ -1,6 +1,6 @@
-# Design of this implementation
+# Design
 
-Stack-specific guidance for this implementation of the app: its stack, layout and conventions.
+How this app is built: its stack, layout and conventions.
 Read it with `AGENTS.md`, which has the working rules and how the app is tested.
 
 *React's official documentation is the reference for the front end:
